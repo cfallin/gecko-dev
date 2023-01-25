@@ -11549,6 +11549,8 @@ struct JSAndShellContext {
   JSObject* glob;
   UniquePtr<ShellContext> shellCx;
   Maybe<FileContents> selfHostedXDRBuffer;
+  RCFile rcStdout;
+  RCFile rcStderr;
 };
 
 static Variant<JSAndShellContext, int> ShellMain(int argc, char** argv, bool retainContext) {
@@ -12472,7 +12474,7 @@ static Variant<JSAndShellContext, int> ShellMain(int argc, char** argv, bool ret
       shutdownBufferStreams.release();
       shutdownShellThreads.release();
       
-      JSAndShellContext ret { cx, lastGlobal.get(), std::move(sc), std::move(selfHostedXDRBuffer) };
+      JSAndShellContext ret { cx, lastGlobal.get(), std::move(sc), std::move(selfHostedXDRBuffer), std::move(rcStdout), std::move(rcStderr) };
       return AsVariant(std::move(ret));
     } else {
       return AsVariant(result);

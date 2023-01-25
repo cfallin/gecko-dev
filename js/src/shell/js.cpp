@@ -11233,7 +11233,7 @@ static void SetWorkerContextOptions(JSContext* cx) {
   return true;
 }
 
-static int Shell(JSContext* cx, OptionParser* op) {
+static int Shell(JSContext* cx, OptionParser* op, MutableHandleObject lastGlobal) {
 #ifdef JS_STRUCTURED_SPEW
   cx->spewer().enableSpewing();
 #endif
@@ -11305,6 +11305,7 @@ static int Shell(JSContext* cx, OptionParser* op) {
     if (!glob) {
       return 1;
     }
+    lastGlobal.set(glob.get());
 
     JSAutoRealm ar(cx, glob);
 
@@ -11545,7 +11546,9 @@ static bool SetGCParameterFromArg(JSContext* cx, char* arg) {
 
 struct JSAndShellContext {
   JSContext* cx;
+  JSObject* glob;
   UniquePtr<ShellContext> shellCx;
+  Maybe<FileContents> selfHostedXDRBuffer;
 };
 
 static Variant<JSAndShellContext, int> ShellMain(int argc, char** argv, bool retainContext) {
@@ -12452,7 +12455,8 @@ static Variant<JSAndShellContext, int> ShellMain(int argc, char** argv, bool ret
   }
 #endif  // __wasi__
 
-  result = Shell(cx, &op);
+  RootedObject lastGlobal(cx);
+  result = Shell(cx, &op, &lastGlobal);
 
 #ifdef DEBUG
   if (OOM_printAllocationCount) {
@@ -12468,7 +12472,7 @@ static Variant<JSAndShellContext, int> ShellMain(int argc, char** argv, bool ret
       shutdownBufferStreams.release();
       shutdownShellThreads.release();
       
-      JSAndShellContext ret { cx, std::move(sc) };
+      JSAndShellContext ret { cx, lastGlobal.get(), std::move(sc), std::move(selfHostedXDRBuffer) };
       return AsVariant(std::move(ret));
     } else {
       return AsVariant(result);
@@ -12492,6 +12496,8 @@ static void WizerInit() {
   }
 
   wizenedContext = std::move(ret.as<JSAndShellContext>());
+
+  printf("end of wizer init: cx = %p zone = %p\n", wizenedContext.value().cx, wizenedContext.value().cx->zone());
 }
 
 WIZER_INIT(WizerInit);
@@ -12502,8 +12508,11 @@ int main(int argc, char** argv) {
 
   if (wizenedContext) {
     JSContext* cx  = wizenedContext.value().cx;
+    RootedObject glob(cx, wizenedContext.value().glob);
 
-    fprintf(stderr, "in main(); cx = %p\n", cx);
+    JSAutoRealm ar(cx, glob);
+
+    fprintf(stderr, "in main(); cx = %p global = %p zone = %p\n", cx, glob.get(), cx->zone());
 
     // Look up a function called "main" in the global.
     JS::Rooted<JS::Value> ret(cx);

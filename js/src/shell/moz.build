@@ -38,6 +38,7 @@ DEFINES["EXPORT_JS_API"] = True
 LOCAL_INCLUDES += [
     "!..",
     "..",
+    "/third_party/wizer",
 ]
 
 OS_LIBS += CONFIG["EDITLINE_LIBS"]

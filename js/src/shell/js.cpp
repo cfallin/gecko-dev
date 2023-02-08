@@ -12498,8 +12498,6 @@ static void WizerInit() {
   }
 
   wizenedContext = std::move(ret.as<JSAndShellContext>());
-
-  printf("end of wizer init: cx = %p zone = %p\n", wizenedContext.value().cx, wizenedContext.value().cx->zone());
 }
 
 WIZER_INIT(WizerInit);
@@ -12513,8 +12511,6 @@ int main(int argc, char** argv) {
     RootedObject glob(cx, wizenedContext.value().glob);
 
     JSAutoRealm ar(cx, glob);
-
-    fprintf(stderr, "in main(); cx = %p global = %p zone = %p\n", cx, glob.get(), cx->zone());
 
     // Look up a function called "main" in the global.
     JS::Rooted<JS::Value> ret(cx);

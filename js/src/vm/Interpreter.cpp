@@ -19,6 +19,7 @@
 #include "mozilla/WrappingOperations.h"
 
 #include <string.h>
+#include <weval.h>
 
 #include "jsapi.h"
 #include "jslibmath.h"

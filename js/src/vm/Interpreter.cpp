@@ -2000,7 +2000,8 @@ struct InterpretContext {
 };
 
 static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
-    JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc);
+    JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc,
+    bool error_bailout);
 
 #define SET_SCRIPT(s)    \
   JS_BEGIN_MACRO         \
@@ -2033,15 +2034,13 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
   // TODO(cfallin): dispatch on a specialized function pointer here
   // (and define it in a macro to reuse for calls below).
 
-  return InterpretInner(cx, state, ictx, REGS.pc);
+  return InterpretInner(cx, state, ictx, REGS.pc, /* error_bailout = */ false);
 }
 
 static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
                                             InterpretContext& ictx,
-                                            jsbytecode* pc) {
-  // TODO(cfallin): rewrite all uses of REGS.pc to pc, and synchronize
-  // pc to REGS.pc; and assert still equal at top of loop.
-  //
+                                            jsbytecode* pc,
+                                            bool error_bailout) {
   // TODO(cfallin): make error-path reachable via bool argument, and
   // tail-call to generic InterpretInner at `error` label. Needs
   // `weval::is_specialized()` intrinsic.
@@ -2187,11 +2186,11 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
     JS_END_MACRO
 #endif
 
-  if (!ictx.activation.entryFrame()->prologue(cx)) {
+  if (!REGS.fp()->prologue(cx)) {
     goto prologue_error;
   }
 
-  if (!DebugAPI::onEnterFrame(cx, ictx.activation.entryFrame())) {
+  if (!DebugAPI::onEnterFrame(cx, REGS.fp())) {
     goto error;
   }
 

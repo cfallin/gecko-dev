@@ -2003,6 +2003,12 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
     JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc,
     bool error_bailout);
 
+// The type of function pointer to a partial specialization of
+// `InterpretInner()`.
+typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
+                                                   InterpretContext&,
+                                                   jsbytecode*, bool);
+
 #define SET_SCRIPT(s)                                         \
   JS_BEGIN_MACRO                                              \
     ictx.script = (s);                                        \
@@ -2010,6 +2016,18 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
     if (DebugAPI::hasAnyBreakpointsOrStepMode(ictx.script) || \
         ictx.script->hasScriptCounts())                       \
       ictx.activation.enableInterruptsUnconditionally();      \
+  JS_END_MACRO
+
+#define CALL_INNER(ret)                                                  \
+  JS_BEGIN_MACRO                                                         \
+    if (void* f = ictx.script->specializedCode()) {                      \
+      PartiallySpecializedInterpretInner func =                          \
+          reinterpret_cast<PartiallySpecializedInterpretInner>(f);       \
+      ret = func(cx, state, ictx, REGS.pc, /* error_bailout = */ false); \
+    } else {                                                             \
+      ret = InterpretInner(cx, state, ictx, REGS.pc,                     \
+                           /* error_bailout = */ false);                 \
+    }                                                                    \
   JS_END_MACRO
 
 static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
@@ -2025,10 +2043,17 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
 
   SET_SCRIPT(REGS.fp()->script());
 
-  // TODO(cfallin): dispatch on a specialized function pointer here
-  // (and define it in a macro to reuse for calls below).
+  bool ret;
+  CALL_INNER(ret);
+  return ret;
+}
 
-  return InterpretInner(cx, state, ictx, REGS.pc, /* error_bailout = */ false);
+void js::RegisterInterpreterSpecialization(void** specialized, jsbytecode* pc) {
+  weval::weval(
+      reinterpret_cast<PartiallySpecializedInterpretInner*>(specialized),
+      InterpretInner, weval::Runtime<JSContext*>(), weval::Runtime<RunState&>(),
+      weval::Runtime<InterpretContext&>(), weval::Specialize<jsbytecode*>(pc),
+      weval::Specialize<bool>(false));
 }
 
 static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
@@ -3493,8 +3518,9 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
       // printf(" -> about to recurse: script = %p pc = %p fp = %p sp = %p code
       // = %p\n", ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp,
       // ictx.script->code());
-      if (!InterpretInner(cx, state, ictx, REGS.pc,
-                          /* error_bailout = */ false)) {
+      bool ret;
+      CALL_INNER(ret);
+      if (!ret) {
         goto error;
       }
       // printf(" -> returned: script = %p pc = %p fp = %p sp = %p\n",

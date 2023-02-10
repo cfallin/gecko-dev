@@ -27,6 +27,7 @@
 #include <string.h>
 #include <type_traits>
 #include <utility>
+#include <weval.h>
 
 #include "jstypes.h"
 
@@ -64,6 +65,7 @@
 #include "vm/BytecodeUtil.h"  // Disassemble
 #include "vm/Compression.h"
 #include "vm/HelperThreadState.h"  // js::RunPendingSourceCompressions
+#include "vm/Interpreter.h" // RegisterInterpreterSpecialization
 #include "vm/JSContext.h"
 #include "vm/JSFunction.h"
 #include "vm/JSObject.h"
@@ -2435,6 +2437,12 @@ bool JSScript::fullyInitFromStencil(
       scriptData->nfixed() <= frontend::ParseContext::Scope::FixedSlotLimit);
 
   script->initSharedData(scriptData);
+
+  // Register specialization request for interpreter partial
+  // specialization.
+  script->specialized_ = cx->pod_malloc<void*>(1);
+  *script->specialized_ = nullptr;
+  RegisterInterpreterSpecialization(script->specialized_, scriptData->get()->code());
 
   // NOTE: JSScript is now constructed and should be linked in.
   rollbackGuard.release();

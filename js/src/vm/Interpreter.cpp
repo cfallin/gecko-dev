@@ -2003,7 +2003,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
     JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc,
     bool error_bailout);
 
-#define SET_SCRIPT(s)                                   \
+#define SET_SCRIPT(s)                                         \
   JS_BEGIN_MACRO                                              \
     ictx.script = (s);                                        \
     MOZ_ASSERT(cx->realm() == ictx.script->realm());          \
@@ -2035,10 +2035,10 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
                                             InterpretContext& ictx,
                                             jsbytecode* pc,
                                             bool error_bailout) {
-  //printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
-  // TODO(cfallin): make error-path reachable via bool argument, and
-  // tail-call to generic InterpretInner at `error` label. Needs
-  // `weval::is_specialized()` intrinsic.
+  // printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
+  //  TODO(cfallin): make error-path reachable via bool argument, and
+  //  tail-call to generic InterpretInner at `error` label. Needs
+  //  `weval::is_specialized()` intrinsic.
 /*
  * Define macros for an interpreter loop. Opcode dispatch is done by
  * indirect goto (aka a threaded interpreter), which is technically
@@ -2081,13 +2081,14 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    * will enable interrupts, and activation.opMask() is or'd with the opcode
    * to implement a simple alternate dispatch.
    */
-#define ADVANCE_AND_DISPATCH(N)      \
-  JS_BEGIN_MACRO                     \
-    MOZ_ASSERT(pc == REGS.pc);       \
-    pc += (N);                       \
-    REGS.pc = pc;                    \
-    SANITY_CHECKS();                 \
-    DISPATCH_TO(*pc | OPMASK(ictx)); \
+#define ADVANCE_AND_DISPATCH(N)                            \
+  JS_BEGIN_MACRO                                           \
+    MOZ_ASSERT(pc == REGS.pc);                             \
+    pc += (N);                                             \
+    REGS.pc = pc;                                          \
+    SANITY_CHECKS();                                       \
+    weval::update_context(reinterpret_cast<uint32_t>(pc)); \
+    DISPATCH_TO(*pc | OPMASK(ictx));                       \
   JS_END_MACRO
 
 #ifndef __wasi__
@@ -2192,6 +2193,8 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   // Increment the coverage for the main entry point.
   INIT_COVERAGE();
   COUNT_COVERAGE_MAIN();
+
+  weval::push_context(reinterpret_cast<uint32_t>(pc));
 
   // Enter the interpreter loop starting at the current pc.
   ADVANCE_AND_DISPATCH(0);
@@ -3367,7 +3370,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
     CASE(CallIter)
     CASE(CallContentIter)
     CASE(SuperCall) {
-      //printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
+      // printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
       static_assert(JSOpLength_Call == JSOpLength_New,
                     "call and new must be the same size");
       static_assert(JSOpLength_Call == JSOpLength_CallContent,
@@ -3487,11 +3490,15 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
       SET_SCRIPT(REGS.fp()->script());
 
-      //printf(" -> about to recurse: script = %p pc = %p fp = %p sp = %p code = %p\n", ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, ictx.script->code());
-      if (!InterpretInner(cx, state, ictx, REGS.pc, /* error_bailout = */ false)) {
+      // printf(" -> about to recurse: script = %p pc = %p fp = %p sp = %p code
+      // = %p\n", ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp,
+      // ictx.script->code());
+      if (!InterpretInner(cx, state, ictx, REGS.pc,
+                          /* error_bailout = */ false)) {
         goto error;
       }
-      //printf(" -> returned: script = %p pc = %p fp = %p sp = %p\n", ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp);
+      // printf(" -> returned: script = %p pc = %p fp = %p sp = %p\n",
+      // ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp);
 
       ADVANCE_AND_DISPATCH(JSOpLength_Call);
     }
@@ -4689,6 +4696,8 @@ error:
   MOZ_CRASH("Invalid HandleError continuation");
 
 exit:
+  weval::pop_context();
+
   if (MOZ_LIKELY(!ictx.frameHalfInitialized)) {
     ictx.interpReturnOK =
         DebugAPI::onLeaveFrame(cx, REGS.fp(), pc, ictx.interpReturnOK);

@@ -2003,13 +2003,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
     JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc,
     bool error_bailout);
 
-#define SET_SCRIPT(s)    \
-  JS_BEGIN_MACRO         \
-    SET_SCRIPT_INNER(s); \
-    pc = REGS.pc;        \
-  JS_END_MACRO
-
-#define SET_SCRIPT_INNER(s)                                   \
+#define SET_SCRIPT(s)                                   \
   JS_BEGIN_MACRO                                              \
     ictx.script = (s);                                        \
     MOZ_ASSERT(cx->realm() == ictx.script->realm());          \
@@ -2029,7 +2023,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
 
   InterpretContext ictx(cx, state, entryFrame);
 
-  SET_SCRIPT_INNER(REGS.fp()->script());
+  SET_SCRIPT(REGS.fp()->script());
 
   // TODO(cfallin): dispatch on a specialized function pointer here
   // (and define it in a macro to reuse for calls below).
@@ -2041,6 +2035,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
                                             InterpretContext& ictx,
                                             jsbytecode* pc,
                                             bool error_bailout) {
+  //printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
   // TODO(cfallin): make error-path reachable via bool argument, and
   // tail-call to generic InterpretInner at `error` label. Needs
   // `weval::is_specialized()` intrinsic.
@@ -2389,20 +2384,22 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
           }
           SET_SCRIPT(callerScript);
         }
+        pc = REGS.pc;
 
       jit_return:
 
         MOZ_ASSERT(IsInvokePC(pc));
         MOZ_ASSERT(cx->realm() == ictx.script->realm());
 
-        /* Resume execution in the calling frame. */
+        /* Resume execution in the calling frame. If we were invoked
+           via `Resume`, do this within this C++ callframe; otherwise,
+           return to the native-stack caller. */
         if (MOZ_LIKELY(ictx.interpReturnOK)) {
           if (JSOp(*pc) == JSOp::Resume) {
             ADVANCE_AND_DISPATCH(JSOpLength_Resume);
           }
 
-          MOZ_ASSERT(GetBytecodeLength(pc) == JSOpLength_Call);
-          ADVANCE_AND_DISPATCH(JSOpLength_Call);
+          return true;
         }
 
         goto error;
@@ -3370,6 +3367,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
     CASE(CallIter)
     CASE(CallContentIter)
     CASE(SuperCall) {
+      //printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
       static_assert(JSOpLength_Call == JSOpLength_New,
                     "call and new must be the same size");
       static_assert(JSOpLength_Call == JSOpLength_CallContent,
@@ -3489,20 +3487,13 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
       SET_SCRIPT(REGS.fp()->script());
 
-      if (!REGS.fp()->prologue(cx)) {
-        goto prologue_error;
-      }
-
-      if (!DebugAPI::onEnterFrame(cx, REGS.fp())) {
+      //printf(" -> about to recurse: script = %p pc = %p fp = %p sp = %p code = %p\n", ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, ictx.script->code());
+      if (!InterpretInner(cx, state, ictx, REGS.pc, /* error_bailout = */ false)) {
         goto error;
       }
+      //printf(" -> returned: script = %p pc = %p fp = %p sp = %p\n", ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp);
 
-      // Increment the coverage for the main entry point.
-      INIT_COVERAGE();
-      COUNT_COVERAGE_MAIN();
-
-      /* Load first op and dispatch it (safe since JSOp::RetRval). */
-      ADVANCE_AND_DISPATCH(0);
+      ADVANCE_AND_DISPATCH(JSOpLength_Call);
     }
 
     CASE(OptimizeSpreadCall) {

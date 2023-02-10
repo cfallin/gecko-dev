@@ -84,6 +84,10 @@ template <typename T>
 const T* assume_const_memory(const T* t) {
   return (const T*)weval_assume_const_memory((const void*)t);
 }
+template <typename T>
+T* assume_const_memory( T* t) {
+  return (T*)weval_assume_const_memory((void*)t);
+}
 
 static void push_context(uint32_t pc) { weval_push_context(pc); }
 

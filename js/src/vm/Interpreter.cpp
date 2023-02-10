@@ -2060,6 +2060,9 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
                                             InterpretContext& ictx,
                                             jsbytecode* pc,
                                             bool error_bailout) {
+
+  pc = weval::assume_const_memory(pc);
+  
   // printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
   //  TODO(cfallin): make error-path reachable via bool argument, and
   //  tail-call to generic InterpretInner at `error` label. Needs

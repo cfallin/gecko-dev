@@ -216,6 +216,7 @@ template <typename T, typename... Rest>
 struct StoreArgs<RuntimeArg<T>, Rest...> {
   void operator()(weval_req_arg_t* args, RuntimeArg<T> arg0, Rest... rest) {
     args[0].specialize = 0;
+    StoreArgs<Rest...>()(args + 1, rest...);
   }
 };
 

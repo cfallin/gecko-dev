@@ -2056,6 +2056,9 @@ void js::RegisterInterpreterSpecialization(void** specialized, jsbytecode* pc) {
       weval::Specialize<bool>(false));
 }
 
+__attribute__((export_name("line.number")))
+static MOZ_NEVER_INLINE void line_number(uint32_t line) { (void)line; }
+
 static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
                                             InterpretContext& ictx,
                                             jsbytecode* pc,
@@ -2115,6 +2118,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
     pc += (N);                                             \
     REGS.pc = pc;                                          \
     SANITY_CHECKS();                                       \
+    line_number(__LINE__); \
     weval::update_context(reinterpret_cast<uint32_t>(pc)); \
     DISPATCH_TO(*pc | OPMASK(ictx));                       \
   JS_END_MACRO
@@ -2425,6 +2429,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
         /* Resume execution in the calling frame. If we were invoked
            via `Resume`, do this within this C++ callframe; otherwise,
            return to the native-stack caller. */
+        /*
         if (MOZ_LIKELY(ictx.interpReturnOK)) {
           if (JSOp(*pc) == JSOp::Resume) {
             ADVANCE_AND_DISPATCH(JSOpLength_Resume);
@@ -2432,6 +2437,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
           return true;
         }
+        */
 
         goto error;
       } else {
@@ -4692,6 +4698,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   MOZ_CRASH("Interpreter loop exited via fallthrough");
 
 error:
+  return false;
   switch (HandleError(cx, REGS)) {
     case SuccessfulReturnContinuation:
       goto successful_return_continuation;

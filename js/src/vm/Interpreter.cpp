@@ -2071,7 +2071,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
   pc = weval::assume_const_memory(pc);
 
-  // printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
+  printf("InterpretInner: script = %p pc = %p error = %d spec = %d\n", ictx.script.get(), pc, error_bailout, is_specialized);
   //  TODO(cfallin): make error-path reachable via bool argument, and
   //  tail-call to generic InterpretInner at `error` label. Needs
   //  `weval::is_specialized()` intrinsic.
@@ -2117,20 +2117,21 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    * will enable interrupts, and activation.opMask() is or'd with the opcode
    * to implement a simple alternate dispatch.
    */
-#define ADVANCE_AND_DISPATCH(N)                            \
-  JS_BEGIN_MACRO                                           \
-    MOZ_ASSERT(pc == REGS.pc);                             \
-    pc += (N);                                             \
-    REGS.pc = pc;                                          \
-    SANITY_CHECKS();                                       \
-    WEVAL_CONTEXT(pc); \
-    DISPATCH_TO(*pc | OPMASK(ictx));                       \
+#define ADVANCE_AND_DISPATCH(N)      \
+  JS_BEGIN_MACRO                     \
+    MOZ_ASSERT(pc == REGS.pc);       \
+    pc += (N);                       \
+    REGS.pc = pc;                    \
+    SANITY_CHECKS();                 \
+    WEVAL_CONTEXT(pc);               \
+    DISPATCH_TO(*pc | OPMASK(ictx)); \
   JS_END_MACRO
 
 #ifdef __wasi__
-#define WEVAL_CONTEXT(pc)     weval::update_context(reinterpret_cast<uint32_t>(pc));
+#  define WEVAL_CONTEXT(pc) \
+    weval::update_context(reinterpret_cast<uint32_t>(pc));
 #else
-#define WEVAL_CONTEXT(pc)
+#  define WEVAL_CONTEXT(pc)
 #endif
 
 #ifndef __wasi__
@@ -2441,16 +2442,16 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
         /* Resume execution in the calling frame. If we were invoked
            via `Resume`, do this within this C++ callframe; otherwise,
            return to the native-stack caller. */
-        /*
         if (MOZ_LIKELY(ictx.interpReturnOK)) {
           if (JSOp(*pc) == JSOp::Resume) {
             ADVANCE_AND_DISPATCH(JSOpLength_Resume);
           }
 
+          printf("jit_return: returning\n");
           return true;
         }
-        */
 
+        printf("jit_return: error path\n");
         goto error;
       } else {
         // Stack should be empty for the outer frame, unless we executed the
@@ -3416,7 +3417,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
     CASE(CallIter)
     CASE(CallContentIter)
     CASE(SuperCall) {
-      // printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
+      printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
       static_assert(JSOpLength_Call == JSOpLength_New,
                     "call and new must be the same size");
       static_assert(JSOpLength_Call == JSOpLength_CallContent,
@@ -3536,16 +3537,17 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
       SET_SCRIPT(REGS.fp()->script());
 
-      // printf(" -> about to recurse: script = %p pc = %p fp = %p sp = %p code
-      // = %p\n", ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp,
-      // ictx.script->code());
+      printf(
+          " -> about to recurse: script = %p pc = %p fp = %p sp = %p code = "
+          "%p\n",
+          ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, ictx.script->code());
       bool ret;
       CALL_INNER(ret);
       if (!ret) {
         goto error;
       }
-      // printf(" -> returned: script = %p pc = %p fp = %p sp = %p\n",
-      // ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp);
+      printf(" -> returned: script = %p pc = %p fp = %p sp = %p local-pc = %p\n",
+             ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
 
       ADVANCE_AND_DISPATCH(JSOpLength_Call);
     }
@@ -4715,20 +4717,25 @@ error:
     return InterpretInner(cx, state, ictx, REGS.pc, /* error_bailout = */ true,
                           /* is_specialized = */ false);
   }
+  printf("calling handleerror\n");
 
   switch (HandleError(cx, REGS)) {
     case SuccessfulReturnContinuation:
+      printf("handleerror returned successful-return-continuation\n");
       goto successful_return_continuation;
 
     case ErrorReturnContinuation:
+      printf("handleerror returned error-return-continuation\n");
       ictx.interpReturnOK = false;
       goto return_continuation;
 
     case CatchContinuation:
+      printf("handleerror returned catch-continuation; pc = %p\n", REGS.pc);
       pc = REGS.pc;
       ADVANCE_AND_DISPATCH(0);
 
     case FinallyContinuation: {
+      printf("handleerror returned finally-continuation; pc = %p\n", REGS.pc);
       pc = REGS.pc;
       /*
        * Push (exception, true) pair for finally to indicate that we

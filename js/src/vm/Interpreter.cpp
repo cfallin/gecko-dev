@@ -2447,12 +2447,10 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
             ADVANCE_AND_DISPATCH(JSOpLength_Resume);
           }
 
-          printf("jit_return: returning\n");
           return true;
         }
 
-        printf("jit_return: error path\n");
-        goto error;
+        return false;
       } else {
         // Stack should be empty for the outer frame, unless we executed the
         // first |await| expression in an async function.

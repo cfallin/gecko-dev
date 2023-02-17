@@ -42,12 +42,12 @@ struct weval_req_arg_t {
 extern weval_req_t* weval_req_pending_head;
 extern weval_req_t* weval_req_freelist_head;
 
-static void weval_request(weval_req_t* req) {
+static inline void weval_request(weval_req_t* req) {
   req->next = weval_req_pending_head;
   weval_req_pending_head = req;
 }
 
-static void weval_free() {
+static inline void weval_free() {
   weval_req_t* next = NULL;
   for (; weval_req_freelist_head; weval_req_freelist_head = next) {
     next = weval_req_freelist_head->next;
@@ -85,15 +85,15 @@ const T* assume_const_memory(const T* t) {
   return (const T*)weval_assume_const_memory((const void*)t);
 }
 template <typename T>
-T* assume_const_memory( T* t) {
+T* assume_const_memory(T* t) {
   return (T*)weval_assume_const_memory((void*)t);
 }
 
-static void push_context(uint32_t pc) { weval_push_context(pc); }
+static inline void push_context(uint32_t pc) { weval_push_context(pc); }
 
-static void pop_context() { weval_pop_context(); }
+static inline void pop_context() { weval_pop_context(); }
 
-static void update_context(uint32_t pc) { weval_update_context(pc); }
+static inline void update_context(uint32_t pc) { weval_update_context(pc); }
 template <typename T>
 static T* make_symbolic_ptr(T* t) {
   return (T*)weval_make_symbolic_ptr((void*)t);
@@ -229,6 +229,8 @@ struct StoreArgs<RuntimeArg<T>, Rest...> {
 template <typename Ret, typename... Args, typename... WrappedArgs>
 bool weval(impl::FuncPtr<Ret, Args...>* dest,
            impl::FuncPtr<Ret, Args...> generic, WrappedArgs... args) {
+  weval_free();
+
   weval_req_t* req = (weval_req_t*)malloc(sizeof(weval_req_t));
   if (!req) {
     return false;

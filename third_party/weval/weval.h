@@ -73,6 +73,9 @@ __attribute__((noinline)) void weval_pop_context();
 __attribute__((noinline)) void weval_update_context(uint32_t pc);
 __attribute__((noinline)) void* weval_make_symbolic_ptr(void* p);
 __attribute__((noinline)) void weval_flush_to_mem(void* p, uint32_t len);
+__attribute__((noinline)) void weval_trace_line(uint32_t line_number);
+__attribute__((noinline)) void weval_abort_specialization(uint32_t line_number,
+                                                          uint32_t fatal);
 
 #ifdef __cplusplus
 }  // extern "C"

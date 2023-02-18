@@ -2001,13 +2001,14 @@ struct InterpretContext {
 
 static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
     JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc,
-    bool error_bailout, bool is_specialized);
+    bool error_bailout, bool interpret_bailout, bool is_specialized);
 
 // The type of function pointer to a partial specialization of
 // `InterpretInner()`.
 typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
                                                    InterpretContext&,
-                                                   jsbytecode*, bool, bool);
+                                                   jsbytecode*, bool, bool,
+                                                   bool);
 
 #define SET_SCRIPT(s)                                         \
   JS_BEGIN_MACRO                                              \
@@ -2018,19 +2019,20 @@ typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
       ictx.activation.enableInterruptsUnconditionally();      \
   JS_END_MACRO
 
-#define CALL_INNER(ret)                                                 \
-  JS_BEGIN_MACRO                                                        \
-    if (void* f = ictx.script->specializedCode()) {                     \
-      PartiallySpecializedInterpretInner func =                         \
-          reinterpret_cast<PartiallySpecializedInterpretInner>(f);      \
-      printf("calling specialized func: %p\n", func);                   \
-      ret = func(cx, state, ictx, REGS.pc, /* error_bailout = */ false, \
-                 /* is_specialized = */ true);                          \
-    } else {                                                            \
-      ret = InterpretInner(cx, state, ictx, REGS.pc,                    \
-                           /* error_bailout = */ false,                 \
-                           /* is_specialized = */ false);               \
-    }                                                                   \
+#define CALL_INNER(ret)                                                       \
+  JS_BEGIN_MACRO                                                              \
+    if (void* f = ictx.script->specializedCode()) {                           \
+      PartiallySpecializedInterpretInner func =                               \
+          reinterpret_cast<PartiallySpecializedInterpretInner>(f);            \
+      printf("calling specialized func: %p\n", func);                         \
+      ret =                                                                   \
+          func(cx, state, ictx, REGS.pc, /* error_bailout = */ false,         \
+               /* interpret_bailout = */ false, /* is_specialized = */ true); \
+    } else {                                                                  \
+      ret = InterpretInner(                                                   \
+          cx, state, ictx, REGS.pc, /* error_bailout = */ false,              \
+          /* interpet_bailout = */ false, /* is_specialized = */ false);      \
+    }                                                                         \
   JS_END_MACRO
 
 static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
@@ -2057,24 +2059,36 @@ void js::RegisterInterpreterSpecialization(void** specialized, jsbytecode* pc) {
       reinterpret_cast<PartiallySpecializedInterpretInner*>(specialized),
       InterpretInner, weval::Runtime<JSContext*>(), weval::Runtime<RunState&>(),
       weval::Runtime<InterpretContext&>(), weval::Specialize<jsbytecode*>(pc),
-      weval::Specialize<bool>(false), weval::Specialize<bool>(true));
+      weval::Specialize<bool>(false), weval::Specialize<bool>(false),
+      weval::Specialize<bool>(true));
 #endif
 }
 
 static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
                                             InterpretContext& ictx,
                                             jsbytecode* pc, bool error_bailout,
+                                            bool interpret_bailout,
                                             bool is_specialized) {
+  weval_trace_line(__LINE__);
+
   if (error_bailout) {
+    weval_trace_line(__LINE__);
     goto error;
   }
+  if (interpret_bailout) {
+    weval_trace_line(__LINE__);
+    goto initial_dispatch;
+  }
 
+  weval_trace_line(__LINE__);
   pc = weval::assume_const_memory(pc);
+  weval_trace_line(__LINE__);
 
-  printf("InterpretInner: script = %p pc = %p error = %d spec = %d\n", ictx.script.get(), pc, error_bailout, is_specialized);
-  //  TODO(cfallin): make error-path reachable via bool argument, and
-  //  tail-call to generic InterpretInner at `error` label. Needs
-  //  `weval::is_specialized()` intrinsic.
+  printf("InterpretInner: script = %p pc = %p error = %d spec = %d\n",
+         ictx.script.get(), pc, error_bailout, is_specialized);
+
+  weval_trace_line(__LINE__);
+
 /*
  * Define macros for an interpreter loop. Opcode dispatch is done by
  * indirect goto (aka a threaded interpreter), which is technically
@@ -2128,7 +2142,8 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   JS_END_MACRO
 
 #ifdef __wasi__
-#  define WEVAL_CONTEXT(pc) \
+#  define WEVAL_CONTEXT(pc)     \
+    weval_trace_line(__LINE__); \
     weval::update_context(reinterpret_cast<uint32_t>(pc));
 #else
 #  define WEVAL_CONTEXT(pc)
@@ -2173,9 +2188,11 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   JS_BEGIN_MACRO                                            \
     if (!ictx.script->hasScriptCounts()) {                  \
       if (cx->realm()->collectCoverageForDebug()) {         \
+        weval_trace_line(__LINE__);                         \
         if (!ictx.script->initScriptCounts(cx)) goto error; \
       }                                                     \
     }                                                       \
+    weval_trace_line(__LINE__);                             \
   JS_END_MACRO
 
   /*
@@ -2225,23 +2242,36 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
     JS_END_MACRO
 #endif
 
+  weval_trace_line(__LINE__);
+
   if (!REGS.fp()->prologue(cx)) {
+    weval_trace_line(__LINE__);
     goto prologue_error;
   }
 
+  weval_trace_line(__LINE__);
+
   if (!DebugAPI::onEnterFrame(cx, REGS.fp())) {
+    weval_trace_line(__LINE__);
     goto error;
   }
 
+  weval_trace_line(__LINE__);
+
   // Increment the coverage for the main entry point.
   INIT_COVERAGE();
+  weval_trace_line(__LINE__);
   COUNT_COVERAGE_MAIN();
 
+  weval_trace_line(__LINE__);
+
 #ifdef __wasi__
+  weval_trace_line(__LINE__);
   weval::push_context(reinterpret_cast<uint32_t>(pc));
 #endif
 
   // Enter the interpreter loop starting at the current pc.
+initial_dispatch:
   ADVANCE_AND_DISPATCH(0);
 
   INTERPRETER_LOOP() {
@@ -2444,6 +2474,12 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
            return to the native-stack caller. */
         if (MOZ_LIKELY(ictx.interpReturnOK)) {
           if (JSOp(*pc) == JSOp::Resume) {
+            if (is_specialized) {
+              return InterpretInner(cx, state, ictx, REGS.pc,
+                                    /* error_bailout = */ false,
+                                    /* interpret_bailout = */ true,
+                                    /* is_specialized = */ false);
+            }
             ADVANCE_AND_DISPATCH(JSOpLength_Resume);
           }
 
@@ -3544,8 +3580,9 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
       if (!ret) {
         goto error;
       }
-      printf(" -> returned: script = %p pc = %p fp = %p sp = %p local-pc = %p\n",
-             ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
+      printf(
+          " -> returned: script = %p pc = %p fp = %p sp = %p local-pc = %p\n",
+          ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
 
       ADVANCE_AND_DISPATCH(JSOpLength_Call);
     }
@@ -4428,6 +4465,13 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
     CASE(Yield)
     CASE(Await) {
+      if (is_specialized) {
+        return InterpretInner(cx, state, ictx, REGS.pc,
+                              /* error_bailout = */ false,
+                              /* interpret_bailout = */ true,
+                              /* is_specialized = */ false);
+      }
+
       MOZ_ASSERT(!cx->isExceptionPending());
       MOZ_ASSERT_IF(ictx.script->isModule() && ictx.script->isAsync(),
                     REGS.fp()->isModuleFrame());
@@ -4469,6 +4513,13 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
     CASE(Resume) {
       {
+        if (is_specialized) {
+          return InterpretInner(cx, state, ictx, REGS.pc,
+                                /* error_bailout = */ false,
+                                /* interpret_bailout = */ true,
+                                /* is_specialized = */ false);
+        }
+
         Rooted<AbstractGeneratorObject*> gen(
             cx, &REGS.sp[-3].toObject().as<AbstractGeneratorObject>());
         ReservedRooted<Value> val(&ictx.rootValue0, REGS.sp[-2]);
@@ -4710,12 +4761,17 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   MOZ_CRASH("Interpreter loop exited via fallthrough");
 
 error:
+  weval_trace_line(__LINE__);
   if (is_specialized) {
     printf("error in specialized func: going to generic\n");
+    weval_trace_line(__LINE__);
     return InterpretInner(cx, state, ictx, REGS.pc, /* error_bailout = */ true,
+                          /* interpret_bailout = */ false,
                           /* is_specialized = */ false);
   }
+  weval_trace_line(__LINE__);
   printf("calling handleerror\n");
+  weval_abort_specialization(__LINE__, 1);
 
   switch (HandleError(cx, REGS)) {
     case SuccessfulReturnContinuation:
@@ -4780,6 +4836,7 @@ leave_on_safe_point:
   return ictx.interpReturnOK;
 
 prologue_error:
+  return false;
   ictx.interpReturnOK = false;
   ictx.frameHalfInitialized = true;
   goto prologue_return_continuation;

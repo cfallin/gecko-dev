@@ -70,3 +70,13 @@ __attribute__((export_name("weval.freelist.head")))
 weval_req_t** __weval_freelist_head() {
     return &weval_req_freelist_head;
 }
+
+__attribute__((export_name("weval.trace.line")))
+void weval_trace_line(uint32_t line_number) {
+    __accum += line_number + 4;
+}
+
+__attribute__((export_name("weval.abort.specialization")))
+void weval_abort_specialization(uint32_t line_number, uint32_t fatal) {
+    __accum += line_number + fatal + 5;
+}

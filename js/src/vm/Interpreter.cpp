@@ -2024,7 +2024,7 @@ typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
     if (void* f = ictx.script->specializedCode()) {                           \
       PartiallySpecializedInterpretInner func =                               \
           reinterpret_cast<PartiallySpecializedInterpretInner>(f);            \
-      printf("calling specialized func: %p\n", func);                         \
+     /* printf("calling specialized func: %p\n", func);*/                         \
       ret =                                                                   \
           func(cx, state, ictx, REGS.pc, /* error_bailout = */ false,         \
                /* interpret_bailout = */ false, /* is_specialized = */ true); \
@@ -2069,25 +2069,18 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
                                             jsbytecode* pc, bool error_bailout,
                                             bool interpret_bailout,
                                             bool is_specialized) {
-  weval_trace_line(__LINE__);
-
   if (error_bailout) {
-    weval_trace_line(__LINE__);
     goto error;
   }
   if (interpret_bailout) {
-    weval_trace_line(__LINE__);
     goto initial_dispatch;
   }
 
-  weval_trace_line(__LINE__);
   pc = weval::assume_const_memory(pc);
-  weval_trace_line(__LINE__);
 
-  printf("InterpretInner: script = %p pc = %p error = %d spec = %d\n",
-         ictx.script.get(), pc, error_bailout, is_specialized);
+  //printf("InterpretInner: script = %p pc = %p error = %d spec = %d\n",
+  //       ictx.script.get(), pc, error_bailout, is_specialized);
 
-  weval_trace_line(__LINE__);
 
 /*
  * Define macros for an interpreter loop. Opcode dispatch is done by
@@ -2143,7 +2136,6 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
 #ifdef __wasi__
 #  define WEVAL_CONTEXT(pc)     \
-    weval_trace_line(__LINE__); \
     weval::update_context(reinterpret_cast<uint32_t>(pc));
 #else
 #  define WEVAL_CONTEXT(pc)
@@ -2188,11 +2180,9 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   JS_BEGIN_MACRO                                            \
     if (!ictx.script->hasScriptCounts()) {                  \
       if (cx->realm()->collectCoverageForDebug()) {         \
-        weval_trace_line(__LINE__);                         \
         if (!ictx.script->initScriptCounts(cx)) goto error; \
       }                                                     \
     }                                                       \
-    weval_trace_line(__LINE__);                             \
   JS_END_MACRO
 
   /*
@@ -2242,31 +2232,19 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
     JS_END_MACRO
 #endif
 
-  weval_trace_line(__LINE__);
-
   if (!REGS.fp()->prologue(cx)) {
-    weval_trace_line(__LINE__);
     goto prologue_error;
   }
 
-  weval_trace_line(__LINE__);
-
   if (!DebugAPI::onEnterFrame(cx, REGS.fp())) {
-    weval_trace_line(__LINE__);
     goto error;
   }
 
-  weval_trace_line(__LINE__);
-
   // Increment the coverage for the main entry point.
   INIT_COVERAGE();
-  weval_trace_line(__LINE__);
   COUNT_COVERAGE_MAIN();
 
-  weval_trace_line(__LINE__);
-
 #ifdef __wasi__
-  weval_trace_line(__LINE__);
   weval::push_context(reinterpret_cast<uint32_t>(pc));
 #endif
 
@@ -3451,7 +3429,7 @@ initial_dispatch:
     CASE(CallIter)
     CASE(CallContentIter)
     CASE(SuperCall) {
-      printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
+      //printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
       static_assert(JSOpLength_Call == JSOpLength_New,
                     "call and new must be the same size");
       static_assert(JSOpLength_Call == JSOpLength_CallContent,
@@ -3571,18 +3549,18 @@ initial_dispatch:
 
       SET_SCRIPT(REGS.fp()->script());
 
-      printf(
-          " -> about to recurse: script = %p pc = %p fp = %p sp = %p code = "
-          "%p\n",
-          ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, ictx.script->code());
+      //printf(
+      //    " -> about to recurse: script = %p pc = %p fp = %p sp = %p code = "
+      //    "%p\n",
+      //    ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, ictx.script->code());
       bool ret;
       CALL_INNER(ret);
       if (!ret) {
         goto error;
       }
-      printf(
-          " -> returned: script = %p pc = %p fp = %p sp = %p local-pc = %p\n",
-          ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
+      //printf(
+      //    " -> returned: script = %p pc = %p fp = %p sp = %p local-pc = %p\n",
+      //    ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
 
       ADVANCE_AND_DISPATCH(JSOpLength_Call);
     }
@@ -4761,35 +4739,26 @@ initial_dispatch:
   MOZ_CRASH("Interpreter loop exited via fallthrough");
 
 error:
-  weval_trace_line(__LINE__);
   if (is_specialized) {
-    printf("error in specialized func: going to generic\n");
-    weval_trace_line(__LINE__);
     return InterpretInner(cx, state, ictx, REGS.pc, /* error_bailout = */ true,
                           /* interpret_bailout = */ false,
                           /* is_specialized = */ false);
   }
-  weval_trace_line(__LINE__);
-  printf("calling handleerror\n");
   weval_abort_specialization(__LINE__, 1);
 
   switch (HandleError(cx, REGS)) {
     case SuccessfulReturnContinuation:
-      printf("handleerror returned successful-return-continuation\n");
       goto successful_return_continuation;
 
     case ErrorReturnContinuation:
-      printf("handleerror returned error-return-continuation\n");
       ictx.interpReturnOK = false;
       goto return_continuation;
 
     case CatchContinuation:
-      printf("handleerror returned catch-continuation; pc = %p\n", REGS.pc);
       pc = REGS.pc;
       ADVANCE_AND_DISPATCH(0);
 
     case FinallyContinuation: {
-      printf("handleerror returned finally-continuation; pc = %p\n", REGS.pc);
       pc = REGS.pc;
       /*
        * Push (exception, true) pair for finally to indicate that we

@@ -2024,7 +2024,7 @@ typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
     if (void* f = ictx.script->specializedCode()) {                           \
       PartiallySpecializedInterpretInner func =                               \
           reinterpret_cast<PartiallySpecializedInterpretInner>(f);            \
-     /* printf("calling specialized func: %p\n", func);*/                         \
+      /*printf("calling specialized func: %p\n", func);*/                     \
       ret =                                                                   \
           func(cx, state, ictx, REGS.pc, /* error_bailout = */ false,         \
                /* interpret_bailout = */ false, /* is_specialized = */ true); \
@@ -2078,9 +2078,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
   pc = weval::assume_const_memory(pc);
 
-  //printf("InterpretInner: script = %p pc = %p error = %d spec = %d\n",
-  //       ictx.script.get(), pc, error_bailout, is_specialized);
-
+  printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
 
 /*
  * Define macros for an interpreter loop. Opcode dispatch is done by
@@ -2088,10 +2086,17 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
  * non-standard but is supported by all of our supported compilers.
  */
 #define INTERPRETER_LOOP()
-#define CASE(OP) label_##OP:
+#define CASE(OP) label_##OP : printf("pc = %p OP: " #OP "\n", pc);
 #define DEFAULT() \
   label_default:
-#define DISPATCH_TO(OP) goto* addresses[(OP)]
+#define DISPATCH_TO(OP)                                            \
+  JS_BEGIN_MACRO                                                   \
+    weval_assert_const_memory(pc, __LINE__);                       \
+    WEVAL_CONTEXT(pc);                                             \
+    weval_assert_const32((OP), __LINE__);                          \
+    auto* addresses_table = weval::assume_const_memory(addresses); \
+    goto* addresses_table[(OP)];                                   \
+  JS_END_MACRO
 
 #define LABEL(X) (&&label_##X)
 
@@ -2124,18 +2129,21 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    * will enable interrupts, and activation.opMask() is or'd with the opcode
    * to implement a simple alternate dispatch.
    */
-#define ADVANCE_AND_DISPATCH(N)      \
-  JS_BEGIN_MACRO                     \
-    MOZ_ASSERT(pc == REGS.pc);       \
-    pc += (N);                       \
-    REGS.pc = pc;                    \
-    SANITY_CHECKS();                 \
-    WEVAL_CONTEXT(pc);               \
-    DISPATCH_TO(*pc | OPMASK(ictx)); \
+#define ADVANCE_AND_DISPATCH(N)                      \
+  JS_BEGIN_MACRO                                     \
+    weval_assert_const32((N), __LINE__);             \
+    pc += (N);                                       \
+    weval_assert_const32((uint32_t)pc, __LINE__);    \
+    REGS.pc = pc;                                    \
+    SANITY_CHECKS();                                 \
+    printf("next PC: %p (line %d)\n", pc, __LINE__); \
+    DISPATCH_TO(*pc | OPMASK(ictx));                 \
   JS_END_MACRO
 
+  //    MOZ_ASSERT(pc == REGS.pc);
+
 #ifdef __wasi__
-#  define WEVAL_CONTEXT(pc)     \
+#  define WEVAL_CONTEXT(pc) \
     weval::update_context(reinterpret_cast<uint32_t>(pc));
 #else
 #  define WEVAL_CONTEXT(pc)
@@ -2150,27 +2158,34 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   /*
    * Shorthand for the common sequence at the end of a fixed-size opcode.
    */
-#define END_CASE(OP) ADVANCE_AND_DISPATCH(JSOpLength_##OP);
+#define END_CASE(OP)          \
+  printf("end of " #OP "\n"); \
+  ADVANCE_AND_DISPATCH(JSOpLength_##OP);
 
   /*
    * Prepare to call a user-supplied branch handler, and abort the script
    * if it returns false.
    */
-#define CHECK_BRANCH()                      \
-  JS_BEGIN_MACRO                            \
-    if (!CheckForInterrupt(cx)) goto error; \
-  JS_END_MACRO
+#ifndef __wasi__
+#  define CHECK_BRANCH()                      \
+    JS_BEGIN_MACRO                            \
+      if (!CheckForInterrupt(cx)) goto error; \
+    JS_END_MACRO
+#else
+#  define CHECK_BRANCH()
+#endif
 
   /*
    * This is a simple wrapper around ADVANCE_AND_DISPATCH which also does
    * a CHECK_BRANCH() if n is not positive, which possibly indicates that it
    * is the backedge of a loop.
    */
-#define BRANCH(n)                  \
-  JS_BEGIN_MACRO                   \
-    int32_t nlen = (n);            \
-    if (nlen <= 0) CHECK_BRANCH(); \
-    ADVANCE_AND_DISPATCH(nlen);    \
+#define BRANCH(n)                         \
+  JS_BEGIN_MACRO                          \
+    int32_t nlen = (n);                   \
+    weval_assert_const32(nlen, __LINE__); \
+    if (nlen <= 0) CHECK_BRANCH();        \
+    ADVANCE_AND_DISPATCH(nlen);           \
   JS_END_MACRO
 
   /*
@@ -2479,7 +2494,11 @@ initial_dispatch:
       REGS.sp--;
       /* FALL THROUGH */
     }
-    CASE(Goto) { BRANCH(GET_JUMP_OFFSET(pc)); }
+    CASE(Goto) {
+      weval_assert_const_memory(pc, __LINE__);
+      printf("GOTO: pc = %p *pc = %08x\n", pc, GET_JUMP_OFFSET(pc));
+      BRANCH(GET_JUMP_OFFSET(pc));
+    }
 
     CASE(JumpIfFalse) {
       bool cond = ToBoolean(REGS.stackHandleAt(-1));
@@ -2529,20 +2548,25 @@ initial_dispatch:
     if (!ToPropertyKey(cx, REGS.stackHandleAt(n), &(id))) goto error; \
   JS_END_MACRO
 
-#define TRY_BRANCH_AFTER_COND(cond, spdec)                                  \
-  JS_BEGIN_MACRO                                                            \
-    MOZ_ASSERT(GetBytecodeLength(pc) == 1);                                 \
-    unsigned diff_ = (unsigned)GET_UINT8(pc) - (unsigned)JSOp::JumpIfFalse; \
-    if (diff_ <= 1) {                                                       \
-      REGS.sp -= (spdec);                                                   \
-      if ((cond) == (diff_ != 0)) {                                         \
-        ++pc;                                                               \
-        REGS.pc = pc;                                                       \
-        BRANCH(GET_JUMP_OFFSET(pc));                                        \
-      }                                                                     \
-      ADVANCE_AND_DISPATCH(1 + JSOpLength_JumpIfFalse);                     \
-    }                                                                       \
-  JS_END_MACRO
+#ifndef __wasi__
+#  define TRY_BRANCH_AFTER_COND(cond, spdec)                                  \
+    JS_BEGIN_MACRO                                                            \
+      MOZ_ASSERT(GetBytecodeLength(pc) == 1);                                 \
+      unsigned diff_ = (unsigned)GET_UINT8(pc) - (unsigned)JSOp::JumpIfFalse; \
+      if (diff_ <= 1) {                                                       \
+        REGS.sp -= (spdec);                                                   \
+        if ((cond) == (diff_ != 0)) {                                         \
+          ++pc;                                                               \
+          REGS.pc = pc;                                                       \
+          BRANCH(GET_JUMP_OFFSET(pc));                                        \
+        }                                                                     \
+        ADVANCE_AND_DISPATCH(1 + JSOpLength_JumpIfFalse);                     \
+      }                                                                       \
+    JS_END_MACRO
+#else
+#  define TRY_BRANCH_AFTER_COND(cond, spdec) \
+    printf("TRY_BRANCH_AFTER_COND: %d line %d\n", (cond), __LINE__);
+#endif
 
     CASE(In) {
       HandleValue rref = REGS.stackHandleAt(-1);
@@ -2821,6 +2845,7 @@ initial_dispatch:
     END_CASE(Case)
 
     CASE(Lt) {
+      printf("Lt! pc = %p\n", pc);
       bool cond;
       MutableHandleValue lval = REGS.stackHandleAt(-2);
       MutableHandleValue rval = REGS.stackHandleAt(-1);
@@ -3429,7 +3454,7 @@ initial_dispatch:
     CASE(CallIter)
     CASE(CallContentIter)
     CASE(SuperCall) {
-      //printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
+      printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
       static_assert(JSOpLength_Call == JSOpLength_New,
                     "call and new must be the same size");
       static_assert(JSOpLength_Call == JSOpLength_CallContent,
@@ -3549,18 +3574,18 @@ initial_dispatch:
 
       SET_SCRIPT(REGS.fp()->script());
 
-      //printf(
-      //    " -> about to recurse: script = %p pc = %p fp = %p sp = %p code = "
-      //    "%p\n",
-      //    ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, ictx.script->code());
+      printf(
+          " -> about to recurse: script = %p pc = %p fp = %p sp = %p code = "
+          "%p\n",
+          ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, ictx.script->code());
       bool ret;
       CALL_INNER(ret);
       if (!ret) {
         goto error;
       }
-      //printf(
-      //    " -> returned: script = %p pc = %p fp = %p sp = %p local-pc = %p\n",
-      //    ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
+      printf(
+          " -> returned: script = %p pc = %p fp = %p sp = %p local-pc = %p\n",
+          ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
 
       ADVANCE_AND_DISPATCH(JSOpLength_Call);
     }

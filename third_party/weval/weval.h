@@ -76,6 +76,8 @@ __attribute__((noinline)) void weval_flush_to_mem(void* p, uint32_t len);
 __attribute__((noinline)) void weval_trace_line(uint32_t line_number);
 __attribute__((noinline)) void weval_abort_specialization(uint32_t line_number,
                                                           uint32_t fatal);
+__attribute__((noinline)) void weval_assert_const32(uint32_t value, uint32_t line_no);
+__attribute__((noinline)) void weval_assert_const_memory(void* p, uint32_t line_no);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -657,10 +657,12 @@ class SharedImmutableScriptData {
 
  private:
   void reset() {
+      /*
     if (isd_ && !isExternal) {
       js_delete(isd_);
     }
     isd_ = nullptr;
+    */
   }
 
  public:

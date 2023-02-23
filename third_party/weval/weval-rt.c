@@ -80,3 +80,13 @@ __attribute__((export_name("weval.abort.specialization")))
 void weval_abort_specialization(uint32_t line_number, uint32_t fatal) {
     __accum += line_number + fatal + 5;
 }
+
+__attribute__((export_name("weval.assert.const32")))
+void weval_assert_const32(uint32_t value, uint32_t line_no) {
+     __accum += value + line_no + 6;
+ }
+
+__attribute__((export_name("weval.assert.const.memory")))
+void weval_assert_const_memory(void* p, uint32_t line_no) {
+    __accum += (uint32_t)p + line_no + 7;
+}

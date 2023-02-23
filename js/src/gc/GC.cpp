@@ -1547,6 +1547,8 @@ static bool DiscardedCodeRecently(Zone* zone, const TimeStamp& currentTime) {
 }
 
 bool GCRuntime::shouldCompact() {
+  return false;
+  
   // Compact on shrinking GC if enabled.  Skip compacting in incremental GCs
   // if we are currently animating, unless the user is inactive or we're
   // responding to memory pressure.

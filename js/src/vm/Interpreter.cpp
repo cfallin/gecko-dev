@@ -2095,6 +2095,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
     WEVAL_CONTEXT(pc);                                             \
     weval_assert_const32((OP), __LINE__);                          \
     auto* addresses_table = weval::assume_const_memory(addresses); \
+    printf("DISPATCH_TO: going to %p\n", addresses_table[(OP)]); \
     goto* addresses_table[(OP)];                                   \
   JS_END_MACRO
 
@@ -2131,12 +2132,13 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    */
 #define ADVANCE_AND_DISPATCH(N)                      \
   JS_BEGIN_MACRO                                     \
+    printf("1: line %d\n", __LINE__); \
     weval_assert_const32((N), __LINE__);             \
     pc += (N);                                       \
     weval_assert_const32((uint32_t)pc, __LINE__);    \
     REGS.pc = pc;                                    \
     SANITY_CHECKS();                                 \
-    printf("next PC: %p (line %d)\n", pc, __LINE__); \
+    printf("next PC: %p (line %d) byte is %02x\n", pc, __LINE__, *pc);      \
     DISPATCH_TO(*pc | OPMASK(ictx));                 \
   JS_END_MACRO
 
@@ -2584,7 +2586,7 @@ initial_dispatch:
           goto error;
         }
       }
-      TRY_BRANCH_AFTER_COND(found, 2);
+      //TRY_BRANCH_AFTER_COND(found, 2);
       REGS.sp--;
       REGS.sp[-1].setBoolean(found);
     }
@@ -2852,7 +2854,7 @@ initial_dispatch:
       if (!LessThanOperation(cx, lval, rval, &cond)) {
         goto error;
       }
-      TRY_BRANCH_AFTER_COND(cond, 2);
+      //TRY_BRANCH_AFTER_COND(cond, 2);
       REGS.sp[-2].setBoolean(cond);
       REGS.sp--;
     }
@@ -2865,7 +2867,7 @@ initial_dispatch:
       if (!LessThanOrEqualOperation(cx, lval, rval, &cond)) {
         goto error;
       }
-      TRY_BRANCH_AFTER_COND(cond, 2);
+      //TRY_BRANCH_AFTER_COND(cond, 2);
       REGS.sp[-2].setBoolean(cond);
       REGS.sp--;
     }
@@ -2878,7 +2880,7 @@ initial_dispatch:
       if (!GreaterThanOperation(cx, lval, rval, &cond)) {
         goto error;
       }
-      TRY_BRANCH_AFTER_COND(cond, 2);
+      //TRY_BRANCH_AFTER_COND(cond, 2);
       REGS.sp[-2].setBoolean(cond);
       REGS.sp--;
     }
@@ -2891,7 +2893,7 @@ initial_dispatch:
       if (!GreaterThanOrEqualOperation(cx, lval, rval, &cond)) {
         goto error;
       }
-      TRY_BRANCH_AFTER_COND(cond, 2);
+      //TRY_BRANCH_AFTER_COND(cond, 2);
       REGS.sp[-2].setBoolean(cond);
       REGS.sp--;
     }

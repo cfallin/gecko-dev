@@ -2031,7 +2031,7 @@ typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
     } else {                                                                  \
       ret = InterpretInner(                                                   \
           cx, state, ictx, REGS.pc, /* error_bailout = */ false,              \
-          /* interpet_bailout = */ false, /* is_specialized = */ true /* TODO cfallin revert */); \
+          /* interpet_bailout = */ false, /* is_specialized = */ false); \
     }                                                                         \
   JS_END_MACRO
 
@@ -2078,7 +2078,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
   pc = weval::assume_const_memory(pc);
 
-  printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
+  //printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
 
 /*
  * Define macros for an interpreter loop. Opcode dispatch is done by
@@ -2086,7 +2086,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
  * non-standard but is supported by all of our supported compilers.
  */
 #define INTERPRETER_LOOP()
-#define CASE(OP) label_##OP : printf("pc = %p OP: " #OP "\n", pc);
+#define CASE(OP) label_##OP :
 #define DEFAULT() \
   label_default:
 #define DISPATCH_TO(OP)                                            \
@@ -2095,7 +2095,6 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
     WEVAL_CONTEXT(pc);                                             \
     weval_assert_const32((OP), __LINE__);                          \
     auto* addresses_table = weval::assume_const_memory(addresses); \
-    printf("DISPATCH_TO: going to %p\n", addresses_table[(OP)]); \
     goto* addresses_table[(OP)];                                   \
   JS_END_MACRO
 
@@ -2132,13 +2131,11 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    */
 #define ADVANCE_AND_DISPATCH(N)                      \
   JS_BEGIN_MACRO                                     \
-    printf("1: line %d\n", __LINE__); \
     weval_assert_const32((N), __LINE__);             \
     pc += (N);                                       \
     weval_assert_const32((uint32_t)pc, __LINE__);    \
     REGS.pc = pc;                                    \
     SANITY_CHECKS();                                 \
-    printf("next PC: %p (line %d) byte is %02x\n", pc, __LINE__, *pc);      \
     DISPATCH_TO(*pc | OPMASK(ictx));                 \
   JS_END_MACRO
 
@@ -2161,7 +2158,6 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    * Shorthand for the common sequence at the end of a fixed-size opcode.
    */
 #define END_CASE(OP)          \
-  printf("end of " #OP "\n"); \
   ADVANCE_AND_DISPATCH(JSOpLength_##OP);
 
   /*
@@ -2498,7 +2494,6 @@ initial_dispatch:
     }
     CASE(Goto) {
       weval_assert_const_memory(pc, __LINE__);
-      printf("GOTO: pc = %p *pc = %08x\n", pc, GET_JUMP_OFFSET(pc));
       BRANCH(GET_JUMP_OFFSET(pc));
     }
 
@@ -2566,8 +2561,7 @@ initial_dispatch:
       }                                                                       \
     JS_END_MACRO
 #else
-#  define TRY_BRANCH_AFTER_COND(cond, spdec) \
-    printf("TRY_BRANCH_AFTER_COND: %d line %d\n", (cond), __LINE__);
+#  define TRY_BRANCH_AFTER_COND(cond, spdec)
 #endif
 
     CASE(In) {
@@ -2586,7 +2580,7 @@ initial_dispatch:
           goto error;
         }
       }
-      //TRY_BRANCH_AFTER_COND(found, 2);
+      TRY_BRANCH_AFTER_COND(found, 2);
       REGS.sp--;
       REGS.sp[-1].setBoolean(found);
     }
@@ -2847,14 +2841,13 @@ initial_dispatch:
     END_CASE(Case)
 
     CASE(Lt) {
-      printf("Lt! pc = %p\n", pc);
       bool cond;
       MutableHandleValue lval = REGS.stackHandleAt(-2);
       MutableHandleValue rval = REGS.stackHandleAt(-1);
       if (!LessThanOperation(cx, lval, rval, &cond)) {
         goto error;
       }
-      //TRY_BRANCH_AFTER_COND(cond, 2);
+      TRY_BRANCH_AFTER_COND(cond, 2);
       REGS.sp[-2].setBoolean(cond);
       REGS.sp--;
     }
@@ -2867,7 +2860,7 @@ initial_dispatch:
       if (!LessThanOrEqualOperation(cx, lval, rval, &cond)) {
         goto error;
       }
-      //TRY_BRANCH_AFTER_COND(cond, 2);
+      TRY_BRANCH_AFTER_COND(cond, 2);
       REGS.sp[-2].setBoolean(cond);
       REGS.sp--;
     }
@@ -2880,7 +2873,7 @@ initial_dispatch:
       if (!GreaterThanOperation(cx, lval, rval, &cond)) {
         goto error;
       }
-      //TRY_BRANCH_AFTER_COND(cond, 2);
+      TRY_BRANCH_AFTER_COND(cond, 2);
       REGS.sp[-2].setBoolean(cond);
       REGS.sp--;
     }
@@ -2893,7 +2886,7 @@ initial_dispatch:
       if (!GreaterThanOrEqualOperation(cx, lval, rval, &cond)) {
         goto error;
       }
-      //TRY_BRANCH_AFTER_COND(cond, 2);
+      TRY_BRANCH_AFTER_COND(cond, 2);
       REGS.sp[-2].setBoolean(cond);
       REGS.sp--;
     }
@@ -3456,7 +3449,7 @@ initial_dispatch:
     CASE(CallIter)
     CASE(CallContentIter)
     CASE(SuperCall) {
-      printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
+      //printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
       static_assert(JSOpLength_Call == JSOpLength_New,
                     "call and new must be the same size");
       static_assert(JSOpLength_Call == JSOpLength_CallContent,
@@ -3576,18 +3569,18 @@ initial_dispatch:
 
       SET_SCRIPT(REGS.fp()->script());
 
-      printf(
-          " -> about to recurse: script = %p pc = %p fp = %p sp = %p code = "
-          "%p\n",
-          ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, ictx.script->code());
+      //printf(
+      //    " -> about to recurse: script = %p pc = %p fp = %p sp = %p code = "
+      //    "%p\n",
+      //    ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, ictx.script->code());
       bool ret;
       CALL_INNER(ret);
       if (!ret) {
         goto error;
       }
-      printf(
-          " -> returned: script = %p pc = %p fp = %p sp = %p local-pc = %p\n",
-          ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
+      //printf(
+      //    " -> returned: script = %p pc = %p fp = %p sp = %p local-pc = %p\n",
+      //    ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
 
       ADVANCE_AND_DISPATCH(JSOpLength_Call);
     }

@@ -1,6 +1,6 @@
 function main() {
 //    for (let i = 0; i < 100; i++) {
-        marked.parse(INPUT);
+        print(marked.parse(INPUT));
 //    }
 }
 

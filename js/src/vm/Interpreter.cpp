@@ -2029,6 +2029,7 @@ typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
           func(cx, state, ictx, REGS.pc, /* error_bailout = */ false,         \
                /* interpret_bailout = */ false, /* is_specialized = */ true); \
     } else {                                                                  \
+            printf("Call to non-specialized function\n"); \
       ret = InterpretInner(                                                   \
           cx, state, ictx, REGS.pc, /* error_bailout = */ false,              \
           /* interpet_bailout = */ false, /* is_specialized = */ false); \
@@ -2466,6 +2467,7 @@ initial_dispatch:
         if (MOZ_LIKELY(ictx.interpReturnOK)) {
           if (JSOp(*pc) == JSOp::Resume) {
             if (is_specialized) {
+              printf("bailout to interpreter in Resume case\n");
               return InterpretInner(cx, state, ictx, REGS.pc,
                                     /* error_bailout = */ false,
                                     /* interpret_bailout = */ true,
@@ -4464,6 +4466,7 @@ initial_dispatch:
     CASE(Yield)
     CASE(Await) {
       if (is_specialized) {
+        printf("bailout to interpreter in Yield/Await case\n");
         return InterpretInner(cx, state, ictx, REGS.pc,
                               /* error_bailout = */ false,
                               /* interpret_bailout = */ true,
@@ -4512,6 +4515,7 @@ initial_dispatch:
     CASE(Resume) {
       {
         if (is_specialized) {
+          printf("bailout to interpreter in Resume case\n");
           return InterpretInner(cx, state, ictx, REGS.pc,
                                 /* error_bailout = */ false,
                                 /* interpret_bailout = */ true,
@@ -4760,6 +4764,7 @@ initial_dispatch:
 
 error:
   if (is_specialized) {
+    printf("bailout to interpreter in error case\n");
     return InterpretInner(cx, state, ictx, REGS.pc, /* error_bailout = */ true,
                           /* interpret_bailout = */ false,
                           /* is_specialized = */ false);

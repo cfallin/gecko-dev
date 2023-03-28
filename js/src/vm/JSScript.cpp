@@ -2366,6 +2366,8 @@ bool JSScript::fullyInitFromStencil(
   MutableScriptFlags lazyMutableFlags;
   Rooted<Scope*> lazyEnclosingScope(cx);
 
+  printf("fullyInitFromStencil!\n");
+
   // A holder for the lazy PrivateScriptData that we must keep around in case
   // this process fails and we must return the script to its original state.
   //
@@ -2427,6 +2429,7 @@ bool JSScript::fullyInitFromStencil(
           stencil.scriptExtra[scriptIndex].memberInitializers());
       script->setMemberInitializers(initializers);
     } else {
+      printf("delazifying\n");
       script->setMemberInitializers(lazyData.get()->getMemberInitializers());
     }
   }
@@ -2443,6 +2446,7 @@ bool JSScript::fullyInitFromStencil(
   script->specialized_ = cx->pod_malloc<void*>(1);
   *script->specialized_ = nullptr;
   RegisterInterpreterSpecialization(script->specialized_, scriptData->get()->code());
+  printf("RegisterInterpreterSpecialization: %p\n", script.get());
 
   // NOTE: JSScript is now constructed and should be linked in.
   rollbackGuard.release();

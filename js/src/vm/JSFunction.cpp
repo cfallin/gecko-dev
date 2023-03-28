@@ -1388,6 +1388,8 @@ bool JSFunction::delazifyLazilyInterpretedFunction(JSContext* cx,
   Rooted<BaseScript*> lazy(cx, fun->baseScript());
   RootedFunction canonicalFun(cx, lazy->function());
 
+  printf("delazifylazilyinterpretedfunction\n");
+
   // If this function is non-canonical, then use the canonical function first
   // to get the delazified script. This may result in calling this method
   // again on the canonical function. This ensures the canonical function is

@@ -2086,6 +2086,7 @@ static bool InstantiateScriptStencils(JSContext* cx,
         continue;
       }
 
+      printf("fromStencil called from InstantiateScriptStencils\n");
       RootedScript script(
           cx, JSScript::fromStencil(cx, atomCache, stencil, gcOutput, index));
       if (!script) {
@@ -2145,6 +2146,7 @@ static bool InstantiateTopLevel(JSContext* cx, CompilationInput& input,
     return true;
   }
 
+  printf("fromStencil called from InstantiateTopLevel\n");
   gcOutput.script =
       JSScript::fromStencil(cx, input.atomCache, stencil, gcOutput,
                             CompilationStencil::TopLevelIndex);
@@ -2611,6 +2613,7 @@ JSFunction* CompilationStencil::instantiateSelfHostedLazyFunction(
 bool CompilationStencil::delazifySelfHostedFunction(
     JSContext* cx, CompilationAtomCache& atomCache, ScriptIndexRange range,
     HandleFunction fun) {
+  printf("delazify self-hosted\n");
   // Determine the equivalent ScopeIndex range by looking at the outermost scope
   // of the scripts defining the range. Take special care if this is the last
   // script in the list.
@@ -2681,6 +2684,7 @@ bool CompilationStencil::delazifySelfHostedFunction(
   // Phase 4: Instantiate (inner) BaseScripts.
   ScriptIndex innerStart(range.start + 1);
   for (size_t i = innerStart; i < range.limit; i++) {
+    printf("fromStencil called from delazifySelfHosted (inner)\n");
     if (!JSScript::fromStencil(cx, atomCache, *this, gcOutput.get(),
                                ScriptIndex(i))) {
       return false;
@@ -2692,6 +2696,7 @@ bool CompilationStencil::delazifySelfHostedFunction(
   //       `InstantiateTopLevel` helper and directly create the JSScript. Our
   //       caller also handles the `AllowRelazify` flag for us since self-hosted
   //       delazification is a special case.
+  printf("fromStencil called from delazifySelfHosted\n");
   if (!JSScript::fromStencil(cx, atomCache, *this, gcOutput.get(),
                              range.start)) {
     return false;

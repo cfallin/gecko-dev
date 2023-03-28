@@ -438,8 +438,12 @@ class JSFunction : public js::NativeObject {
     MOZ_ASSERT(fun->isInterpreted());
     MOZ_ASSERT(cx);
 
+    printf("getOrCreateScript\n");
+
     if (fun->hasSelfHostedLazyScript()) {
+      printf("has self-hosted lazy\n");
       if (!delazifySelfHostedLazyFunction(cx, fun)) {
+        printf("delazify failed\n");
         return nullptr;
       }
       return fun->nonLazyScript();

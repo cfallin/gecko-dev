@@ -88,6 +88,7 @@
 #include "frontend/Parser.h"
 #include "frontend/ScopeBindingCache.h"  // js::frontend::ScopeBindingCache
 #include "frontend/SourceNotes.h"  // SrcNote, SrcNoteType, SrcNoteIterator
+#include "gc/GC.h"                 // TraceRuntimeWithoutEviction
 #include "gc/PublicIterators.h"
 #ifdef DEBUG
 #  include "irregexp/RegExpAPI.h"
@@ -160,6 +161,7 @@
 #include "js/StreamConsumer.h"
 #include "js/StructuredClone.h"
 #include "js/SweepingAPI.h"
+#include "js/TracingAPI.h"   // JS::CallbackTracer
 #include "js/Transcoding.h"  // JS::TranscodeBuffer, JS::TranscodeRange
 #include "js/Warnings.h"     // JS::SetWarningReporter
 #include "js/WasmModule.h"   // JS::WasmModule
@@ -10477,10 +10479,6 @@ auto minVal(T a, Ts... args) {
     }
   }
 
-#ifdef JS_SHELL_WIZER
-  defaultDelazificationMode = JS::DelazificationOption::ParseEverythingEagerly;
-#endif
-
   /* |scriptArgs| gets bound on the global before any code is run. */
   if (!BindScriptArgs(cx, op)) {
     return false;
@@ -11233,7 +11231,8 @@ static void SetWorkerContextOptions(JSContext* cx) {
   return true;
 }
 
-static int Shell(JSContext* cx, OptionParser* op, MutableHandleObject lastGlobal) {
+static int Shell(JSContext* cx, OptionParser* op,
+                 MutableHandleObject lastGlobal) {
 #ifdef JS_STRUCTURED_SPEW
   cx->spewer().enableSpewing();
 #endif
@@ -11553,7 +11552,8 @@ struct JSAndShellContext {
   RCFile rcStderr;
 };
 
-static Variant<JSAndShellContext, int> ShellMain(int argc, char** argv, bool retainContext) {
+static Variant<JSAndShellContext, int> ShellMain(int argc, char** argv,
+                                                 bool retainContext) {
   PreInit();
 
   sArgc = argc;
@@ -12466,30 +12466,64 @@ static Variant<JSAndShellContext, int> ShellMain(int argc, char** argv, bool ret
   }
 #endif
 
-    if (retainContext) {
-      shutdownEngine.release();
-      destroyCx.release();
-      destroyShellContext.release();
-      resetGrayGCRootsTracer.release();
-      shutdownBufferStreams.release();
-      shutdownShellThreads.release();
-      
-      JSAndShellContext ret { cx, lastGlobal.get(), std::move(sc), std::move(selfHostedXDRBuffer), std::move(rcStdout), std::move(rcStderr) };
-      return AsVariant(std::move(ret));
-    } else {
-      return AsVariant(result);
-    }
+  if (retainContext) {
+    shutdownEngine.release();
+    destroyCx.release();
+    destroyShellContext.release();
+    resetGrayGCRootsTracer.release();
+    shutdownBufferStreams.release();
+    shutdownShellThreads.release();
+
+    JSAndShellContext ret{cx,
+                          lastGlobal.get(),
+                          std::move(sc),
+                          std::move(selfHostedXDRBuffer),
+                          std::move(rcStdout),
+                          std::move(rcStderr)};
+    return AsVariant(std::move(ret));
+  } else {
+    return AsVariant(result);
+  }
 }
 
 #ifdef JS_SHELL_WIZER
 
-#include <wizer.h>
+void DelazifyAllFunctions(JSContext* cx) {
+  Rooted<GCVector<JSFunction*>> funcs(cx, GCVector<JSFunction*>(cx));
+
+  printf("running delazifier\n");
+  for (ZonesIter zone(cx->runtime(), SkipAtoms); !zone.done(); zone.next()) {
+    for (auto iter = zone->cellIter<JSObject>(gc::AllocKind::FUNCTION); !iter.done(); iter.next()) {
+      JSObject* obj = iter.get();
+      if (obj->is<JSFunction>()) {
+        JSFunction* func = &obj->as<JSFunction>();
+        (void)funcs.append(func);
+      }
+    }
+  }
+
+  RootedScript script(cx);
+  for (size_t i = 0; i < funcs.length(); i++) {
+    if (!funcs[i]->isInterpreted()) {
+      continue;
+    }
+    printf("delazify: func %p\n", funcs[i].get());
+    script = JSFunction::getOrCreateScript(cx, funcs[i]);
+    if (script) {
+      printf(" -> script %p\n", script.get());
+      script->clearAllowRelazify();
+    }
+  }
+  fflush(stdout);
+}
+
+#  include <wizer.h>
 
 static std::optional<JSAndShellContext> wizenedContext;
 
 static void WizerInit() {
   const int argc = 1;
-  char* argv[2] = { strdup("js"), NULL };
+  char* argv[2] = {strdup("js"), NULL};
 
   auto ret = ShellMain(argc, argv, /* retainContext = */ true);
   if (!ret.is<JSAndShellContext>()) {
@@ -12498,6 +12532,8 @@ static void WizerInit() {
   }
 
   wizenedContext = std::move(ret.as<JSAndShellContext>());
+
+  DelazifyAllFunctions(wizenedContext->cx);
 }
 
 WIZER_INIT(WizerInit);
@@ -12507,14 +12543,15 @@ int main(int argc, char** argv) {
   (void)argv;
 
   if (wizenedContext) {
-    JSContext* cx  = wizenedContext.value().cx;
+    JSContext* cx = wizenedContext.value().cx;
     RootedObject glob(cx, wizenedContext.value().glob);
 
     JSAutoRealm ar(cx, glob);
 
     // Look up a function called "main" in the global.
     JS::Rooted<JS::Value> ret(cx);
-    if (!JS_CallFunctionName(cx, cx->global(), "main", JS::HandleValueArray::empty(), &ret)) {
+    if (!JS_CallFunctionName(cx, cx->global(), "main",
+                             JS::HandleValueArray::empty(), &ret)) {
       fprintf(stderr, "Failed to call main() in Wizened JS source!\n");
       abort();
     }

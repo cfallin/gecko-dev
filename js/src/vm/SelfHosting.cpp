@@ -2463,6 +2463,7 @@ bool JSRuntime::initSelfHostingStencil(JSContext* cx,
 
   // If script wasn't generated, it means XDR was either not provided or that it
   // failed the decoding phase. Parse from text as before.
+  printf("decompressing selfhosting source\n");
   uint32_t srcLen = GetRawScriptsSize();
   const unsigned char* compressed = compressedSources;
   uint32_t compressedLen = GetCompressedSize();
@@ -2474,6 +2475,7 @@ bool JSRuntime::initSelfHostingStencil(JSContext* cx,
                         reinterpret_cast<unsigned char*>(src.get()), srcLen)) {
     return false;
   }
+  printf("decompressed: len %d\n", srcLen);
 
   JS::SourceText<mozilla::Utf8Unit> srcBuf;
   if (!srcBuf.init(cx, std::move(src), srcLen)) {

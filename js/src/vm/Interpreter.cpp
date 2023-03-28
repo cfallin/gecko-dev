@@ -2021,7 +2021,7 @@ typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
 
 #define CALL_INNER(ret)                                                       \
   JS_BEGIN_MACRO                                                              \
-    if (void* f = ictx.script->specializedCode()) {                           \
+    if (void* f = ictx.script->immutableScriptData()->specializedCode()) {    \
       PartiallySpecializedInterpretInner func =                               \
           reinterpret_cast<PartiallySpecializedInterpretInner>(f);            \
       /*printf("calling specialized func: %p\n", func);*/                     \
@@ -2031,7 +2031,7 @@ typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
     } else {                                                                  \
       ret = InterpretInner(                                                   \
           cx, state, ictx, REGS.pc, /* error_bailout = */ false,              \
-          /* interpet_bailout = */ false, /* is_specialized = */ false); \
+          /* interpet_bailout = */ false, /* is_specialized = */ false);      \
     }                                                                         \
   JS_END_MACRO
 
@@ -2078,7 +2078,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 
   pc = weval::assume_const_memory(pc);
 
-  //printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
+  // printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
 
 /*
  * Define macros for an interpreter loop. Opcode dispatch is done by
@@ -2086,7 +2086,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
  * non-standard but is supported by all of our supported compilers.
  */
 #define INTERPRETER_LOOP()
-#define CASE(OP) label_##OP :
+#define CASE(OP) label_##OP:
 #define DEFAULT() \
   label_default:
 #define DISPATCH_TO(OP)                                            \
@@ -2129,14 +2129,14 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    * will enable interrupts, and activation.opMask() is or'd with the opcode
    * to implement a simple alternate dispatch.
    */
-#define ADVANCE_AND_DISPATCH(N)                      \
-  JS_BEGIN_MACRO                                     \
-    weval_assert_const32((N), __LINE__);             \
-    pc += (N);                                       \
-    weval_assert_const32((uint32_t)pc, __LINE__);    \
-    REGS.pc = pc;                                    \
-    SANITY_CHECKS();                                 \
-    DISPATCH_TO(*pc | OPMASK(ictx));                 \
+#define ADVANCE_AND_DISPATCH(N)                   \
+  JS_BEGIN_MACRO                                  \
+    weval_assert_const32((N), __LINE__);          \
+    pc += (N);                                    \
+    weval_assert_const32((uint32_t)pc, __LINE__); \
+    REGS.pc = pc;                                 \
+    SANITY_CHECKS();                              \
+    DISPATCH_TO(*pc | OPMASK(ictx));              \
   JS_END_MACRO
 
   //    MOZ_ASSERT(pc == REGS.pc);
@@ -2157,8 +2157,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   /*
    * Shorthand for the common sequence at the end of a fixed-size opcode.
    */
-#define END_CASE(OP)          \
-  ADVANCE_AND_DISPATCH(JSOpLength_##OP);
+#define END_CASE(OP) ADVANCE_AND_DISPATCH(JSOpLength_##OP);
 
   /*
    * Prepare to call a user-supplied branch handler, and abort the script
@@ -3449,7 +3448,7 @@ initial_dispatch:
     CASE(CallIter)
     CASE(CallContentIter)
     CASE(SuperCall) {
-      //printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
+      // printf("call: pc = %p fp = %p sp = %p\n", REGS.pc, REGS.fp(), REGS.sp);
       static_assert(JSOpLength_Call == JSOpLength_New,
                     "call and new must be the same size");
       static_assert(JSOpLength_Call == JSOpLength_CallContent,
@@ -3569,18 +3568,19 @@ initial_dispatch:
 
       SET_SCRIPT(REGS.fp()->script());
 
-      //printf(
-      //    " -> about to recurse: script = %p pc = %p fp = %p sp = %p code = "
-      //    "%p\n",
-      //    ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, ictx.script->code());
+      // printf(
+      //     " -> about to recurse: script = %p pc = %p fp = %p sp = %p code = "
+      //     "%p\n",
+      //     ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp,
+      //     ictx.script->code());
       bool ret;
       CALL_INNER(ret);
       if (!ret) {
         goto error;
       }
-      //printf(
-      //    " -> returned: script = %p pc = %p fp = %p sp = %p local-pc = %p\n",
-      //    ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
+      // printf(
+      //     " -> returned: script = %p pc = %p fp = %p sp = %p local-pc =
+      //     %p\n", ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
 
       ADVANCE_AND_DISPATCH(JSOpLength_Call);
     }

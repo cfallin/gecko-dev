@@ -387,6 +387,18 @@ ImmutableScriptData::ImmutableScriptData(uint32_t codeLength,
   MOZ_ASSERT(endOffset() == cursor);
 }
 
+bool ImmutableScriptData::RequestSpecialization(FrontendContext* fc) {
+  // Register specialization request for interpreter partial
+  // specialization.
+  this->specialized_ = fc->getAllocator()->pod_malloc<void*>(1);
+  if (!this->specialized_) {
+    return false;
+  }
+  *this->specialized_ = nullptr;
+  RegisterInterpreterSpecialization(this->specialized_, this->code());
+  return true;
+}
+
 void js::FillImmutableFlagsFromCompileOptionsForTopLevel(
     const ReadOnlyCompileOptions& options, ImmutableScriptFlags& flags) {
   using ImmutableFlags = ImmutableScriptFlagsEnum;
@@ -2072,6 +2084,10 @@ js::UniquePtr<ImmutableScriptData> js::ImmutableScriptData::new_(
     return nullptr;
   }
 
+  if (!result->RequestSpecialization(fc)) {
+    return nullptr;
+  }
+
   // Sanity check
   MOZ_ASSERT(result->endOffset() == size.value());
 
@@ -2437,12 +2453,6 @@ bool JSScript::fullyInitFromStencil(
       scriptData->nfixed() <= frontend::ParseContext::Scope::FixedSlotLimit);
 
   script->initSharedData(scriptData);
-
-  // Register specialization request for interpreter partial
-  // specialization.
-  script->specialized_ = cx->pod_malloc<void*>(1);
-  *script->specialized_ = nullptr;
-  RegisterInterpreterSpecialization(script->specialized_, scriptData->get()->code());
 
   // NOTE: JSScript is now constructed and should be linked in.
   rollbackGuard.release();

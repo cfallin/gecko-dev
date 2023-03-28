@@ -421,6 +421,15 @@ class MutableScriptFlags : public EnumFlags<MutableScriptFlagsEnum> {
 // notable exception is that bytecode length is stored explicitly.
 class alignas(uint32_t) ImmutableScriptData final : public TrailingArray {
  private:
+  // Partially-pecialized interpreter body, if any. Note that we need
+  // to box this so that it doesn't move. This pointer comes first so
+  // we can exclide it from hashing.
+  //
+  // TODO: deregister enqueued specialization request if ISD is freed
+  // before specialization occurs.
+  void** specialized_ = nullptr;
+
+ private:
   Offset optArrayOffset_ = 0;
 
   // Length of bytecode
@@ -564,8 +573,11 @@ class alignas(uint32_t) ImmutableScriptData final : public TrailingArray {
 
   // Span over all raw bytes in this struct and its trailing arrays.
   mozilla::Span<const uint8_t> immutableData() const {
-    size_t allocSize = endOffset();
-    return mozilla::Span{reinterpret_cast<const uint8_t*>(this), allocSize};
+    size_t specializedSize = sizeof(void**);
+    size_t allocSize = endOffset() - specializedSize;
+    return mozilla::Span{
+        reinterpret_cast<const uint8_t*>(this) + specializedSize,
+        allocSize - specializedSize};
   }
 
  private:
@@ -619,9 +631,19 @@ class alignas(uint32_t) ImmutableScriptData final : public TrailingArray {
     return offsetof(ImmutableScriptData, funLength);
   }
 
+  void* specializedCode() {
+    if (specialized_) {
+      return *specialized_;
+    }
+    return nullptr;
+  }
+
   // ImmutableScriptData has trailing data so isn't copyable or movable.
   ImmutableScriptData(const ImmutableScriptData&) = delete;
   ImmutableScriptData& operator=(const ImmutableScriptData&) = delete;
+
+ private:
+  bool RequestSpecialization(FrontendContext* fc);
 };
 
 // Wrapper type for ImmutableScriptData to allow sharing across a JSRuntime.
@@ -657,12 +679,12 @@ class SharedImmutableScriptData {
 
  private:
   void reset() {
-      /*
+#ifndef __wasi__
     if (isd_ && !isExternal) {
       js_delete(isd_);
     }
     isd_ = nullptr;
-    */
+#endif
   }
 
  public:

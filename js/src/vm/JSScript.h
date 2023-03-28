@@ -1454,10 +1454,6 @@ class BaseScript : public gc::TenuredCellWithNonGCPointer<uint8_t> {
   // will be nullptr.
   RefPtr<js::SharedImmutableScriptData> sharedData_ = {};
 
-  // Partially-pecialized interpreter body, if any. Note that we need
-  // to box this so that it doesn't move.
-  void** specialized_ = nullptr;
-
   // End of fields.
 
   BaseScript(uint8_t* stubEntry, JSFunction* function,
@@ -1587,13 +1583,6 @@ class BaseScript : public gc::TenuredCellWithNonGCPointer<uint8_t> {
     sharedData_ = data;
   }
   void freeSharedData() { sharedData_ = nullptr; }
-
-  void* specializedCode() {
-    if (specialized_) {
-      return *specialized_;
-    }
-    return nullptr;
-  }
 
   // NOTE: Script only has bytecode if JSScript::fullyInitFromStencil completes
   // successfully.

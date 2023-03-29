@@ -3769,9 +3769,12 @@ initial_dispatch:
       int32_t high = GET_JUMP_OFFSET(pc2);
 
       i = uint32_t(i) - uint32_t(low);
+      i = (int32_t)weval::switch_value((uint32_t)i, (uint32_t)(high - low + 1));
       if (uint32_t(i) < uint32_t(high - low + 1)) {
         len = ictx.script->tableSwitchCaseOffset(pc, uint32_t(i)) -
               ictx.script->pcToOffset(pc);
+      } else {
+        len = (int32_t)weval::switch_default((uint32_t)len);
       }
       ADVANCE_AND_DISPATCH(len);
     }

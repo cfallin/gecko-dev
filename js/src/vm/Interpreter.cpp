@@ -2091,9 +2091,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   label_default:
 #define DISPATCH_TO(OP)                                            \
   JS_BEGIN_MACRO                                                   \
-    weval_assert_const_memory(pc, __LINE__);                       \
     WEVAL_CONTEXT(pc);                                             \
-    weval_assert_const32((OP), __LINE__);                          \
     auto* addresses_table = weval::assume_const_memory(addresses); \
     goto* addresses_table[(OP)];                                   \
   JS_END_MACRO
@@ -2131,9 +2129,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    */
 #define ADVANCE_AND_DISPATCH(N)                   \
   JS_BEGIN_MACRO                                  \
-    weval_assert_const32((N), __LINE__);          \
     pc += (N);                                    \
-    weval_assert_const32((uint32_t)pc, __LINE__); \
     REGS.pc = pc;                                 \
     SANITY_CHECKS();                              \
     DISPATCH_TO(*pc | OPMASK(ictx));              \
@@ -2180,7 +2176,6 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 #define BRANCH(n)                         \
   JS_BEGIN_MACRO                          \
     int32_t nlen = (n);                   \
-    weval_assert_const32(nlen, __LINE__); \
     if (nlen <= 0) CHECK_BRANCH();        \
     ADVANCE_AND_DISPATCH(nlen);           \
   JS_END_MACRO
@@ -2492,7 +2487,6 @@ initial_dispatch:
       /* FALL THROUGH */
     }
     CASE(Goto) {
-      weval_assert_const_memory(pc, __LINE__);
       BRANCH(GET_JUMP_OFFSET(pc));
     }
 

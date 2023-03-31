@@ -3767,9 +3767,11 @@ initial_dispatch:
       if (uint32_t(i) < uint32_t(high - low + 1)) {
         len = ictx.script->tableSwitchCaseOffset(pc, uint32_t(i)) -
               ictx.script->pcToOffset(pc);
+        weval_assert_switchvalue(len);
       } else {
         len = (int32_t)weval::switch_default((uint32_t)len);
       }
+      weval_assert_switchvalue(len);
       ADVANCE_AND_DISPATCH(len);
     }
 

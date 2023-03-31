@@ -22,6 +22,9 @@
 
 #include <type_traits>  // std::is_same
 #include <utility>      // std::move
+#ifdef __wasi__
+#include <weval.h>
+#endif
 
 #include "jstypes.h"
 
@@ -1685,7 +1688,11 @@ class JSScript : public js::BaseScript {
 
  public:
   js::ImmutableScriptData* immutableScriptData() const {
+#ifdef __wasi__
+    return weval::assume_const_memory_transitive(sharedData_->get());
+#else
     return sharedData_->get();
+#endif
   }
 
   // Script bytecode is immutable after creation.

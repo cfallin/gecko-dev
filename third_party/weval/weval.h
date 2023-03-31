@@ -68,6 +68,7 @@ extern "C" {
 #endif
 
 __attribute__((noinline)) const void* weval_assume_const_memory(const void* p);
+__attribute__((noinline)) const void* weval_assume_const_memory_transitive(const void* p);
 __attribute__((noinline)) void weval_push_context(uint32_t pc);
 __attribute__((noinline)) void weval_pop_context();
 __attribute__((noinline)) void weval_update_context(uint32_t pc);
@@ -95,6 +96,14 @@ const T* assume_const_memory(const T* t) {
 template <typename T>
 T* assume_const_memory(T* t) {
   return (T*)weval_assume_const_memory((void*)t);
+}
+template <typename T>
+const T* assume_const_memory_transitive(const T* t) {
+  return (const T*)weval_assume_const_memory_transitive((const void*)t);
+}
+template <typename T>
+T* assume_const_memory_transitive(T* t) {
+  return (T*)weval_assume_const_memory_transitive((void*)t);
 }
 
 static inline void push_context(uint32_t pc) { weval_push_context(pc); }

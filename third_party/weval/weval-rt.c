@@ -32,6 +32,15 @@ const void* weval_assume_const_memory(const void* value) {
     }
 }
 
+__attribute__((export_name("weval.assume.const.memory.transitive")))
+const void* weval_assume_const_memory_transitive(const void* value) {
+    if (__hook) {
+        return 2;
+    } else {
+        return value;
+    }
+}
+
 __attribute__((export_name("weval.make.symbolic.ptr")))
 void* weval_make_symbolic_ptr(void* value) {
     if (__hook) {

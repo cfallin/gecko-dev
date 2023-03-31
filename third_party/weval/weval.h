@@ -120,11 +120,11 @@ void flush_to_mem() {
     weval_flush_to_mem();
 }
 
-static uint32_t switch_value(uint32_t input, uint32_t limit) {
+static inline uint32_t switch_value(uint32_t input, uint32_t limit) {
     return weval_switch_value(input, limit);
 }
 
-static uint32_t switch_default(uint32_t input) {
+static inline uint32_t switch_default(uint32_t input) {
     return weval_switch_default(input);
 }
 

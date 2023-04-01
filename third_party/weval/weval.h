@@ -81,7 +81,7 @@ __attribute__((noinline)) void weval_assert_const32(uint32_t value, uint32_t lin
 __attribute__((noinline)) void weval_assert_switchvalue(uint32_t value);
 __attribute__((noinline)) void weval_assert_const_memory(void* p, uint32_t line_no);
 __attribute__((noinline)) uint32_t weval_switch_value(uint32_t input, uint32_t limit);
-__attribute__((noinline)) uint32_t weval_switch_default(uint32_t input);
+__attribute__((noinline)) uint32_t weval_switch_default(uint32_t input, uint32_t value, uint32_t limit);
 
 #ifdef __cplusplus
 }  // extern "C"
@@ -124,8 +124,8 @@ static inline uint32_t switch_value(uint32_t input, uint32_t limit) {
     return weval_switch_value(input, limit);
 }
 
-static inline uint32_t switch_default(uint32_t input) {
-    return weval_switch_default(input);
+static inline uint32_t switch_default(uint32_t input, uint32_t value, uint32_t limit) {
+    return weval_switch_default(input, value, limit);
 }
 
 

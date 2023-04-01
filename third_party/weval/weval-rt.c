@@ -115,10 +115,10 @@ uint32_t weval_switch_value(uint32_t input, uint32_t limit) {
 }
 
 __attribute__((export_name("weval.switch.default")))
-uint32_t weval_switch_default(uint32_t input) {
+uint32_t weval_switch_default(uint32_t input, uint32_t value, uint32_t limit) {
     if (__hook) {
         return 6;
     } else {
-        return input;
+        return value;
     }
 }

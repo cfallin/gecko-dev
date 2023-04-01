@@ -2092,6 +2092,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
 #define DISPATCH_TO(OP)                                            \
   JS_BEGIN_MACRO                                                   \
     weval_assert_const32((uint32_t)pc, __LINE__);                  \
+    weval_print("dispatch_to: pc = ", __LINE__, (uint32_t)pc);     \
     WEVAL_CONTEXT(pc);                                             \
     auto* addresses_table = weval::assume_const_memory(addresses); \
     goto* addresses_table[(OP)];                                   \
@@ -3768,13 +3769,17 @@ initial_dispatch:
 
       i = uint32_t(i) - uint32_t(low);
       i = (int32_t)weval::switch_value((uint32_t)i, (uint32_t)(high - low + 1));
+      weval_print("Switch: i =", __LINE__, i);
       if (uint32_t(i) < uint32_t(high - low + 1)) {
         len = ictx.script->tableSwitchCaseOffset(pc, uint32_t(i)) -
               ictx.script->pcToOffset(pc);
         weval_assert_switchvalue(len);
+        weval_print("Switch: in-bounds branch: len =", __LINE__, len);
       } else {
         len = (int32_t)weval::switch_default((uint32_t)len, (uint32_t)i, (uint32_t)(high - low + 1));
+        weval_print("Switch: default branch: len =", __LINE__, len);
       }
+      weval_print("Switch: merged: len =", __LINE__, len);
       weval_assert_switchvalue(len);
       ADVANCE_AND_DISPATCH(len);
     }

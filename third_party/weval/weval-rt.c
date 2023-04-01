@@ -122,3 +122,8 @@ uint32_t weval_switch_default(uint32_t input, uint32_t value, uint32_t limit) {
         return value;
     }
 }
+
+__attribute__((export_name("weval.print")))
+void weval_print(const char* message, uint32_t line, uint32_t val) {
+    __accum += 9;
+}

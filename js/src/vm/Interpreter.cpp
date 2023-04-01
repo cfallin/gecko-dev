@@ -2091,6 +2091,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   label_default:
 #define DISPATCH_TO(OP)                                            \
   JS_BEGIN_MACRO                                                   \
+    weval_assert_const32((uint32_t)pc, __LINE__);                  \
     WEVAL_CONTEXT(pc);                                             \
     auto* addresses_table = weval::assume_const_memory(addresses); \
     goto* addresses_table[(OP)];                                   \
@@ -2127,19 +2128,20 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    * will enable interrupts, and activation.opMask() is or'd with the opcode
    * to implement a simple alternate dispatch.
    */
-#define ADVANCE_AND_DISPATCH(N)                   \
-  JS_BEGIN_MACRO                                  \
-    pc += (N);                                    \
-    REGS.pc = pc;                                 \
-    SANITY_CHECKS();                              \
-    DISPATCH_TO(*pc | OPMASK(ictx));              \
+#define ADVANCE_AND_DISPATCH(N)          \
+  JS_BEGIN_MACRO                         \
+    pc += (N);                           \
+    REGS.pc = pc;                        \
+    SANITY_CHECKS();                     \
+    DISPATCH_TO(*pc | OPMASK(ictx));     \
   JS_END_MACRO
 
   //    MOZ_ASSERT(pc == REGS.pc);
 
 #ifdef __wasi__
 #  define WEVAL_CONTEXT(pc) \
-    weval::update_context(reinterpret_cast<uint32_t>(pc));
+  weval_trace_line(__LINE__); \
+  weval::update_context(reinterpret_cast<uint32_t>(pc));
 #else
 #  define WEVAL_CONTEXT(pc)
 #endif
@@ -2305,6 +2307,7 @@ initial_dispatch:
     CASE(Try)
     CASE(NopDestructuring)
     CASE(TryDestructuring) {
+      weval_assert_const32((int32_t)pc, __LINE__);
       MOZ_ASSERT(GetBytecodeLength(pc) == 1);
       ADVANCE_AND_DISPATCH(1);
     }

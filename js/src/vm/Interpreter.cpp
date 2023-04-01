@@ -2490,6 +2490,7 @@ initial_dispatch:
       /* FALL THROUGH */
     }
     CASE(Goto) {
+      weval_assert_const32((uint32_t)pc, __LINE__);
       BRANCH(GET_JUMP_OFFSET(pc));
     }
 

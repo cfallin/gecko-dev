@@ -1966,11 +1966,19 @@ class JSScript : public js::BaseScript {
     return immutableScriptData()->resumeOffsets();
   }
 
+  MOZ_ALWAYS_INLINE
   uint32_t tableSwitchCaseOffset(jsbytecode* pc, uint32_t caseIndex) const {
     MOZ_ASSERT(containsPC(pc));
     MOZ_ASSERT(JSOp(*pc) == JSOp::TableSwitch);
+    weval_print("tableSwitch: pc =", __LINE__, (uint32_t)pc);
+    weval_print("tableSwitch: caseIndex =", __LINE__, (uint32_t)caseIndex);
+    weval_print("tableSwitch: this =", __LINE__, (uint32_t)this);
     uint32_t firstResumeIndex = GET_RESUMEINDEX(pc + 3 * JUMP_OFFSET_LEN);
-    return resumeOffsets()[firstResumeIndex + caseIndex];
+    weval_print("firstResumeIndex =", __LINE__, firstResumeIndex);
+    weval_print("resumeOffsets() =", __LINE__, (uint32_t)(&resumeOffsets()[0]));
+    uint32_t result = resumeOffsets()[firstResumeIndex + caseIndex];
+    weval_print("result =", __LINE__, result);
+    return result;
   }
   jsbytecode* tableSwitchCasePC(jsbytecode* pc, uint32_t caseIndex) const {
     return offsetToPC(tableSwitchCaseOffset(pc, caseIndex));

@@ -65,7 +65,7 @@
 #include "vm/BytecodeUtil.h"  // Disassemble
 #include "vm/Compression.h"
 #include "vm/HelperThreadState.h"  // js::RunPendingSourceCompressions
-#include "vm/Interpreter.h" // RegisterInterpreterSpecialization
+#include "vm/Interpreter.h"        // RegisterInterpreterSpecialization
 #include "vm/JSContext.h"
 #include "vm/JSFunction.h"
 #include "vm/JSObject.h"
@@ -395,7 +395,7 @@ bool ImmutableScriptData::RequestSpecialization(FrontendContext* fc) {
     return false;
   }
   *this->specialized_ = nullptr;
-  RegisterInterpreterSpecialization(this->specialized_, this->code());
+  RegisterInterpreterSpecialization(this->specialized_, this, this->code());
   return true;
 }
 

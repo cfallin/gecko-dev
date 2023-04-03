@@ -79,6 +79,7 @@
 #include "vm/ObjectOperations-inl.h"
 #include "vm/PlainObject-inl.h"  // js::CopyInitializerObject, js::CreateThis
 #include "vm/Probes-inl.h"
+#include "vm/SharedStencil-inl.h"
 #include "vm/Stack-inl.h"
 
 using namespace js;
@@ -1999,16 +2000,24 @@ struct InterpretContext {
         frameHalfInitialized(false) {}
 };
 
+// This is the function to which calls are specialized by weval. The
+// parameters are the specialized-on state; any value that we want to
+// rely on during the partial evaluation (i.e., anything that is used
+// to determine the JS bytecode program) needs to directly derive from
+// function parameters here, and not values loaded from structs or
+// other state.
 static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
     JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc,
-    bool error_bailout, bool interpret_bailout, bool is_specialized);
+    ImmutableScriptData* isd, bool error_bailout, bool interpret_bailout,
+    bool is_specialized);
 
 // The type of function pointer to a partial specialization of
 // `InterpretInner()`.
 typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
                                                    InterpretContext&,
-                                                   jsbytecode*, bool, bool,
-                                                   bool);
+                                                   jsbytecode*,
+                                                   ImmutableScriptData*, bool,
+                                                   bool, bool);
 
 #define SET_SCRIPT(s)                                         \
   JS_BEGIN_MACRO                                              \
@@ -2019,20 +2028,21 @@ typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
       ictx.activation.enableInterruptsUnconditionally();      \
   JS_END_MACRO
 
-#define CALL_INNER(ret)                                                       \
-  JS_BEGIN_MACRO                                                              \
-    if (void* f = ictx.script->immutableScriptData()->specializedCode()) {    \
-      PartiallySpecializedInterpretInner func =                               \
-          reinterpret_cast<PartiallySpecializedInterpretInner>(f);            \
-      /*printf("calling specialized func: %p\n", func);*/                     \
-      ret =                                                                   \
-          func(cx, state, ictx, REGS.pc, /* error_bailout = */ false,         \
-               /* interpret_bailout = */ false, /* is_specialized = */ true); \
-    } else {                                                                  \
-      ret = InterpretInner(                                                   \
-          cx, state, ictx, REGS.pc, /* error_bailout = */ false,              \
-          /* interpet_bailout = */ false, /* is_specialized = */ false);      \
-    }                                                                         \
+#define CALL_INNER(ret)                                                        \
+  JS_BEGIN_MACRO                                                               \
+    if (void* f = ictx.script->immutableScriptData()->specializedCode()) {     \
+      PartiallySpecializedInterpretInner func =                                \
+          reinterpret_cast<PartiallySpecializedInterpretInner>(f);             \
+      /*printf("calling specialized func: %p\n", func);*/                      \
+      ret = func(cx, state, ictx, REGS.pc, ictx.script->immutableScriptData(), \
+                 /* error_bailout = */ false, /* interpret_bailout = */ false, \
+                 /* is_specialized = */ true);                                 \
+    } else {                                                                   \
+      ret = InterpretInner(                                                    \
+          cx, state, ictx, REGS.pc, ictx.script->immutableScriptData(),        \
+          /* error_bailout = */ false, /* interpet_bailout = */ false,         \
+          /* is_specialized = */ false);                                       \
+    }                                                                          \
   JS_END_MACRO
 
 static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
@@ -2053,22 +2063,24 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
   return ret;
 }
 
-void js::RegisterInterpreterSpecialization(void** specialized, jsbytecode* pc) {
+void js::RegisterInterpreterSpecialization(void** specialized,
+                                           ImmutableScriptData* isd,
+                                           jsbytecode* pc) {
 #ifdef __wasi__
   weval::weval(
       reinterpret_cast<PartiallySpecializedInterpretInner*>(specialized),
       InterpretInner, weval::Runtime<JSContext*>(), weval::Runtime<RunState&>(),
       weval::Runtime<InterpretContext&>(), weval::Specialize<jsbytecode*>(pc),
+      weval::Specialize<ImmutableScriptData*>(isd),
       weval::Specialize<bool>(false), weval::Specialize<bool>(false),
       weval::Specialize<bool>(true));
 #endif
 }
 
-static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
-                                            InterpretContext& ictx,
-                                            jsbytecode* pc, bool error_bailout,
-                                            bool interpret_bailout,
-                                            bool is_specialized) {
+static MOZ_NEVER_INLINE bool InterpretInner(
+    JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc,
+    ImmutableScriptData* isd, bool error_bailout, bool interpret_bailout,
+    bool is_specialized) {
   if (error_bailout) {
     goto error;
   }
@@ -2077,6 +2089,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
   }
 
   pc = weval::assume_const_memory(pc);
+  isd = weval::assume_const_memory(isd);
 
   // printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
 
@@ -2129,20 +2142,20 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    * will enable interrupts, and activation.opMask() is or'd with the opcode
    * to implement a simple alternate dispatch.
    */
-#define ADVANCE_AND_DISPATCH(N)          \
-  JS_BEGIN_MACRO                         \
-    pc += (N);                           \
-    REGS.pc = pc;                        \
-    SANITY_CHECKS();                     \
-    DISPATCH_TO(*pc | OPMASK(ictx));     \
+#define ADVANCE_AND_DISPATCH(N)      \
+  JS_BEGIN_MACRO                     \
+    pc += (N);                       \
+    REGS.pc = pc;                    \
+    SANITY_CHECKS();                 \
+    DISPATCH_TO(*pc | OPMASK(ictx)); \
   JS_END_MACRO
 
   //    MOZ_ASSERT(pc == REGS.pc);
 
 #ifdef __wasi__
-#  define WEVAL_CONTEXT(pc) \
-  weval_trace_line(__LINE__); \
-  weval::update_context(reinterpret_cast<uint32_t>(pc));
+#  define WEVAL_CONTEXT(pc)     \
+    weval_trace_line(__LINE__); \
+    weval::update_context(reinterpret_cast<uint32_t>(pc));
 #else
 #  define WEVAL_CONTEXT(pc)
 #endif
@@ -2176,11 +2189,11 @@ static MOZ_NEVER_INLINE bool InterpretInner(JSContext* cx, RunState& state,
    * a CHECK_BRANCH() if n is not positive, which possibly indicates that it
    * is the backedge of a loop.
    */
-#define BRANCH(n)                         \
-  JS_BEGIN_MACRO                          \
-    int32_t nlen = (n);                   \
-    if (nlen <= 0) CHECK_BRANCH();        \
-    ADVANCE_AND_DISPATCH(nlen);           \
+#define BRANCH(n)                  \
+  JS_BEGIN_MACRO                   \
+    int32_t nlen = (n);            \
+    if (nlen <= 0) CHECK_BRANCH(); \
+    ADVANCE_AND_DISPATCH(nlen);    \
   JS_END_MACRO
 
   /*
@@ -2465,6 +2478,7 @@ initial_dispatch:
           if (JSOp(*pc) == JSOp::Resume) {
             if (is_specialized) {
               return InterpretInner(cx, state, ictx, REGS.pc,
+                                    ictx.script->immutableScriptData(),
                                     /* error_bailout = */ false,
                                     /* interpret_bailout = */ true,
                                     /* is_specialized = */ false);
@@ -3769,16 +3783,16 @@ initial_dispatch:
 
       i = uint32_t(i) - uint32_t(low);
       if (uint32_t(i) < uint32_t(high - low + 1)) {
-        i = (int32_t)weval::switch_value((uint32_t)i, (uint32_t)(high - low + 1));
+        i = (int32_t)weval::switch_value((uint32_t)i,
+                                         (uint32_t)(high - low + 1));
         weval_print("Switch: i =", __LINE__, i);
         weval_print("Switch: pc =", __LINE__, (uint32_t)pc);
-        const InterpretContext* ictxp = weval::assume_const_memory_transitive(&ictx);
-        len = ictxp->script->tableSwitchCaseOffset(pc, uint32_t(i)) -
-              ictxp->script->pcToOffset(pc);
+        len = isd->tableSwitchCaseOffset(pc, uint32_t(i)) - isd->pcToOffset(pc);
         weval_assert_const32(len, __LINE__);
         weval_print("Switch: in-bounds branch: len =", __LINE__, len);
       } else {
-        len = (int32_t)weval::switch_default((uint32_t)len, (uint32_t)i, (uint32_t)(high - low + 1));
+        len = (int32_t)weval::switch_default((uint32_t)len, (uint32_t)i,
+                                             (uint32_t)(high - low + 1));
         weval_print("Switch: default branch: len =", __LINE__, len);
       }
       weval_print("Switch: merged: len =", __LINE__, len);
@@ -4474,6 +4488,7 @@ initial_dispatch:
     CASE(Await) {
       if (is_specialized) {
         return InterpretInner(cx, state, ictx, REGS.pc,
+                              ictx.script->immutableScriptData(),
                               /* error_bailout = */ false,
                               /* interpret_bailout = */ true,
                               /* is_specialized = */ false);
@@ -4522,6 +4537,7 @@ initial_dispatch:
       {
         if (is_specialized) {
           return InterpretInner(cx, state, ictx, REGS.pc,
+                                ictx.script->immutableScriptData(),
                                 /* error_bailout = */ false,
                                 /* interpret_bailout = */ true,
                                 /* is_specialized = */ false);
@@ -4769,7 +4785,9 @@ initial_dispatch:
 
 error:
   if (is_specialized) {
-    return InterpretInner(cx, state, ictx, REGS.pc, /* error_bailout = */ true,
+    return InterpretInner(cx, state, ictx, REGS.pc,
+                          ictx.script->immutableScriptData(),
+                          /* error_bailout = */ true,
                           /* interpret_bailout = */ false,
                           /* is_specialized = */ false);
   }

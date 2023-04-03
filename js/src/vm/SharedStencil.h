@@ -638,6 +638,11 @@ class alignas(uint32_t) ImmutableScriptData final : public TrailingArray {
     return nullptr;
   }
 
+  uint32_t tableSwitchCaseOffset(jsbytecode* pc, uint32_t caseIndex);
+  jsbytecode* tableSwitchCasePC(jsbytecode* pc, uint32_t caseIndex);
+  jsbytecode* offsetToPC(size_t offset);
+  size_t pcToOffset(const jsbytecode* pc);
+
   // ImmutableScriptData has trailing data so isn't copyable or movable.
   ImmutableScriptData(const ImmutableScriptData&) = delete;
   ImmutableScriptData& operator=(const ImmutableScriptData&) = delete;

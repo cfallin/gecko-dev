@@ -206,7 +206,9 @@ extern bool ExecuteKernel(JSContext* cx, HandleScript script,
 extern bool Execute(JSContext* cx, HandleScript script, HandleObject envChain,
                     MutableHandleValue rval);
 
-extern void RegisterInterpreterSpecialization(void** specialized, jsbytecode* pc);
+extern void RegisterInterpreterSpecialization(void** specialized,
+                                              ImmutableScriptData* isd,
+                                              jsbytecode* pc);
 
 class ExecuteState;
 class InvokeState;

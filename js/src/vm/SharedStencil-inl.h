@@ -9,8 +9,6 @@
 
 #include "vm/SharedStencil.h"
 
-#include <weval.h>
-
 #include "vm/BytecodeUtil.h"  // GET_RESUMEINDEX, JUMP_OFFSET_LEN
 
 namespace js {
@@ -19,15 +17,8 @@ MOZ_ALWAYS_INLINE
 uint32_t ImmutableScriptData::tableSwitchCaseOffset(jsbytecode* pc,
                                                     uint32_t caseIndex) {
   MOZ_ASSERT(JSOp(*pc) == JSOp::TableSwitch);
-  weval_print("tableSwitch: pc =", __LINE__, (uint32_t)pc);
-  weval_print("tableSwitch: caseIndex =", __LINE__, (uint32_t)caseIndex);
-  weval_print("tableSwitch: this =", __LINE__, (uint32_t)this);
   uint32_t firstResumeIndex = GET_RESUMEINDEX(pc + 3 * JUMP_OFFSET_LEN);
-  weval_print("firstResumeIndex =", __LINE__, firstResumeIndex);
-  weval_print("resumeOffsets() =", __LINE__, (uint32_t)(&resumeOffsets()[0]));
-  uint32_t result = resumeOffsets()[firstResumeIndex + caseIndex];
-  weval_print("result =", __LINE__, result);
-  return result;
+  return resumeOffsets()[firstResumeIndex + caseIndex];
 }
 jsbytecode* ImmutableScriptData::tableSwitchCasePC(jsbytecode* pc,
                                                    uint32_t caseIndex) {

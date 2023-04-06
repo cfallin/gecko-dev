@@ -100,26 +100,16 @@ void weval_assert_const_memory(void* p, uint32_t line_no) {
     __accum += (uint32_t)p + line_no + 7;
 }
 
-__attribute__((export_name("weval.assert.switchvalue")))
-void weval_assert_switchvalue(uint32_t value) {
-    __accum += value + 8;
-}
-
-__attribute__((export_name("weval.switch.value")))
-uint32_t weval_switch_value(uint32_t input, uint32_t limit) {
+__attribute__((export_name("weval.specialize.value")))
+uint32_t weval_specialize_value(uint32_t value, uint32_t lo, uint32_t hi) {
     if (__hook) {
-        return 5;
+        return 7;
     } else {
-        return input;
-    }
-}
-
-__attribute__((export_name("weval.switch.default")))
-uint32_t weval_switch_default(uint32_t input, uint32_t value, uint32_t limit) {
-    if (__hook) {
-        return 6;
-    } else {
-        return value;
+        if (value >= hi) {
+            return hi;
+        } else {
+            return value;
+        }
     }
 }
 

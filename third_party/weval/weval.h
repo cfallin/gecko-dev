@@ -78,10 +78,8 @@ __attribute__((noinline)) void weval_trace_line(uint32_t line_number);
 __attribute__((noinline)) void weval_abort_specialization(uint32_t line_number,
                                                           uint32_t fatal);
 __attribute__((noinline)) void weval_assert_const32(uint32_t value, uint32_t line_no);
-__attribute__((noinline)) void weval_assert_switchvalue(uint32_t value);
 __attribute__((noinline)) void weval_assert_const_memory(void* p, uint32_t line_no);
-__attribute__((noinline)) uint32_t weval_switch_value(uint32_t input, uint32_t limit);
-__attribute__((noinline)) uint32_t weval_switch_default(uint32_t input, uint32_t value, uint32_t limit);
+__attribute__((noinline)) uint32_t weval_specialize_value(uint32_t value, uint32_t lo, uint32_t hi);
 __attribute__((noinline)) void weval_print(const char* message, uint32_t line, uint32_t val);
 
 #ifdef __cplusplus
@@ -120,15 +118,6 @@ template <typename T>
 void flush_to_mem() {
     weval_flush_to_mem();
 }
-
-static inline uint32_t switch_value(uint32_t input, uint32_t limit) {
-    return weval_switch_value(input, limit);
-}
-
-static inline uint32_t switch_default(uint32_t input, uint32_t value, uint32_t limit) {
-    return weval_switch_default(input, value, limit);
-}
-
 
 }  // namespace weval
 #endif  // __cplusplus

@@ -3782,24 +3782,17 @@ initial_dispatch:
       int32_t high = GET_JUMP_OFFSET(pc2);
 
       i = uint32_t(i) - uint32_t(low);
-      i = (int32_t)weval::switch_value((uint32_t)i,
-                                       (uint32_t)(high - low + 1));
-      weval_assert_const32(low, __LINE__);
-      weval_assert_const32(high, __LINE__);
+      i = (int32_t)weval_specialize_value((uint32_t)i,
+                                          (uint32_t)0,
+                                          (uint32_t)(high - low + 1));
       weval_assert_const32(i, __LINE__);
-      weval_print("Switch: i =", __LINE__, i);
+      weval_print("original: i =", __LINE__, i);
       if (uint32_t(i) < uint32_t(high - low + 1)) {
-        weval_print("Switch: i =", __LINE__, i);
-        weval_print("Switch: pc =", __LINE__, (uint32_t)pc);
+        weval_print("Switch: non-default: ", __LINE__, i);
         len = isd->tableSwitchCaseOffset(pc, uint32_t(i)) - isd->pcToOffset(pc);
         weval_assert_const32(len, __LINE__);
-        weval_print("Switch: in-bounds branch: len =", __LINE__, len);
-      } else {
-        len = (int32_t)weval::switch_default((uint32_t)len, (uint32_t)i,
-                                             (uint32_t)(high - low + 1));
-        weval_print("Switch: default branch: len =", __LINE__, len);
       }
-      weval_print("Switch: merged: len =", __LINE__, len);
+      weval_print("Switch: len =", __LINE__, len);
       ADVANCE_AND_DISPATCH(len);
     }
 

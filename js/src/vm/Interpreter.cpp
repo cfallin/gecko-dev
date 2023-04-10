@@ -1320,45 +1320,51 @@ again:
   return ok ? SuccessfulReturnContinuation : ErrorReturnContinuation;
 }
 
+#ifndef __wasi__
+#  define NON_WASI(x) x
+#else
+#  define NON_WASI(x)
+#endif
+
 #define REGS (ictx.activation.regs())
 #define PUSH_COPY(v)                 \
   do {                               \
     *REGS.sp++ = (v);                \
     cx->debugOnlyCheck(REGS.sp[-1]); \
   } while (0)
-#define PUSH_COPY_SKIP_CHECK(v) *REGS.sp++ = (v)
-#define PUSH_NULL() REGS.sp++->setNull()
-#define PUSH_UNDEFINED() REGS.sp++->setUndefined()
-#define PUSH_BOOLEAN(b) REGS.sp++->setBoolean(b)
-#define PUSH_DOUBLE(d) REGS.sp++->setDouble(d)
-#define PUSH_INT32(i) REGS.sp++->setInt32(i)
-#define PUSH_SYMBOL(s) REGS.sp++->setSymbol(s)
-#define PUSH_BIGINT(b) REGS.sp++->setBigInt(b)
-#define PUSH_STRING(s)               \
-  do {                               \
-    REGS.sp++->setString(s);         \
-    cx->debugOnlyCheck(REGS.sp[-1]); \
+#define PUSH_COPY_SKIP_CHECK(v) *sp++ = (v)
+#define PUSH_NULL() sp++->setNull()
+#define PUSH_UNDEFINED() sp++->setUndefined()
+#define PUSH_BOOLEAN(b) sp++->setBoolean(b)
+#define PUSH_DOUBLE(d) sp++->setDouble(d)
+#define PUSH_INT32(i) sp++->setInt32(i)
+#define PUSH_SYMBOL(s) sp++->setSymbol(s)
+#define PUSH_BIGINT(b) sp++->setBigInt(b)
+#define PUSH_STRING(s)                    \
+  do {                                    \
+    sp++->setString(s);                   \
+    NON_WASI(cx->debugOnlyCheck(sp[-1])); \
   } while (0)
-#define PUSH_OBJECT(obj)             \
-  do {                               \
-    REGS.sp++->setObject(obj);       \
-    cx->debugOnlyCheck(REGS.sp[-1]); \
+#define PUSH_OBJECT(obj)                  \
+  do {                                    \
+    sp++->setObject(obj);                 \
+    NON_WASI(cx->debugOnlyCheck(sp[-1])); \
   } while (0)
-#define PUSH_OBJECT_OR_NULL(obj)     \
-  do {                               \
-    REGS.sp++->setObjectOrNull(obj); \
-    cx->debugOnlyCheck(REGS.sp[-1]); \
+#define PUSH_OBJECT_OR_NULL(obj)          \
+  do {                                    \
+    sp++->setObjectOrNull(obj);           \
+    NON_WASI(cx->debugOnlyCheck(sp[-1])); \
   } while (0)
 #ifdef ENABLE_RECORD_TUPLE
 #  define PUSH_EXTENDED_PRIMITIVE(obj)      \
     do {                                    \
-      REGS.sp++->setExtendedPrimitive(obj); \
-      cx->debugOnlyCheck(REGS.sp[-1]);      \
+      sp++->setExtendedPrimitive(obj);      \
+      NON_WASI(cx->debugOnlyCheck(sp[-1])); \
     } while (0)
 #endif
-#define PUSH_MAGIC(magic) REGS.sp++->setMagic(magic)
-#define POP_COPY_TO(v) (v) = *--REGS.sp
-#define POP_RETURN_VALUE() REGS.fp()->setReturnValue(*--REGS.sp)
+#define PUSH_MAGIC(magic) sp++->setMagic(magic)
+#define POP_COPY_TO(v) (v) = *--sp
+#define POP_RETURN_VALUE() REGS.fp()->setReturnValue(*--sp)
 
 /*
  * Same for JSOp::SetName and JSOp::SetProp, which differ only slightly but
@@ -2045,6 +2051,19 @@ typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
     }                                                                          \
   JS_END_MACRO
 
+#define INTERP_FLUSH() \
+  JS_BEGIN_MACRO       \
+    cx = hidden_cx;    \
+    REGS.pc = pc;      \
+    REGS.sp = sp;      \
+  JS_END_MACRO
+
+#define INTERP_UNFLUSH() \
+  JS_BEGIN_MACRO         \
+    cx = nullptr;        \
+    sp = REGS.sp;        \
+  JS_END_MACRO
+
 static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
                                                               RunState& state) {
   gc::MaybeVerifyBarriers(cx, true);
@@ -2081,6 +2100,9 @@ static MOZ_NEVER_INLINE bool InterpretInner(
     JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc,
     ImmutableScriptData* isd, bool error_bailout, bool interpret_bailout,
     bool is_specialized) {
+  JSContext* hidden_cx = cx;
+  Value* sp = REGS.sp;
+
   if (error_bailout) {
     goto error;
   }
@@ -2149,8 +2171,6 @@ static MOZ_NEVER_INLINE bool InterpretInner(
     SANITY_CHECKS();                 \
     DISPATCH_TO(*pc | OPMASK(ictx)); \
   JS_END_MACRO
-
-  //    MOZ_ASSERT(pc == REGS.pc);
 
 #ifdef __wasi__
 #  define WEVAL_CONTEXT(pc)     \
@@ -2259,6 +2279,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(
     goto prologue_error;
   }
 
+#ifndef __wasi__
   if (!DebugAPI::onEnterFrame(cx, REGS.fp())) {
     goto error;
   }
@@ -2266,10 +2287,13 @@ static MOZ_NEVER_INLINE bool InterpretInner(
   // Increment the coverage for the main entry point.
   INIT_COVERAGE();
   COUNT_COVERAGE_MAIN();
+#endif
 
 #ifdef __wasi__
   weval::push_context(reinterpret_cast<uint32_t>(pc));
 #endif
+
+  INTERP_UNFLUSH();
 
   // Enter the interpreter loop starting at the current pc.
 initial_dispatch:
@@ -2280,6 +2304,7 @@ initial_dispatch:
       bool moreInterrupts = false;
       jsbytecode op = *pc;
 
+#ifndef __wasi__
       if (!ictx.script->hasScriptCounts() &&
           cx->realm()->collectCoverageForDebug()) {
         if (!ictx.script->initScriptCounts(cx)) {
@@ -2310,6 +2335,7 @@ initial_dispatch:
       if (!moreInterrupts) {
         ictx.activation.clearInterruptsMask();
       }
+#endif
 
       /* Commence executing the actual opcode. */
       SANITY_CHECKS();
@@ -2321,18 +2347,22 @@ initial_dispatch:
     CASE(Try)
     CASE(NopDestructuring)
     CASE(TryDestructuring) {
-      weval_assert_const32((int32_t)pc, __LINE__);
       MOZ_ASSERT(GetBytecodeLength(pc) == 1);
       ADVANCE_AND_DISPATCH(1);
     }
 
     CASE(JumpTarget)
+#ifndef __wasi__
     COUNT_COVERAGE();
+#endif
     END_CASE(JumpTarget)
 
     CASE(LoopHead) {
+#ifndef __wasi__
       COUNT_COVERAGE();
+#endif
 
+#ifndef __wasi__
       // Attempt on-stack replacement into the Baseline Interpreter.
       if (jit::IsBaselineInterpreterEnabled()) {
         ictx.script->incWarmUpCounter();
@@ -2371,6 +2401,7 @@ initial_dispatch:
           goto leave_on_safe_point;
         }
       }
+#endif  // !__wasi__
     }
     END_CASE(LoopHead)
 
@@ -2386,19 +2417,19 @@ initial_dispatch:
     CASE(Undefined) { PUSH_UNDEFINED(); }
     END_CASE(Undefined)
 
-    CASE(Pop) { REGS.sp--; }
+    CASE(Pop) { sp--; }
     END_CASE(Pop)
 
     CASE(PopN) {
       MOZ_ASSERT(GET_UINT16(pc) <= REGS.stackDepth());
-      REGS.sp -= GET_UINT16(pc);
+      sp -= GET_UINT16(pc);
     }
     END_CASE(PopN)
 
     CASE(DupAt) {
       MOZ_ASSERT(GET_UINT24(pc) < REGS.stackDepth());
       unsigned i = GET_UINT24(pc);
-      const Value& rref = REGS.sp[-int(i + 1)];
+      const Value& rref = sp[-int(i + 1)];
       PUSH_COPY(rref);
     }
     END_CASE(DupAt)
@@ -2448,8 +2479,12 @@ initial_dispatch:
         // Stop the engine. (No details about which engine exactly, could be
         // interpreter, Baseline or IonMonkey.)
         if (MOZ_LIKELY(!ictx.frameHalfInitialized)) {
+#ifndef __wasi__
           ictx.interpReturnOK =
               DebugAPI::onLeaveFrame(cx, REGS.fp(), pc, ictx.interpReturnOK);
+#else
+          ictx.interpReturnOK = true;
+#endif
 
           REGS.fp()->epilogue(cx, pc);
         }
@@ -3782,8 +3817,7 @@ initial_dispatch:
       int32_t high = GET_JUMP_OFFSET(pc2);
 
       i = uint32_t(i) - uint32_t(low);
-      i = (int32_t)weval_specialize_value((uint32_t)i,
-                                          (uint32_t)0,
+      i = (int32_t)weval_specialize_value((uint32_t)i, (uint32_t)0,
                                           (uint32_t)(high - low + 1));
       weval_assert_const32(i, __LINE__);
       weval_print("original: i =", __LINE__, i);
@@ -4565,6 +4599,7 @@ initial_dispatch:
           goto error;
         }
 
+#ifndef __wasi__
         if (!DebugAPI::onResumeFrame(cx, REGS.fp())) {
           if (cx->isPropagatingForcedReturn()) {
             MOZ_ASSERT_IF(
@@ -4575,6 +4610,7 @@ initial_dispatch:
           }
           goto error;
         }
+#endif
       }
       ADVANCE_AND_DISPATCH(0);
     }
@@ -4583,7 +4619,9 @@ initial_dispatch:
       // AbstractGeneratorObject::resume takes care of setting the frame's
       // debuggee flag.
       MOZ_ASSERT_IF(REGS.fp()->script()->isDebuggee(), REGS.fp()->isDebuggee());
+#ifndef __wasi__
       COUNT_COVERAGE();
+#endif
     }
     END_CASE(AfterYield)
 
@@ -4828,13 +4866,19 @@ exit:
 #endif
 
   if (MOZ_LIKELY(!ictx.frameHalfInitialized)) {
+#ifndef __wasi__
     ictx.interpReturnOK =
         DebugAPI::onLeaveFrame(cx, REGS.fp(), pc, ictx.interpReturnOK);
+#else
+    ictx.interpReturnOK = true;
+#endif
 
     REGS.fp()->epilogue(cx, pc);
   }
 
+#ifndef __wasi__
   gc::MaybeVerifyBarriers(cx, true);
+#endif
 
   /*
    * This path is used when it's guaranteed the method can be finished

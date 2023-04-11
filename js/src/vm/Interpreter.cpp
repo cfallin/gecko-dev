@@ -2149,8 +2149,6 @@ static MOZ_NEVER_INLINE bool InterpretInner(
     DISPATCH_TO(*pc | OPMASK(ictx)); \
   JS_END_MACRO
 
-  //    MOZ_ASSERT(pc == REGS.pc);
-
 #ifdef __wasi__
 #  define WEVAL_CONTEXT(pc)     \
     weval_trace_line(__LINE__); \

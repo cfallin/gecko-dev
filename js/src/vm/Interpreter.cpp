@@ -2105,7 +2105,6 @@ static MOZ_NEVER_INLINE bool InterpretInner(
 #define DISPATCH_TO(OP)                                            \
   JS_BEGIN_MACRO                                                   \
     weval_assert_const32((uint32_t)pc, __LINE__);                  \
-    weval_print("dispatch_to: pc = ", __LINE__, (uint32_t)pc);     \
     WEVAL_CONTEXT(pc);                                             \
     auto* addresses_table = weval::assume_const_memory(addresses); \
     goto* addresses_table[(OP)];                                   \
@@ -3786,13 +3785,10 @@ initial_dispatch:
                                           (uint32_t)0,
                                           (uint32_t)(high - low + 1));
       weval_assert_const32(i, __LINE__);
-      weval_print("original: i =", __LINE__, i);
       if (uint32_t(i) < uint32_t(high - low + 1)) {
-        weval_print("Switch: non-default: ", __LINE__, i);
         len = isd->tableSwitchCaseOffset(pc, uint32_t(i)) - isd->pcToOffset(pc);
         weval_assert_const32(len, __LINE__);
       }
-      weval_print("Switch: len =", __LINE__, len);
       ADVANCE_AND_DISPATCH(len);
     }
 

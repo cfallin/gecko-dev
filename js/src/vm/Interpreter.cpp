@@ -2088,8 +2088,10 @@ static MOZ_NEVER_INLINE bool InterpretInner(
     goto initial_dispatch;
   }
 
+#ifdef __wasi__
   pc = weval::assume_const_memory(pc);
   isd = weval::assume_const_memory(isd);
+#endif
 
   // printf("InterpretInner: script = %p pc = %p\n", ictx.script.get(), pc);
 
@@ -2104,7 +2106,6 @@ static MOZ_NEVER_INLINE bool InterpretInner(
   label_default:
 #define DISPATCH_TO(OP)                                            \
   JS_BEGIN_MACRO                                                   \
-    weval_assert_const32((uint32_t)pc, __LINE__);                  \
     WEVAL_CONTEXT(pc);                                             \
     auto* addresses_table = weval::assume_const_memory(addresses); \
     goto* addresses_table[(OP)];                                   \
@@ -2318,7 +2319,6 @@ initial_dispatch:
     CASE(Try)
     CASE(NopDestructuring)
     CASE(TryDestructuring) {
-      weval_assert_const32((int32_t)pc, __LINE__);
       MOZ_ASSERT(GetBytecodeLength(pc) == 1);
       ADVANCE_AND_DISPATCH(1);
     }
@@ -2502,7 +2502,6 @@ initial_dispatch:
       /* FALL THROUGH */
     }
     CASE(Goto) {
-      weval_assert_const32((uint32_t)pc, __LINE__);
       BRANCH(GET_JUMP_OFFSET(pc));
     }
 
@@ -3578,19 +3577,11 @@ initial_dispatch:
 
       SET_SCRIPT(REGS.fp()->script());
 
-      // printf(
-      //     " -> about to recurse: script = %p pc = %p fp = %p sp = %p code = "
-      //     "%p\n",
-      //     ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp,
-      //     ictx.script->code());
       bool ret;
       CALL_INNER(ret);
       if (!ret) {
         goto error;
       }
-      // printf(
-      //     " -> returned: script = %p pc = %p fp = %p sp = %p local-pc =
-      //     %p\n", ictx.script.get(), REGS.pc, REGS.fp(), REGS.sp, pc);
 
       ADVANCE_AND_DISPATCH(JSOpLength_Call);
     }
@@ -3779,13 +3770,13 @@ initial_dispatch:
       int32_t high = GET_JUMP_OFFSET(pc2);
 
       i = uint32_t(i) - uint32_t(low);
+#ifdef __wasi__
       i = (int32_t)weval_specialize_value((uint32_t)i,
                                           (uint32_t)0,
                                           (uint32_t)(high - low + 1));
-      weval_assert_const32(i, __LINE__);
+#endif
       if (uint32_t(i) < uint32_t(high - low + 1)) {
         len = isd->tableSwitchCaseOffset(pc, uint32_t(i)) - isd->pcToOffset(pc);
-        weval_assert_const32(len, __LINE__);
       }
       ADVANCE_AND_DISPATCH(len);
     }

@@ -420,6 +420,7 @@ class MutableScriptFlags : public EnumFlags<MutableScriptFlagsEnum> {
 // offset of the array from the start offset of the subsequent array. The
 // notable exception is that bytecode length is stored explicitly.
 class alignas(uint32_t) ImmutableScriptData final : public TrailingArray {
+#ifdef __wasi__
  private:
   // Partially-pecialized interpreter body, if any. Note that we need
   // to box this so that it doesn't move. This pointer comes first so
@@ -428,6 +429,7 @@ class alignas(uint32_t) ImmutableScriptData final : public TrailingArray {
   // TODO: deregister enqueued specialization request if ISD is freed
   // before specialization occurs.
   void** specialized_ = nullptr;
+#endif
 
  private:
   Offset optArrayOffset_ = 0;
@@ -632,9 +634,11 @@ class alignas(uint32_t) ImmutableScriptData final : public TrailingArray {
   }
 
   void* specializedCode() {
+#ifdef __wasi__
     if (specialized_) {
       return *specialized_;
     }
+#endif
     return nullptr;
   }
 

@@ -388,6 +388,7 @@ ImmutableScriptData::ImmutableScriptData(uint32_t codeLength,
 }
 
 bool ImmutableScriptData::RequestSpecialization(FrontendContext* fc) {
+#ifdef __wasi__
   // Register specialization request for interpreter partial
   // specialization.
   this->specialized_ = fc->getAllocator()->pod_malloc<void*>(1);
@@ -396,6 +397,7 @@ bool ImmutableScriptData::RequestSpecialization(FrontendContext* fc) {
   }
   *this->specialized_ = nullptr;
   RegisterInterpreterSpecialization(this->specialized_, this, this->code());
+#endif
   return true;
 }
 

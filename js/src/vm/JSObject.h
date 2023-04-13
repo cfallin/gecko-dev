@@ -1085,6 +1085,8 @@ extern size_t SizeOfDataIfCDataObject(mozilla::MallocSizeOf mallocSizeOf,
 void AssertJSClassInvariants(const JSClass* clasp);
 #endif
 
+void ClearLookupCacheOnGC();
+
 } /* namespace js */
 
 #endif /* vm_JSObject_h */

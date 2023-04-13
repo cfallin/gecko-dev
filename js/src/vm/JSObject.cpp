@@ -1709,13 +1709,50 @@ bool js::HasOwnProperty(JSContext* cx, HandleObject obj, HandleId id,
   return true;
 }
 
+struct ShapeAndPropHash {
+  size_t operator()(const std::tuple<Shape*, uintptr_t>& value) const {
+    return std::hash<Shape*>()(std::get<0>(value)) ^
+           std::hash<uintptr_t>()(std::get<1>(value));
+  }
+};
+
+static std::unordered_map<std::tuple<Shape*, uintptr_t>,
+                          std::tuple<PropertyResult, bool>, ShapeAndPropHash>
+    lookup_cache;
+
+void js::ClearLookupCacheOnGC() { lookup_cache.clear(); }
+
 bool js::LookupPropertyPure(JSContext* cx, JSObject* obj, jsid id,
                             NativeObject** objp, PropertyResult* propp) {
+  auto cache_key = std::make_tuple(obj->shape(), id.asRawBits());
+  auto it = lookup_cache.find(cache_key);
+  if (it != lookup_cache.end()) {
+    *propp = std::get<0>(it->second);
+    bool isInProto = std::get<1>(it->second);
+    if (isInProto) {
+      *objp = &obj->staticPrototype()->as<NativeObject>();
+    } else {
+      *objp = &obj->as<NativeObject>();
+    }
+    return true;
+  }
+
   if (obj->getOpsLookupProperty()) {
     return false;
   }
-  return NativeLookupPropertyInline<NoGC, LookupResolveMode::CheckMayResolve>(
-      cx, &obj->as<NativeObject>(), id, objp, propp);
+  bool result =
+      NativeLookupPropertyInline<NoGC, LookupResolveMode::CheckMayResolve>(
+          cx, &obj->as<NativeObject>(), id, objp, propp);
+
+  if (result) {
+    if (static_cast<JSObject*>(*objp) == obj) {
+      lookup_cache.insert(std::make_pair(cache_key, std::make_tuple(*propp, false)));
+    } else if (static_cast<JSObject*>(*objp) == obj->staticPrototype()) {
+      lookup_cache.insert(std::make_pair(cache_key, std::make_tuple(*propp, true)));
+    }
+  }
+
+  return result;
 }
 
 bool js::LookupOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id,

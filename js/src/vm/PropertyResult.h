@@ -37,6 +37,24 @@ class PropertyResult {
   // use |= default| here.
   PropertyResult() {}
 
+  PropertyResult(const PropertyResult& other)
+      : kind_(other.kind_), ignoreProtoChain_(other.ignoreProtoChain_) {
+    switch (kind_) {
+      case Kind::NonNativeProperty:
+      case Kind::NotFound:
+        break;
+      case Kind::NativeProperty:
+        propInfo_ = other.propInfo_;
+        break;
+      case Kind::DenseElement:
+        denseIndex_ = other.denseIndex_;
+        break;
+      case Kind::TypedArrayElement:
+        typedArrayIndex_ = other.typedArrayIndex_;
+        break;
+    }
+  }
+
   // When a property is not found, we may additionally indicate that the
   // prototype chain should be ignored. This occurs for:
   //  - An out-of-range numeric property on a TypedArrayObject.

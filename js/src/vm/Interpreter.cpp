@@ -2104,12 +2104,19 @@ static MOZ_NEVER_INLINE bool InterpretInner(
 #define CASE(OP) label_##OP:
 #define DEFAULT() \
   label_default:
+#ifdef __wasi__
 #define DISPATCH_TO(OP)                                            \
   JS_BEGIN_MACRO                                                   \
     WEVAL_CONTEXT(pc);                                             \
     auto* addresses_table = weval::assume_const_memory(addresses); \
     goto* addresses_table[(OP)];                                   \
   JS_END_MACRO
+#else
+#  define DISPATCH_TO(OP)    \
+    JS_BEGIN_MACRO           \
+      goto* addresses[(OP)]; \
+    JS_END_MACRO
+#endif
 
 #define LABEL(X) (&&label_##X)
 

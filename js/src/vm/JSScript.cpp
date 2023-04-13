@@ -388,6 +388,7 @@ ImmutableScriptData::ImmutableScriptData(uint32_t codeLength,
 }
 
 bool ImmutableScriptData::RequestSpecialization(FrontendContext* fc) {
+#ifdef __wasi__
   // Register specialization request for interpreter partial
   // specialization.
   this->specialized_ = fc->getAllocator()->pod_malloc<void*>(1);
@@ -396,6 +397,7 @@ bool ImmutableScriptData::RequestSpecialization(FrontendContext* fc) {
   }
   *this->specialized_ = nullptr;
   RegisterInterpreterSpecialization(this->specialized_, this, this->code());
+#endif
   return true;
 }
 
@@ -2239,8 +2241,8 @@ void js::SweepScriptData(JSRuntime* rt) {
 inline size_t PrivateScriptData::allocationSize() const { return endOffset(); }
 
 // Initialize and placement-new the trailing arrays.
-PrivateScriptData::PrivateScriptData(uint32_t ngcthings)
-    : ngcthings(ngcthings) {
+PrivateScriptData::PrivateScriptData(uint32_t ngcthings, uint32_t niics)
+    : ngcthings(ngcthings), niics(niics) {
   // Variable-length data begins immediately after PrivateScriptData itself.
   // NOTE: Alignment is computed using cursor/offset so the alignment of
   // PrivateScriptData must be stricter than any trailing array type.
@@ -2251,16 +2253,23 @@ PrivateScriptData::PrivateScriptData(uint32_t ngcthings)
     initElements<JS::GCCellPtr>(cursor, ngcthings);
     cursor += ngcthings * sizeof(JS::GCCellPtr);
   }
+  // Layout and initialize the iics array.
+  {
+    fillElements<IICStub*>(cursor, niics, nullptr);
+    cursor += niics * sizeof(IICStub*);
+  }
 
   // Sanity check.
   MOZ_ASSERT(endOffset() == cursor);
 }
 
 /* static */
-PrivateScriptData* PrivateScriptData::new_(JSContext* cx, uint32_t ngcthings) {
+PrivateScriptData* PrivateScriptData::new_(JSContext* cx, uint32_t ngcthings,
+                                           uint32_t niics) {
   // Compute size including trailing arrays.
   CheckedInt<Offset> size = sizeof(PrivateScriptData);
   size += CheckedInt<Offset>(ngcthings) * sizeof(JS::GCCellPtr);
+  size += CheckedInt<Offset>(niics) * sizeof(IICStub*);
   if (!size.isValid()) {
     ReportAllocationOverflow(cx);
     return nullptr;
@@ -2275,7 +2284,7 @@ PrivateScriptData* PrivateScriptData::new_(JSContext* cx, uint32_t ngcthings) {
 
   // Constuct the PrivateScriptData. Trailing arrays are uninitialized but
   // GCPtrs are put into a safe state.
-  PrivateScriptData* result = new (raw) PrivateScriptData(ngcthings);
+  PrivateScriptData* result = new (raw) PrivateScriptData(ngcthings, niics);
   if (!result) {
     return nullptr;
   }
@@ -2295,11 +2304,12 @@ bool PrivateScriptData::InitFromStencil(
     const js::frontend::ScriptIndex scriptIndex) {
   js::frontend::ScriptStencil& scriptStencil = stencil.scriptData[scriptIndex];
   uint32_t ngcthings = scriptStencil.gcThingsLength;
+  uint32_t niics = scriptStencil.numIICs;
 
   MOZ_ASSERT(ngcthings <= INDEX_LIMIT);
 
   // Create and initialize PrivateScriptData
-  if (!JSScript::createPrivateScriptData(cx, script, ngcthings)) {
+  if (!JSScript::createPrivateScriptData(cx, script, ngcthings, niics)) {
     return false;
   }
 
@@ -2359,10 +2369,10 @@ uint32_t JSScript::vtuneMethodID() {
 
 /* static */
 bool JSScript::createPrivateScriptData(JSContext* cx, HandleScript script,
-                                       uint32_t ngcthings) {
+                                       uint32_t ngcthings, uint32_t niics) {
   cx->check(script);
 
-  UniquePtr<PrivateScriptData> data(PrivateScriptData::new_(cx, ngcthings));
+  UniquePtr<PrivateScriptData> data(PrivateScriptData::new_(cx, ngcthings, niics));
   if (!data) {
     return false;
   }
@@ -3173,6 +3183,7 @@ BaseScript* BaseScript::New(JSContext* cx, JS::Handle<JSFunction*> function,
 
 /* static */
 BaseScript* BaseScript::CreateRawLazy(JSContext* cx, uint32_t ngcthings,
+                                      uint32_t niics,
                                       HandleFunction fun,
                                       Handle<ScriptSourceObject*> sourceObject,
                                       const SourceExtent& extent,
@@ -3191,7 +3202,7 @@ BaseScript* BaseScript::CreateRawLazy(JSContext* cx, uint32_t ngcthings,
   // This condition is implicit in BaseScript::hasPrivateScriptData, and should
   // be mirrored on InputScript::hasPrivateScriptData.
   if (ngcthings || lazy->useMemberInitializers()) {
-    UniquePtr<PrivateScriptData> data(PrivateScriptData::new_(cx, ngcthings));
+    UniquePtr<PrivateScriptData> data(PrivateScriptData::new_(cx, ngcthings, niics));
     if (!data) {
       return nullptr;
     }

@@ -1784,9 +1784,10 @@ static bool CreateLazyScript(JSContext* cx,
   Rooted<ScriptSourceObject*> sourceObject(cx, gcOutput.sourceObject);
 
   size_t ngcthings = script.gcThingsLength;
+  size_t niics = script.numIICs;
 
   Rooted<BaseScript*> lazy(
-      cx, BaseScript::CreateRawLazy(cx, ngcthings, function, sourceObject,
+    cx, BaseScript::CreateRawLazy(cx, ngcthings, niics, function, sourceObject,
                                     scriptExtra.extent,
                                     scriptExtra.immutableFlags));
   if (!lazy) {

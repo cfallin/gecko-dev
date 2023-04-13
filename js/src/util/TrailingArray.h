@@ -61,6 +61,17 @@ class TrailingArray {
     }
   }
 
+  // Fill elements with a default value.
+  template <typename T>
+  void fillElements(Offset offset, size_t nelem, T value) {
+    MOZ_ASSERT(isAlignedOffset<T>(offset));
+    for (size_t i = 0; i < nelem; ++i) {
+      T* slot = offsetToPointer<T>(offset);
+      *slot = value;
+      offset += sizeof(T);
+    }
+  }
+
   // Compute the length of an array from its start and end offset.
   template <typename T>
   size_t numElements(Offset start, Offset end) const {

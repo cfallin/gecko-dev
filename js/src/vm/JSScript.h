@@ -23,7 +23,7 @@
 #include <type_traits>  // std::is_same
 #include <utility>      // std::move
 #ifdef __wasi__
-#include <weval.h>
+#  include <weval.h>
 #endif
 
 #include "jstypes.h"
@@ -1259,12 +1259,19 @@ class ScriptWarmUpData {
 static_assert(sizeof(ScriptWarmUpData) == sizeof(uintptr_t),
               "JIT code depends on ScriptWarmUpData being pointer-sized");
 
+// Interpreter IC (IIC) stub.
+class IICStub {
+ public:
+  IICStub* next;
+};
+
 // [SMDOC] - JSScript data layout (unshared)
 //
 // PrivateScriptData stores variable-length data associated with a script.
 // Abstractly a PrivateScriptData consists of the following:
 //
 //   * A non-empty array of GCCellPtr in gcthings()
+//   * An array of InterpIC pointers in iics()
 //
 // Accessing this array just requires calling the appropriate public
 // Span-computing function.
@@ -1275,6 +1282,7 @@ static_assert(sizeof(ScriptWarmUpData) == sizeof(uintptr_t),
 class alignas(uintptr_t) PrivateScriptData final : public TrailingArray {
  private:
   uint32_t ngcthings = 0;
+  uint32_t niics = 0;
 
   // Note: This is only defined for scripts with an enclosing scope. This
   // excludes lazy scripts with lazy parents.
@@ -1286,13 +1294,17 @@ class alignas(uintptr_t) PrivateScriptData final : public TrailingArray {
  private:
   // Layout helpers
   Offset gcThingsOffset() { return offsetOfGCThings(); }
-  Offset endOffset() const {
+  Offset iicsOffset() const {
     uintptr_t size = ngcthings * sizeof(JS::GCCellPtr);
     return offsetOfGCThings() + size;
   }
+  Offset endOffset() const {
+    uintptr_t size = niics * sizeof(IICStub*);
+    return iicsOffset() + size;
+  }
 
   // Initialize header and PackedSpans
-  explicit PrivateScriptData(uint32_t ngcthings);
+  explicit PrivateScriptData(uint32_t ngcthings, uint32_t niics);
 
  public:
   static constexpr size_t offsetOfGCThings() {
@@ -1305,6 +1317,11 @@ class alignas(uintptr_t) PrivateScriptData final : public TrailingArray {
     return mozilla::Span{offsetToPointer<JS::GCCellPtr>(offset), ngcthings};
   }
 
+  mozilla::Span<IICStub*> iics() {
+    Offset offset = iicsOffset();
+    return mozilla::Span{offsetToPointer<IICStub*>(offset), niics};
+  }
+
   void setMemberInitializers(MemberInitializers memberInitializers) {
     MOZ_ASSERT(memberInitializers_.valid == false,
                "Only init MemberInitializers once");
@@ -1315,7 +1332,8 @@ class alignas(uintptr_t) PrivateScriptData final : public TrailingArray {
   }
 
   // Allocate a new PrivateScriptData. Headers and GCCellPtrs are initialized.
-  static PrivateScriptData* new_(JSContext* cx, uint32_t ngcthings);
+  static PrivateScriptData* new_(JSContext* cx, uint32_t ngcthings,
+                                 uint32_t niics);
 
   static bool InitFromStencil(
       JSContext* cx, js::HandleScript script,
@@ -1473,6 +1491,7 @@ class BaseScript : public gc::TenuredCellWithNonGCPointer<uint8_t> {
 
   // Create a lazy BaseScript without initializing any gc-things.
   static BaseScript* CreateRawLazy(JSContext* cx, uint32_t ngcthings,
+                                   uint32_t niics,
                                    HandleFunction fun,
                                    JS::Handle<ScriptSourceObject*> sourceObject,
                                    const SourceExtent& extent,
@@ -1663,7 +1682,7 @@ class JSScript : public js::BaseScript {
   // after successfully creating the script.
   static bool createPrivateScriptData(JSContext* cx,
                                       JS::Handle<JSScript*> script,
-                                      uint32_t ngcthings);
+                                      uint32_t ngcthings, uint32_t niics);
 
  public:
   static bool fullyInitFromStencil(

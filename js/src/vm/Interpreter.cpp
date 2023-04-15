@@ -2257,6 +2257,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(
     goto prologue_error;
   }
 
+#ifndef __wasi__
   if (!DebugAPI::onEnterFrame(cx, REGS.fp())) {
     goto error;
   }
@@ -2264,6 +2265,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(
   // Increment the coverage for the main entry point.
   INIT_COVERAGE();
   COUNT_COVERAGE_MAIN();
+#endif
 
 #ifdef __wasi__
   weval::push_context(reinterpret_cast<uint32_t>(pc));

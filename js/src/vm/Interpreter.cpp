@@ -2041,7 +2041,7 @@ typedef bool (*PartiallySpecializedInterpretInner)(JSContext*, RunState&,
       ret = InterpretInner(                                                    \
           cx, state, ictx, REGS.pc, ictx.script->immutableScriptData(),        \
           /* error_bailout = */ false, /* interpet_bailout = */ false,         \
-          /* is_specialized = */ false);                                       \
+          /* is_specialized = */ true);                                       \
     }                                                                          \
   JS_END_MACRO
 

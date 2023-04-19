@@ -2198,46 +2198,71 @@ static MOZ_NEVER_INLINE bool InterpretInner(
     ADVANCE_AND_DISPATCH(nlen);    \
   JS_END_MACRO
 
+#ifndef __wasi__
   /*
    * Initialize code coverage vectors.
    */
-#define INIT_COVERAGE()                                     \
-  JS_BEGIN_MACRO                                            \
-    if (!ictx.script->hasScriptCounts()) {                  \
-      if (cx->realm()->collectCoverageForDebug()) {         \
-        if (!ictx.script->initScriptCounts(cx)) goto error; \
-      }                                                     \
-    }                                                       \
-  JS_END_MACRO
+#  define INIT_COVERAGE()                                     \
+    JS_BEGIN_MACRO                                            \
+      if (!ictx.script->hasScriptCounts()) {                  \
+        if (cx->realm()->collectCoverageForDebug()) {         \
+          if (!ictx.script->initScriptCounts(cx)) goto error; \
+        }                                                     \
+      }                                                       \
+    JS_END_MACRO
 
   /*
    * Increment the code coverage counter associated with the given pc.
    */
-#define COUNT_COVERAGE_PC(PC)                               \
-  JS_BEGIN_MACRO                                            \
-    if (ictx.script->hasScriptCounts()) {                   \
-      PCCounts* counts = ictx.script->maybeGetPCCounts(PC); \
-      MOZ_ASSERT(counts);                                   \
-      counts->numExec()++;                                  \
-    }                                                       \
-  JS_END_MACRO
+#  define COUNT_COVERAGE_PC(PC)                               \
+    JS_BEGIN_MACRO                                            \
+      if (ictx.script->hasScriptCounts()) {                   \
+        PCCounts* counts = ictx.script->maybeGetPCCounts(PC); \
+        MOZ_ASSERT(counts);                                   \
+        counts->numExec()++;                                  \
+      }                                                       \
+    JS_END_MACRO
 
-#define COUNT_COVERAGE_MAIN()                                        \
-  JS_BEGIN_MACRO                                                     \
-    jsbytecode* main = ictx.script->main();                          \
-    if (!BytecodeIsJumpTarget(JSOp(*main))) COUNT_COVERAGE_PC(main); \
-  JS_END_MACRO
+#  define COUNT_COVERAGE_MAIN()                                        \
+    JS_BEGIN_MACRO                                                     \
+      jsbytecode* main = ictx.script->main();                          \
+      if (!BytecodeIsJumpTarget(JSOp(*main))) COUNT_COVERAGE_PC(main); \
+    JS_END_MACRO
 
-#define COUNT_COVERAGE()                         \
-  JS_BEGIN_MACRO                                 \
-    MOZ_ASSERT(BytecodeIsJumpTarget(JSOp(*pc))); \
-    COUNT_COVERAGE_PC(pc);                       \
-  JS_END_MACRO
+#  define COUNT_COVERAGE()                         \
+    JS_BEGIN_MACRO                                 \
+      MOZ_ASSERT(BytecodeIsJumpTarget(JSOp(*pc))); \
+      COUNT_COVERAGE_PC(pc);                       \
+    JS_END_MACRO
 
-#define SANITY_CHECKS()              \
-  JS_BEGIN_MACRO                     \
-    js::gc::MaybeVerifyBarriers(cx); \
-  JS_END_MACRO
+#  define SANITY_CHECKS()              \
+    JS_BEGIN_MACRO                     \
+      js::gc::MaybeVerifyBarriers(cx); \
+    JS_END_MACRO
+
+#else  // __wasi__
+
+#  define INIT_COVERAGE() \
+    JS_BEGIN_MACRO        \
+    JS_END_MACRO
+
+#  define COUNT_COVERAGE_PC(PC) \
+    JS_BEGIN_MACRO              \
+    JS_END_MACRO
+
+#  define COUNT_COVERAGE_MAIN() \
+    JS_BEGIN_MACRO              \
+    JS_END_MACRO
+
+#  define COUNT_COVERAGE() \
+    JS_BEGIN_MACRO         \
+    JS_END_MACRO
+
+#  define SANITY_CHECKS() \
+    JS_BEGIN_MACRO        \
+    JS_END_MACRO
+
+#endif  // !__wasi__
 
 // Verify that an uninitialized lexical is followed by a correct check op.
 #ifdef DEBUG

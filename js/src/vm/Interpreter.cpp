@@ -2309,6 +2309,7 @@ initial_dispatch:
       bool moreInterrupts = false;
       jsbytecode op = *pc;
 
+#ifndef __wasi__
       if (!ictx.script->hasScriptCounts() &&
           cx->realm()->collectCoverageForDebug()) {
         if (!ictx.script->initScriptCounts(cx)) {
@@ -2339,6 +2340,7 @@ initial_dispatch:
       if (!moreInterrupts) {
         ictx.activation.clearInterruptsMask();
       }
+#endif
 
       /* Commence executing the actual opcode. */
       SANITY_CHECKS();
@@ -2361,6 +2363,7 @@ initial_dispatch:
     CASE(LoopHead) {
       COUNT_COVERAGE();
 
+#ifndef __wasi__
       // Attempt on-stack replacement into the Baseline Interpreter.
       if (jit::IsBaselineInterpreterEnabled()) {
         ictx.script->incWarmUpCounter();
@@ -2399,6 +2402,7 @@ initial_dispatch:
           goto leave_on_safe_point;
         }
       }
+#endif
     }
     END_CASE(LoopHead)
 

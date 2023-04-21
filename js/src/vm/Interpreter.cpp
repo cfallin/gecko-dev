@@ -236,10 +236,10 @@ bool js::Debug_CheckSelfHosted(JSContext* cx, HandleValue funVal) {
   return true;
 }
 
-static inline bool GetPropertyOperation(JSContext* cx,
-                                        Handle<PropertyName*> name,
-                                        HandleValue lval,
-                                        MutableHandleValue vp) {
+static MOZ_NEVER_INLINE bool GetPropertyOperation(JSContext* cx,
+                                                  Handle<PropertyName*> name,
+                                                  HandleValue lval,
+                                                  MutableHandleValue vp) {
   if (name == cx->names().length && GetLengthProperty(lval, vp)) {
     return true;
   }
@@ -2105,7 +2105,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(
  * non-standard but is supported by all of our supported compilers.
  */
 #define INTERPRETER_LOOP()
-#define CASE(OP) label_##OP: weval_context_bucket(*pc);
+#define CASE(OP) label_##OP : weval_context_bucket(*pc);
 #define DEFAULT() \
   label_default:
 #define DISPATCH_TO(OP)                                            \

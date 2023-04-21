@@ -490,7 +490,7 @@ static MOZ_ALWAYS_INLINE bool GetPrimitiveElementOperation(
   return true;
 }
 
-static MOZ_ALWAYS_INLINE bool GetElementOperationWithStackIndex(
+static MOZ_NEVER_INLINE inline bool GetElementOperationWithStackIndex(
     JSContext* cx, HandleValue lref, int lrefIndex, HandleValue rref,
     MutableHandleValue res) {
   uint32_t index;

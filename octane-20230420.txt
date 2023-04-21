@@ -130,3 +130,21 @@ SplayLatency: 5297
 ----
 Score (version 9): 2462
 
+------
+
+ratios:
+
+box2d:       1.61x  (+ 61%)
+codeload     1.10x  (+ 10%)
+crypto       3.52x  (+252%)
+deltablue    1.49x  (+ 49%)
+earleyboyer  1.58x  (+ 58%)
+mandreel     1.92x  (+ 92%)
+navierstokes 3.45x  (+245%)
+pdfjs        2.12x  (+112%)
+raytrace     1.38x  (+ 38%)
+regexp       1.82x  (+ 82%)
+richards     1.75x  (+ 75%)
+splay        1.51x  (+ 51%)
+
+Geomean:     1.83x  (+ 83%)

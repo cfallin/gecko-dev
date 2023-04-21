@@ -441,6 +441,8 @@ IrregexpInterpreter::Result RawMatch(
   return RawMatchInner(ctx, ctx.code_base);
 }
 
+#define NATIVE_STACK 1  // Use native C++ stack for backtracking.
+
 template <typename Char>
 IrregexpInterpreter::Result RawMatchInner(RawMatchContext<Char>& ctx,
                                           const byte* pc) {
@@ -514,9 +516,17 @@ IrregexpInterpreter::Result RawMatchInner(RawMatchContext<Char>& ctx,
     }
     BYTECODE(PUSH_BT) {
       ADVANCE(PUSH_BT);
-      if (!ctx.backtrack_stack.push(Load32Aligned(pc + 4))) {
+      int32_t offset = Load32Aligned(pc + 4);
+      if (!ctx.backtrack_stack.push(offset)) {
         return MaybeThrowStackOverflow(ctx.isolate, ctx.call_origin);
       }
+#ifdef NATIVE_STACK
+      auto result = RawMatchInner(ctx, next_pc);
+      if (result != IrregexpInterpreter::BT_RETURN) {
+        return result;
+      }
+      SET_PC_FROM_OFFSET(offset);
+#endif
       DISPATCH();
     }
     BYTECODE(PUSH_REGISTER) {
@@ -570,15 +580,18 @@ IrregexpInterpreter::Result RawMatchInner(RawMatchContext<Char>& ctx,
         return static_cast<IrregexpInterpreter::Result>(return_code);
       }
 
-#ifndef __wasi__
+#ifndef NATIVE_STACK
       IrregexpInterpreter::Result return_code = HandleInterrupts(
           ctx.isolate, ctx.call_origin, &code_array, &ctx.subject_string,
           &ctx.code_base, &ctx.subject, &pc);
       if (return_code != IrregexpInterpreter::SUCCESS) return return_code;
-#endif
 
       SET_PC_FROM_OFFSET(ctx.backtrack_stack.pop());
       DISPATCH();
+#else
+      ctx.backtrack_stack.pop();
+      return IrregexpInterpreter::BT_RETURN;
+#endif
     }
     BYTECODE(POP_REGISTER) {
       ADVANCE(POP_REGISTER);

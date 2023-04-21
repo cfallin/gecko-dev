@@ -2105,7 +2105,7 @@ static MOZ_NEVER_INLINE bool InterpretInner(
  * non-standard but is supported by all of our supported compilers.
  */
 #define INTERPRETER_LOOP()
-#define CASE(OP) label_##OP:
+#define CASE(OP) label_##OP: weval_context_bucket(*pc);
 #define DEFAULT() \
   label_default:
 #define DISPATCH_TO(OP)                                            \

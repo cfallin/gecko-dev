@@ -223,6 +223,18 @@ RegExpObject* RegExpObject::create(JSContext* cx, Handle<JSAtom*> source,
     regexp->initAndZeroLastIndex(source, flags, cx);
 
     MOZ_ASSERT(!regexp->hasShared());
+
+#ifdef __wasi__
+    Rooted<RegExpShared*> shared(cx, RegExpObject::getShared(cx, regexp));
+    if (!shared) {
+      return nullptr;
+    }
+    Rooted<JSLinearString*> emptyString(cx, cx->emptyString());
+    if (!RegExpShared::compileIfNecessary(cx, &shared, emptyString,
+                                          RegExpShared::CodeKind::Bytecode)) {
+      return nullptr;
+    }
+#endif
   }
   return regexp;
 }

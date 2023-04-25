@@ -1,0 +1,150 @@
+box2d.js.cwasm
+Box2D: 496
+----
+Score (version 9): 496
+box2d.js.wevaled.cwasm
+Box2D: 799
+----
+Score (version 9): 799
+code-load.js.cwasm
+CodeLoad: 14505
+----
+Score (version 9): 14505
+code-load.js.wevaled.cwasm
+CodeLoad: 16023
+----
+Score (version 9): 16023
+crypto.js.cwasm
+Crypto: 129
+----
+Score (version 9): 129
+crypto.js.wevaled.cwasm
+Crypto: 454
+----
+Score (version 9): 454
+deltablue.js.cwasm
+DeltaBlue: 92.9
+----
+Score (version 9): 92.9
+deltablue.js.wevaled.cwasm
+DeltaBlue: 138
+----
+Score (version 9): 138
+earley-boyer.js.cwasm
+EarleyBoyer: 378
+----
+Score (version 9): 378
+earley-boyer.js.wevaled.cwasm
+EarleyBoyer: 598
+----
+Score (version 9): 598
+early-boyer.js.cwasm
+Failed to call main() in Wizened JS source!
+Redirecting call to abort() to mozalloc_abort
+
+Error: failed to run main module `early-boyer.js.cwasm`
+
+Caused by:
+    0: failed to invoke command default
+    1: error while executing at wasm backtrace:
+           0: 0x3b20c - <unknown>!mozalloc_abort
+           1: 0x3b22c - <unknown>!abort
+           2: 0xe3bb - <unknown>!main
+           3: 0x64849b - <unknown>!__main_void
+           4: 0xe292 - <unknown>!__wizer_resume()
+       note: using the `WASMTIME_BACKTRACE_DETAILS=1` environment variable may show more debugging information
+    2: wasm trap: wasm `unreachable` instruction executed
+early-boyer.js.wevaled.cwasm
+Failed to call main() in Wizened JS source!
+Redirecting call to abort() to mozalloc_abort
+
+Error: failed to run main module `early-boyer.js.wevaled.cwasm`
+
+Caused by:
+    0: failed to invoke command default
+    1: error while executing at wasm backtrace:
+           0: 0x44808 - <unknown>!mozalloc_abort
+           1: 0x44828 - <unknown>!abort
+           2: 0x179b7 - <unknown>!main
+           3: 0x651a97 - <unknown>!__main_void
+           4: 0x1788e - <unknown>!__wizer_resume()
+    2: wasm trap: wasm `unreachable` instruction executed
+mandreel.js.cwasm
+Mandreel: 92.6
+MandreelLatency: 638
+----
+Score (version 9): 243
+mandreel.js.wevaled.cwasm
+Mandreel: 178
+MandreelLatency: 1209
+----
+Score (version 9): 464
+navier-stokes.js.cwasm
+NavierStokes: 244
+----
+Score (version 9): 244
+navier-stokes.js.wevaled.cwasm
+NavierStokes: 842
+----
+Score (version 9): 842
+pdfjs.js.cwasm
+PdfJS: 946
+----
+Score (version 9): 946
+pdfjs.js.wevaled.cwasm
+PdfJS: 2008
+----
+Score (version 9): 2008
+raytrace.js.cwasm
+RayTrace: 299
+----
+Score (version 9): 299
+raytrace.js.wevaled.cwasm
+RayTrace: 414
+----
+Score (version 9): 414
+regexp.js.cwasm
+RegExp: 115
+----
+Score (version 9): 115
+regexp.js.wevaled.cwasm
+RegExp: 209
+----
+Score (version 9): 209
+richards.js.cwasm
+Richards: 85.2
+----
+Score (version 9): 85.2
+richards.js.wevaled.cwasm
+Richards: 149
+----
+Score (version 9): 149
+splay.js.cwasm
+Splay: 757
+SplayLatency: 4186
+----
+Score (version 9): 1780
+splay.js.wevaled.cwasm
+Splay: 1144
+SplayLatency: 5297
+----
+Score (version 9): 2462
+
+------
+
+ratios:
+
+box2d:       1.61x  (+ 61%)
+codeload     1.10x  (+ 10%)
+crypto       3.52x  (+252%)
+deltablue    1.49x  (+ 49%)
+earleyboyer  1.58x  (+ 58%)
+mandreel     1.92x  (+ 92%)
+navierstokes 3.45x  (+245%)
+pdfjs        2.12x  (+112%)
+raytrace     1.38x  (+ 38%)
+regexp       1.82x  (+ 82%)
+richards     1.75x  (+ 75%)
+splay        1.51x  (+ 51%)
+
+Geomean:     1.83x  (+ 83%)

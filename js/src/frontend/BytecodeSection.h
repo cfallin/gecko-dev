@@ -275,6 +275,15 @@ class BytecodeSection {
     return lastSeparatorSourceOffset_ == offset;
   }
 
+  // ---- interpreter ICs ----
+
+  uint32_t numIICs() const { return numIICs_; }
+  void incrementNumIICs() {
+    MOZ_ASSERT(numIICs_ != UINT32_MAX, "Shouldn't overflow");
+    numIICs_++;
+  }
+  void setNumIICs(uint32_t entries) { numIICs_ = entries; }
+
   // ---- JIT ----
 
   uint32_t numICEntries() const { return numICEntries_; }
@@ -356,6 +365,12 @@ class BytecodeSection {
   uint32_t lastSeparatorSourceOffset_ = 0;
   uint32_t lastSeparatorLine_ = 0;
   uint32_t lastSeparatorColumn_ = 0;
+
+  // ---- interpreter ICs ----
+
+  // Number of interpreter ICs in the script. Each interpreter-IC op
+  // carries an index to its interpreter-IC slot.
+  uint32_t numIICs_ = 0;
 
   // ---- JIT ----
 

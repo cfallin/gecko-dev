@@ -2301,10 +2301,10 @@
      *
      *   Category: Control flow
      *   Type: Jump targets
-     *   Operands: uint32_t icIndex
+     *   Operands: uint32_t icIndex, uint32_t iicIndex
      *   Stack: =>
      */ \
-    MACRO(JumpTarget, jump_target, NULL, 5, 0, 0, JOF_ICINDEX) \
+    MACRO(JumpTarget, jump_target, NULL, 9, 0, 0, JOF_ICINDEX) \
     /*
      * Marks the target of the backwards jump for some loop.
      *

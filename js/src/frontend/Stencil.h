@@ -882,7 +882,6 @@ class ScriptStencil {
   CompilationGCThingIndex gcThingsOffset;
   uint32_t gcThingsLength = 0;
 
-  // Number of InterpreterIC (IIC) slots in the PrivateScriptData.
   uint32_t numIICs = 0;
 
   // Fields for JSFunction.

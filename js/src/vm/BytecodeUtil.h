@@ -210,6 +210,16 @@ static inline void SET_ICINDEX(jsbytecode* pc, uint32_t icIndex) {
   SET_UINT32(pc, icIndex);
 }
 
+static const unsigned IICINDEX_LEN = 4;
+
+static inline uint32_t GET_IICINDEX(const jsbytecode* pc) {
+  return GET_UINT32(pc + ICINDEX_LEN);
+}
+
+static inline void SET_IICINDEX(jsbytecode* pc, uint32_t iicIndex) {
+  SET_UINT32(pc + ICINDEX_LEN, iicIndex);
+}
+
 static inline unsigned LoopHeadDepthHint(jsbytecode* pc) {
   MOZ_ASSERT(JSOp(*pc) == JSOp::LoopHead);
   return GET_UINT8(pc + 4);
@@ -551,6 +561,15 @@ static inline int32_t GetBytecodeInteger(jsbytecode* pc) {
 }
 
 inline bool BytecodeOpHasIC(JSOp op) { return CodeSpec(op).format & JOF_IC; }
+
+inline bool BytecodeOpHasIIC(JSOp op) {
+  switch (op) {
+    case JSOp::GetProp:
+      return true;
+    default:
+      return false;
+  }
+}
 
 inline void GetCheckPrivateFieldOperands(jsbytecode* pc,
                                          ThrowCondition* throwCondition,

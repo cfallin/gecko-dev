@@ -2372,7 +2372,8 @@ bool JSScript::createPrivateScriptData(JSContext* cx, HandleScript script,
                                        uint32_t ngcthings, uint32_t niics) {
   cx->check(script);
 
-  UniquePtr<PrivateScriptData> data(PrivateScriptData::new_(cx, ngcthings, niics));
+  UniquePtr<PrivateScriptData> data(
+      PrivateScriptData::new_(cx, ngcthings, niics));
   if (!data) {
     return false;
   }
@@ -3183,8 +3184,7 @@ BaseScript* BaseScript::New(JSContext* cx, JS::Handle<JSFunction*> function,
 
 /* static */
 BaseScript* BaseScript::CreateRawLazy(JSContext* cx, uint32_t ngcthings,
-                                      uint32_t niics,
-                                      HandleFunction fun,
+                                      uint32_t niics, HandleFunction fun,
                                       Handle<ScriptSourceObject*> sourceObject,
                                       const SourceExtent& extent,
                                       uint32_t immutableFlags) {
@@ -3202,7 +3202,8 @@ BaseScript* BaseScript::CreateRawLazy(JSContext* cx, uint32_t ngcthings,
   // This condition is implicit in BaseScript::hasPrivateScriptData, and should
   // be mirrored on InputScript::hasPrivateScriptData.
   if (ngcthings || lazy->useMemberInitializers()) {
-    UniquePtr<PrivateScriptData> data(PrivateScriptData::new_(cx, ngcthings, niics));
+    UniquePtr<PrivateScriptData> data(
+        PrivateScriptData::new_(cx, ngcthings, niics));
     if (!data) {
       return nullptr;
     }

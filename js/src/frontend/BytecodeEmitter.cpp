@@ -284,6 +284,10 @@ bool BytecodeEmitter::emitCheck(JSOp op, ptrdiff_t delta,
     bytecodeSection().incrementNumICEntries();
   }
 
+  if (BytecodeOpHasIIC(op)) {
+    bytecodeSection().incrementNumIICs();
+  }
+
   return true;
 }
 
@@ -380,15 +384,17 @@ bool BytecodeEmitter::emitJumpTargetOp(JSOp op, BytecodeOffset* off) {
 
   // Record the current IC-entry index at start of this op.
   uint32_t numEntries = bytecodeSection().numICEntries();
+  uint32_t numIICs = bytecodeSection().numIICs();
 
   size_t n = GetOpLength(op) - 1;
-  MOZ_ASSERT(GetOpLength(op) >= 1 + ICINDEX_LEN);
+  MOZ_ASSERT(GetOpLength(op) >= 1 + ICINDEX_LEN + IICINDEX_LEN);
 
   if (!emitN(op, n, off)) {
     return false;
   }
 
   SET_ICINDEX(bytecodeSection().code(*off), numEntries);
+  SET_IICINDEX(bytecodeSection().code(*off), numIICs);
   return true;
 }
 
@@ -2461,8 +2467,8 @@ BytecodeEmitter::createImmutableScriptData() {
 
   return ImmutableScriptData::new_(
       fc, mainOffset(), maxFixedSlots, nslots, bodyScopeIndex,
-      bytecodeSection().numICEntries(), isFunction, funLength,
-      bytecodeSection().code(), bytecodeSection().notes(),
+      bytecodeSection().numICEntries(), isFunction,
+      funLength, bytecodeSection().code(), bytecodeSection().notes(),
       bytecodeSection().resumeOffsetList().span(),
       bytecodeSection().scopeNoteList().span(),
       bytecodeSection().tryNoteList().span());
@@ -11754,6 +11760,8 @@ bool BytecodeEmitter::intoScriptStencil(ScriptIndex scriptIndex) {
 
   ScriptStencil& script = compilationState.scriptData[scriptIndex];
   script.setHasSharedData();
+
+  script.numIICs = bytecodeSection().numIICs();
 
   // Update flags specific to functions.
   if (sc->isFunctionBox()) {

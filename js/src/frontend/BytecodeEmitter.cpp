@@ -285,6 +285,7 @@ bool BytecodeEmitter::emitCheck(JSOp op, ptrdiff_t delta,
   }
 
   if (BytecodeOpHasIIC(op)) {
+    SET_IICINDEX(bytecodeSection().code(*offset), op, bytecodeSection().numIICs());
     bytecodeSection().incrementNumIICs();
   }
 
@@ -384,17 +385,15 @@ bool BytecodeEmitter::emitJumpTargetOp(JSOp op, BytecodeOffset* off) {
 
   // Record the current IC-entry index at start of this op.
   uint32_t numEntries = bytecodeSection().numICEntries();
-  uint32_t numIICs = bytecodeSection().numIICs();
 
   size_t n = GetOpLength(op) - 1;
-  MOZ_ASSERT(GetOpLength(op) >= 1 + ICINDEX_LEN + IICINDEX_LEN);
+  MOZ_ASSERT(GetOpLength(op) >= 1 + ICINDEX_LEN);
 
   if (!emitN(op, n, off)) {
     return false;
   }
 
   SET_ICINDEX(bytecodeSection().code(*off), numEntries);
-  SET_IICINDEX(bytecodeSection().code(*off), numIICs);
   return true;
 }
 
@@ -690,11 +689,8 @@ ScopeIndex BytecodeEmitter::innermostScopeIndex() const {
 bool BytecodeEmitter::emitGCIndexOp(JSOp op, GCThingIndex index) {
   MOZ_ASSERT(checkStrictOrSloppy(op));
 
-  constexpr size_t OpLength = 1 + GCTHING_INDEX_LEN;
-  MOZ_ASSERT(GetOpLength(op) == OpLength);
-
   BytecodeOffset offset;
-  if (!emitCheck(op, OpLength, &offset)) {
+  if (!emitCheck(op, GetOpLength(op), &offset)) {
     return false;
   }
 

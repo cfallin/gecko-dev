@@ -2109,12 +2109,12 @@ static MOZ_NEVER_INLINE bool InterpretInner(
 #define DEFAULT() \
   label_default:
 #ifdef __wasi__
-#define DISPATCH_TO(OP)                                            \
-  JS_BEGIN_MACRO                                                   \
-    WEVAL_CONTEXT(pc);                                             \
-    auto* addresses_table = weval::assume_const_memory(addresses); \
-    goto* addresses_table[(OP)];                                   \
-  JS_END_MACRO
+#  define DISPATCH_TO(OP)                                            \
+    JS_BEGIN_MACRO                                                   \
+      WEVAL_CONTEXT(pc);                                             \
+      auto* addresses_table = weval::assume_const_memory(addresses); \
+      goto* addresses_table[(OP)];                                   \
+    JS_END_MACRO
 #else
 #  define DISPATCH_TO(OP)    \
     JS_BEGIN_MACRO           \
@@ -3203,6 +3203,18 @@ initial_dispatch:
       MutableHandleValue res = REGS.stackHandleAt(-1);
       ReservedRooted<PropertyName*> name(&ictx.rootName0,
                                          ictx.script->getName(pc));
+      IICStub** stubRoot = ictx.script->getIIC(pc, JSOp::GetProp);
+
+      if (lval.isObject()) {
+        ReservedRooted<JSObject*> obj(&ictx.rootObject0, &lval.toObject());
+        IICStub_GetProp* stub = (*stubRoot)->as<IICStub_GetProp>();
+        for (; stub; stub = stub->next->as<IICStub_GetProp>()) {
+          if (stub->prop == name && stub->shape == obj->shape()) {
+            // TODO.
+          }
+        }
+      }
+
       if (!GetPropertyOperation(cx, name, lval, res)) {
         goto error;
       }

@@ -55,6 +55,7 @@ enum {
   JOF_SPREAD = 1 << 22,      /* invoke instruction using spread argument */
   JOF_GNAME = 1 << 23,       /* predicted global name */
   JOF_IC = 1 << 24,          /* baseline may use an IC for this op */
+  JOF_IIC = 1 << 25,         /* interpreter IC exists for this op */
 };
 
 #endif /* vm_BytecodeFormatFlags_h */

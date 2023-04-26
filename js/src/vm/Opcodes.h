@@ -1035,10 +1035,10 @@
      *
      *   Category: Objects
      *   Type: Accessing properties
-     *   Operands: uint32_t nameIndex
+     *   Operands: uint32_t nameIndex, uint32_t iic
      *   Stack: obj => obj[name]
      */ \
-    MACRO(GetProp, get_prop, NULL, 5, 1, 1, JOF_ATOM|JOF_PROP|JOF_IC) \
+    MACRO(GetProp, get_prop, NULL, 9, 1, 1, JOF_ATOM|JOF_PROP|JOF_IC|JOF_IIC) \
     /*
      * Get the value of the property `obj[key]`.
      *
@@ -2301,10 +2301,10 @@
      *
      *   Category: Control flow
      *   Type: Jump targets
-     *   Operands: uint32_t icIndex, uint32_t iicIndex
+     *   Operands: uint32_t icIndex
      *   Stack: =>
      */ \
-    MACRO(JumpTarget, jump_target, NULL, 9, 0, 0, JOF_ICINDEX) \
+    MACRO(JumpTarget, jump_target, NULL, 5, 0, 0, JOF_ICINDEX) \
     /*
      * Marks the target of the backwards jump for some loop.
      *

@@ -1260,9 +1260,19 @@ static_assert(sizeof(ScriptWarmUpData) == sizeof(uintptr_t),
               "JIT code depends on ScriptWarmUpData being pointer-sized");
 
 // Interpreter IC (IIC) stub.
-class IICStub {
- public:
+struct IICStub {
   IICStub* next;
+
+  template<typename T>
+  T* as() {
+    return reinterpret_cast<T*>(this);
+  }
+};
+
+struct IICStub_GetProp : public IICStub {
+  js::Shape* shape;
+  js::PropertyName *prop;
+  uint32_t offset;
 };
 
 // [SMDOC] - JSScript data layout (unshared)
@@ -1491,8 +1501,7 @@ class BaseScript : public gc::TenuredCellWithNonGCPointer<uint8_t> {
 
   // Create a lazy BaseScript without initializing any gc-things.
   static BaseScript* CreateRawLazy(JSContext* cx, uint32_t ngcthings,
-                                   uint32_t niics,
-                                   HandleFunction fun,
+                                   uint32_t niics, HandleFunction fun,
                                    JS::Handle<ScriptSourceObject*> sourceObject,
                                    const SourceExtent& extent,
                                    uint32_t immutableFlags);
@@ -1581,6 +1590,10 @@ class BaseScript : public gc::TenuredCellWithNonGCPointer<uint8_t> {
 
   mozilla::Span<const JS::GCCellPtr> gcthings() const {
     return data_ ? data_->gcthings() : mozilla::Span<JS::GCCellPtr>();
+  }
+
+  mozilla::Span<IICStub*> iics() const {
+    return data_ ? data_->iics() : mozilla::Span<IICStub*>();
   }
 
   // NOTE: This is only used to initialize a fresh script.
@@ -2084,6 +2097,13 @@ class JSScript : public js::BaseScript {
     MOZ_ASSERT(containsPC<js::GCThingIndex>(pc));
     MOZ_ASSERT(js::JOF_OPTYPE(JSOp(*pc)) == JOF_BIGINT);
     return getBigInt(GET_GCTHING_INDEX(pc));
+  }
+
+  js::IICStub** getIIC(jsbytecode* pc, JSOp op) const {
+    MOZ_ASSERT(js::BytecodeOpHasIIC(op));
+    MOZ_ASSERT(op == JSOp(*pc));
+    uint32_t iic = js::GET_IICINDEX(pc, op);
+    return &iics()[iic];
   }
 
   // The following 3 functions find the static scope just before the

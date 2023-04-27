@@ -6,6 +6,13 @@ x.a = 1;
 x.b = 2;
 x.c = 3;
 
-print(x.a);
-print(x.b);
-print(x.a);
+for (let i = 0; i < 10; i++) {
+    print(x.a);
+}
+
+var y = {};
+y.__proto__ = x;
+
+for (let i = 0; i < 10; i++) {
+    print(y.a);
+}

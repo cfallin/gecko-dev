@@ -2217,7 +2217,6 @@ static MOZ_ALWAYS_INLINE bool NativeGetPropertyInline(
     }
 
     if (stubRoot) {
-      printf("going to parent; creating subchain on shape %p\n", obj->shape());
       // Add a link in the Interpreter IC chain.
       IICStub_GetProp* stub = cx->pod_calloc<IICStub_GetProp>();
       if (!stub) {

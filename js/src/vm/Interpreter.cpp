@@ -3230,14 +3230,10 @@ initial_dispatch:
         ReservedRooted<JSObject*> obj(&ictx.rootObject0, &lval.toObject());
         IICStub_GetProp* stub = (*stubRoot)->as<IICStub_GetProp>();
         if (GetPropIIC(stub, &obj, res)) {
-          printf("hit\n");
           goto getprop_ok;
-        } else {
-          printf("miss\n");
         }
       }
 
-      printf("GetProp op: stubRoot = %p\n", stubRoot);
       if (!GetPropertyOperation(cx, name, lval, res, stubRoot)) {
         goto error;
       }
@@ -4938,8 +4934,6 @@ bool js::GetProperty(JSContext* cx, HandleValue v, Handle<PropertyName*> name,
       return true;
     }
   }
-
-  printf("js::GetProperty: stubRoot = %p\n", stubRoot);
 
   // Optimize common cases like (2).toString() or "foo".valueOf() to not
   // create a wrapper object.

@@ -712,7 +712,6 @@ static MOZ_ALWAYS_INLINE bool NativeLookupOwnPropertyInline(
   if (PropMap* map = obj->shape()->lookup(cx, id, &index)) {
     propp->setNativeProperty(map->getPropertyInfo(index));
 
-    printf("found property; stubRoot = %p\n", stubRoot);
     if (stubRoot) {
       IICStub_GetProp* stub = cx->pod_calloc<IICStub_GetProp>();
       if (!stub) {

@@ -2513,8 +2513,6 @@ void GCRuntime::discardJITCodeForGC() {
           pretenuredSiteResetCount);
     }
   }
-
-  js::ClearLookupCacheOnGC();
 }
 
 void GCRuntime::relazifyFunctionsForShrinkingGC() {

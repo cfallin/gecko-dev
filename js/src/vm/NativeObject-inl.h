@@ -40,6 +40,8 @@ extern bool js::IsExtendedPrimitive(const JSObject& obj);
 
 namespace js {
 
+struct IICStub;
+
 inline uint32_t NativeObject::numFixedSlotsMaybeForwarded() const {
   return gc::MaybeForwarded(JSObject::shape())->asNative().numFixedSlots();
 }
@@ -667,7 +669,7 @@ template <AllowGC allowGC,
           LookupResolveMode resolveMode = LookupResolveMode::CheckResolve>
 static MOZ_ALWAYS_INLINE bool NativeLookupOwnPropertyInline(
     JSContext* cx, typename MaybeRooted<NativeObject*, allowGC>::HandleType obj,
-    typename MaybeRooted<jsid, allowGC>::HandleType id, PropertyResult* propp) {
+    typename MaybeRooted<jsid, allowGC>::HandleType id, PropertyResult* propp, IICStub** stubRoot) {
   // Native objects should should avoid `lookupProperty` hooks, and those that
   // use them should avoid recursively triggering lookup, and those that still
   // violate this guidance are the ModuleEnvironmentObject.
@@ -708,6 +710,16 @@ static MOZ_ALWAYS_INLINE bool NativeLookupOwnPropertyInline(
   uint32_t index;
   if (PropMap* map = obj->shape()->lookup(cx, id, &index)) {
     propp->setNativeProperty(map->getPropertyInfo(index));
+
+    IICStub_GetProp* stub = cx->pod_malloc<IICStub_GetProp>();
+    if (!stub) {
+      return false;
+    }
+    stub->location = IICStub_GetProp::Self;
+    stub->slot = propp->propertyInfo().slot();
+    stub->nextBase = *stubRoot;
+    *stubRoot = stub;
+    
     return true;
   }
 
@@ -750,7 +762,7 @@ static MOZ_ALWAYS_INLINE bool NativeLookupOwnPropertyInline(
 [[nodiscard]] static inline bool NativeLookupOwnPropertyNoResolve(
     JSContext* cx, NativeObject* obj, jsid id, PropertyResult* result) {
   return NativeLookupOwnPropertyInline<NoGC, LookupResolveMode::IgnoreResolve>(
-      cx, obj, id, result);
+    cx, obj, id, result, nullptr);
 }
 
 template <AllowGC allowGC,
@@ -761,13 +773,13 @@ static MOZ_ALWAYS_INLINE bool NativeLookupPropertyInline(
     typename MaybeRooted<
         std::conditional_t<allowGC == AllowGC::CanGC, JSObject*, NativeObject*>,
         allowGC>::MutableHandleType objp,
-    PropertyResult* propp) {
+    PropertyResult* propp, IICStub** stubRoot) {
   /* Search scopes starting with obj and following the prototype link. */
   typename MaybeRooted<NativeObject*, allowGC>::RootType current(cx, obj);
 
   while (true) {
     if (!NativeLookupOwnPropertyInline<allowGC, resolveMode>(cx, current, id,
-                                                             propp)) {
+                                                             propp, stubRoot)) {
       return false;
     }
 
@@ -796,6 +808,17 @@ static MOZ_ALWAYS_INLINE bool NativeLookupPropertyInline(
         return false;
       }
     }
+
+
+    // Add a link in the Interpreter IC chain.
+    IICStub_GetProp* stub = cx->pod_malloc<IICStub_GetProp>();
+    if (!stub) {
+      return false;
+    }
+    stub->nextBase = *stubRoot;
+    *stubRoot = stub;
+    stub->location = IICStub_GetProp::Proto;
+    stubRoot = (IICStub**)&stub->proto;
 
     current = &proto->as<NativeObject>();
   }

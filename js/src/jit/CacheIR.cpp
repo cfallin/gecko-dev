@@ -576,7 +576,7 @@ static NativeGetPropKind CanAttachNativeGetProp(JSContext* cx, JSObject* obj,
   // perf cost. The limits were arbitrarily set, anyways.
   NativeObject* baseHolder = nullptr;
   PropertyResult prop;
-  if (!LookupPropertyPure(cx, obj, id, &baseHolder, &prop)) {
+  if (!LookupPropertyPure(cx, obj, id, &baseHolder, &prop, nullptr)) {
     return NativeGetPropKind::None;
   }
   auto* nobj = &obj->as<NativeObject>();
@@ -2196,7 +2196,7 @@ AttachDecision GetPropIRGenerator::tryAttachFunction(HandleObject obj,
   NativeObject* holder = nullptr;
   PropertyResult prop;
   // If this property exists already, don't attach the stub.
-  if (LookupPropertyPure(cx_, obj, id, &holder, &prop)) {
+  if (LookupPropertyPure(cx_, obj, id, &holder, &prop, nullptr)) {
     return AttachDecision::NoAction;
   }
 
@@ -3577,7 +3577,7 @@ AttachDecision HasPropIRGenerator::tryAttachNamedProp(HandleObject obj,
 
     holder = &obj->as<NativeObject>();
   } else {
-    if (!LookupPropertyPure(cx_, obj, key, &holder, &prop)) {
+    if (!LookupPropertyPure(cx_, obj, key, &holder, &prop, nullptr)) {
       return AttachDecision::NoAction;
     }
   }
@@ -4156,7 +4156,7 @@ static bool CanAttachSetter(JSContext* cx, jsbytecode* pc, JSObject* obj,
   MOZ_ASSERT(IsPropertySetOp(JSOp(*pc)));
 
   PropertyResult prop;
-  if (!LookupPropertyPure(cx, obj, id, holder, &prop)) {
+  if (!LookupPropertyPure(cx, obj, id, holder, &prop, nullptr)) {
     return false;
   }
   auto* nobj = &obj->as<NativeObject>();
@@ -5158,7 +5158,7 @@ AttachDecision InstanceOfIRGenerator::tryAttachStub() {
   NativeObject* hasInstanceHolder = nullptr;
   jsid hasInstanceID = PropertyKey::Symbol(cx_->wellKnownSymbols().hasInstance);
   if (!LookupPropertyPure(cx_, fun, hasInstanceID, &hasInstanceHolder,
-                          &hasInstanceProp) ||
+                          &hasInstanceProp, nullptr) ||
       !hasInstanceProp.isNativeProperty()) {
     trackAttached(IRGenerator::NotAttached);
     return AttachDecision::NoAction;

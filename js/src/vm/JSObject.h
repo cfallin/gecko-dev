@@ -28,6 +28,8 @@ class GCMarker;
 class Nursery;
 struct AutoEnterOOMUnsafeRegion;
 
+struct IICStub;
+
 namespace gc {
 class RelocationOverlay;
 }  // namespace gc
@@ -871,12 +873,14 @@ extern bool LookupNameUnqualified(JSContext* cx, Handle<PropertyName*> name,
 namespace js {
 
 bool LookupPropertyPure(JSContext* cx, JSObject* obj, jsid id,
-                        NativeObject** objp, PropertyResult* propp);
+                        NativeObject** objp, PropertyResult* propp,
+                        IICStub** stubRoot);
 
 bool LookupOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id,
                            PropertyResult* propp);
 
-bool GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp);
+bool GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp,
+                     IICStub** stubRoot);
 
 bool GetOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp,
                         bool* found);
@@ -1084,8 +1088,6 @@ extern size_t SizeOfDataIfCDataObject(mozilla::MallocSizeOf mallocSizeOf,
 #ifdef DEBUG
 void AssertJSClassInvariants(const JSClass* clasp);
 #endif
-
-void ClearLookupCacheOnGC();
 
 } /* namespace js */
 

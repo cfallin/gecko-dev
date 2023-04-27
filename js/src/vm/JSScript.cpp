@@ -164,6 +164,8 @@ void js::BaseScript::finalize(JS::GCContext* gcx) {
 #endif
 
   if (data_) {
+    data_->releaseIICs();
+
     // We don't need to triger any barriers here, just free the memory.
     size_t size = data_->allocationSize();
     AlwaysPoison(data_, JS_POISONED_JSSCRIPT_DATA_PATTERN, size,
@@ -2325,9 +2327,49 @@ bool PrivateScriptData::InitFromStencil(
   return true;
 }
 
+static void TraceIICStubGetProp(JSTracer* trc, IICStub_GetProp* stub) {
+  for (IICStub_GetProp* gp = stub->as<IICStub_GetProp>(); gp;
+       gp = gp->next()) {
+    TraceNullableEdge(trc, &gp->shape, "IICStub_GetProp::shape");
+    if (gp->location == IICStub_GetProp::Proto) {
+      TraceIICStubGetProp(trc, gp->proto);
+    }
+  }
+}
+
 void PrivateScriptData::trace(JSTracer* trc) {
   for (JS::GCCellPtr& elem : gcthings()) {
     TraceManuallyBarrieredGCCellPtr(trc, &elem, "script-gcthing");
+  }
+  for (IICStub*& stub : iics()) {
+    if (stub) {
+      switch (stub->kind) {
+        case IICStub::Kind::GetProp:
+          TraceIICStubGetProp(trc, stub->as<IICStub_GetProp>());
+          break;
+      }
+    }
+  }
+}
+
+static void ReleaseIICGetProp(IICStub_GetProp* stub) {
+  IICStub_GetProp* next;
+  for (; stub; stub = next) {
+    next = stub->next();
+    if (stub->location == IICStub_GetProp::Proto) {
+      ReleaseIICGetProp(stub->proto);
+    }
+    js_free(stub);
+  }
+}
+
+void PrivateScriptData::releaseIICs() {
+  for (IICStub*& stub : iics()) {
+    switch (stub->kind) {
+    case IICStub::Kind::GetProp:
+      ReleaseIICGetProp(stub->as<IICStub_GetProp>());
+      break;
+    }
   }
 }
 

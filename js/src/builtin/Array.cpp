@@ -1008,7 +1008,7 @@ static MOZ_ALWAYS_INLINE bool IsArraySpecies(JSContext* cx,
 
   Value ctor;
   if (!GetPropertyPure(cx, origArray, NameToId(cx->names().constructor),
-                       &ctor)) {
+                       &ctor, nullptr)) {
     return false;
   }
 

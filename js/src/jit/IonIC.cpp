@@ -173,7 +173,7 @@ bool IonGetPropertyIC::update(JSContext* cx, HandleScript outerScript,
 
   if (ic->kind() == CacheKind::GetProp) {
     Rooted<PropertyName*> name(cx, idVal.toString()->asAtom().asPropertyName());
-    if (!GetProperty(cx, val, name, res)) {
+    if (!GetProperty(cx, val, name, res, nullptr)) {
       return false;
     }
   } else {

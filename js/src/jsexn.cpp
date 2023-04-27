@@ -402,7 +402,7 @@ static bool GetPropertyNoException(JSContext* cx, HandleObject obj,
                                    Handle<PropertyName*> name,
                                    MutableHandleValue vp) {
   // This function has no side-effects so always use it.
-  if (GetPropertyPure(cx, obj, NameToId(name), vp.address())) {
+  if (GetPropertyPure(cx, obj, NameToId(name), vp.address(), nullptr)) {
     return true;
   }
 

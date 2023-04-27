@@ -1063,7 +1063,7 @@ template <AllowGC allowGC>
 bool js::NativeLookupOwnProperty(
     JSContext* cx, typename MaybeRooted<NativeObject*, allowGC>::HandleType obj,
     typename MaybeRooted<jsid, allowGC>::HandleType id, PropertyResult* propp) {
-  return NativeLookupOwnPropertyInline<allowGC>(cx, obj, id, propp);
+  return NativeLookupOwnPropertyInline<allowGC>(cx, obj, id, propp, nullptr);
 }
 
 template bool js::NativeLookupOwnProperty<CanGC>(JSContext* cx,
@@ -1910,7 +1910,7 @@ bool js::NativeHasProperty(JSContext* cx, Handle<NativeObject*> obj,
   // 7.a. below.
   for (;;) {
     // Steps 2-3.
-    if (!NativeLookupOwnPropertyInline<CanGC>(cx, pobj, id, &prop)) {
+    if (!NativeLookupOwnPropertyInline<CanGC>(cx, pobj, id, &prop, nullptr)) {
       return false;
     }
 
@@ -2173,7 +2173,7 @@ static MOZ_ALWAYS_INLINE bool NativeGetPropertyInline(
   // 4.d below.
   for (;;) {
     // Steps 2-3.
-    if (!NativeLookupOwnPropertyInline<allowGC>(cx, pobj, id, &prop)) {
+    if (!NativeLookupOwnPropertyInline<allowGC>(cx, pobj, id, &prop, nullptr)) {
       return false;
     }
 
@@ -2564,7 +2564,7 @@ bool js::NativeSetProperty(JSContext* cx, Handle<NativeObject*> obj,
   // also reported at <https://github.com/tc39/ecma262/issues/1541>.
   for (;;) {
     // Steps 2-3.
-    if (!NativeLookupOwnPropertyInline<CanGC>(cx, pobj, id, &prop)) {
+    if (!NativeLookupOwnPropertyInline<CanGC>(cx, pobj, id, &prop, nullptr)) {
       return false;
     }
 

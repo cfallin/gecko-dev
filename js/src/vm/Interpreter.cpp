@@ -239,12 +239,13 @@ bool js::Debug_CheckSelfHosted(JSContext* cx, HandleValue funVal) {
 static MOZ_NEVER_INLINE bool GetPropertyOperation(JSContext* cx,
                                                   Handle<PropertyName*> name,
                                                   HandleValue lval,
-                                                  MutableHandleValue vp) {
+                                                  MutableHandleValue vp,
+                                                  IICStub** stubRoot) {
   if (name == cx->names().length && GetLengthProperty(lval, vp)) {
     return true;
   }
 
-  return GetProperty(cx, lval, name, vp);
+  return GetProperty(cx, lval, name, vp, stubRoot);
 }
 
 static inline bool GetNameOperation(JSContext* cx, HandleObject envChain,
@@ -2081,6 +2082,26 @@ void js::RegisterInterpreterSpecialization(void** specialized,
 #endif
 }
 
+static MOZ_ALWAYS_INLINE bool GetPropIIC(IICStub_GetProp* stub,
+                                         MutableHandleObject obj,
+                                         MutableHandleValue res) {
+  for (; stub; stub = stub->next()) {
+    if (stub->shape == obj->shape()) {
+      NativeObject* nobj = &obj->as<NativeObject>();
+      switch (stub->location) {
+        case IICStub_GetProp::Self:
+          res.set(nobj->getSlot(stub->slot));
+          return true;
+        case IICStub_GetProp::Proto:
+          obj.set(nobj->staticPrototype());
+          stub = stub->proto;
+          break;
+      }
+    }
+  }
+  return false;
+}
+
 static MOZ_NEVER_INLINE bool InterpretInner(
     JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc,
     ImmutableScriptData* isd, bool error_bailout, bool interpret_bailout,
@@ -3208,16 +3229,15 @@ initial_dispatch:
       if (lval.isObject()) {
         ReservedRooted<JSObject*> obj(&ictx.rootObject0, &lval.toObject());
         IICStub_GetProp* stub = (*stubRoot)->as<IICStub_GetProp>();
-        for (; stub; stub = stub->next->as<IICStub_GetProp>()) {
-          if (stub->prop == name && stub->shape == obj->shape()) {
-            // TODO.
-          }
+        if (GetPropIIC(stub, &obj, res)) {
+          goto getprop_ok;
         }
       }
 
-      if (!GetPropertyOperation(cx, name, lval, res)) {
+      if (!GetPropertyOperation(cx, name, lval, res, stubRoot)) {
         goto error;
       }
+    getprop_ok:
       cx->debugOnlyCheck(res);
     }
     END_CASE(GetProp)
@@ -4904,7 +4924,7 @@ bool js::ThrowOperation(JSContext* cx, HandleValue v) {
 }
 
 bool js::GetProperty(JSContext* cx, HandleValue v, Handle<PropertyName*> name,
-                     MutableHandleValue vp) {
+                     MutableHandleValue vp, IICStub** stubRoot) {
   if (name == cx->names().length) {
     // Fast path for strings, arrays and arguments.
     if (GetLengthProperty(v, vp)) {
@@ -4953,7 +4973,7 @@ bool js::GetProperty(JSContext* cx, HandleValue v, Handle<PropertyName*> name,
       return false;
     }
 
-    if (GetPropertyPure(cx, proto, NameToId(name), vp.address())) {
+    if (GetPropertyPure(cx, proto, NameToId(name), vp.address(), stubRoot)) {
       return true;
     }
   }
@@ -5574,8 +5594,8 @@ ArrayObject* js::NewArrayObjectBaselineFallback(JSContext* cx, uint32_t length,
       site->initialHeap() == gc::TenuredHeap ? TenuredObject : GenericObject;
   ArrayObject* array = NewDenseFullyAllocatedArray(cx, length, newKind, site);
   // It's important that we allocate an object with the alloc kind we were
-  // expecting so that a new arena gets allocated if the current arena for that
-  // kind is full.
+  // expecting so that a new arena gets allocated if the current arena for
+  // that kind is full.
   MOZ_ASSERT_IF(array && array->isTenured(),
                 array->asTenured().getAllocKind() == allocKind);
   return array;
@@ -5587,8 +5607,8 @@ ArrayObject* js::NewArrayObjectOptimizedFallback(JSContext* cx, uint32_t length,
   gc::AllocSite* site = cx->zone()->optimizedAllocSite();
   ArrayObject* array = NewDenseFullyAllocatedArray(cx, length, newKind, site);
   // It's important that we allocate an object with the alloc kind we were
-  // expecting so that a new arena gets allocated if the current arena for that
-  // kind is full.
+  // expecting so that a new arena gets allocated if the current arena for
+  // that kind is full.
   MOZ_ASSERT_IF(array && array->isTenured(),
                 array->asTenured().getAllocKind() == allocKind);
   return array;

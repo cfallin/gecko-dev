@@ -23,6 +23,8 @@ class WithScope;
 class EnvironmentIter;
 class PlainObject;
 
+struct IICStub;
+
 /*
  * Convert null/undefined |thisv| into the global lexical's |this| object, and
  * replace other primitives with boxed versions.
@@ -515,7 +517,7 @@ bool HandleClosingGeneratorReturn(JSContext* cx, AbstractFramePtr frame,
 bool ThrowOperation(JSContext* cx, HandleValue v);
 
 bool GetProperty(JSContext* cx, HandleValue value, Handle<PropertyName*> name,
-                 MutableHandleValue vp);
+                 MutableHandleValue vp, IICStub** stubRoot);
 
 JSObject* Lambda(JSContext* cx, HandleFunction fun, HandleObject parent);
 

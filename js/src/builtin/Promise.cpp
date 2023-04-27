@@ -5724,7 +5724,7 @@ static bool Promise_catch_impl(JSContext* cx, unsigned argc, Value* vp,
 
   // Step 2. Return ? Invoke(promise, "then", « undefined, onRejected »).
   RootedValue thenVal(cx);
-  if (!GetProperty(cx, thisVal, cx->names().then, &thenVal)) {
+  if (!GetProperty(cx, thisVal, cx->names().then, &thenVal, nullptr)) {
     return false;
   }
 

@@ -1551,7 +1551,7 @@ bool js::LookupProperty(JSContext* cx, HandleObject obj, js::HandleId id,
     return op(cx, obj, id, objp, propp);
   }
   return NativeLookupPropertyInline<CanGC>(cx, obj.as<NativeObject>(), id, objp,
-                                           propp);
+                                           propp, nullptr);
 }
 
 bool js::LookupName(JSContext* cx, Handle<PropertyName*> name,
@@ -1587,7 +1587,8 @@ bool js::LookupNameNoGC(JSContext* cx, PropertyName* name, JSObject* envChain,
       return false;
     }
     if (!NativeLookupPropertyInline<NoGC>(cx, &env->as<NativeObject>(),
-                                          NameToId(name), pobjp, propp)) {
+                                          NameToId(name), pobjp, propp,
+                                          nullptr)) {
       return false;
     }
     if (propp->isFound()) {
@@ -1709,50 +1710,14 @@ bool js::HasOwnProperty(JSContext* cx, HandleObject obj, HandleId id,
   return true;
 }
 
-struct ShapeAndPropHash {
-  size_t operator()(const std::tuple<Shape*, uintptr_t>& value) const {
-    return std::hash<Shape*>()(std::get<0>(value)) ^
-           std::hash<uintptr_t>()(std::get<1>(value));
-  }
-};
-
-static std::unordered_map<std::tuple<Shape*, uintptr_t>,
-                          std::tuple<PropertyResult, bool>, ShapeAndPropHash>
-    lookup_cache;
-
-void js::ClearLookupCacheOnGC() { lookup_cache.clear(); }
-
 bool js::LookupPropertyPure(JSContext* cx, JSObject* obj, jsid id,
-                            NativeObject** objp, PropertyResult* propp) {
-  auto cache_key = std::make_tuple(obj->shape(), id.asRawBits());
-  auto it = lookup_cache.find(cache_key);
-  if (it != lookup_cache.end()) {
-    *propp = std::get<0>(it->second);
-    bool isInProto = std::get<1>(it->second);
-    if (isInProto) {
-      *objp = &obj->staticPrototype()->as<NativeObject>();
-    } else {
-      *objp = &obj->as<NativeObject>();
-    }
-    return true;
-  }
-
+                            NativeObject** objp, PropertyResult* propp,
+                            IICStub** stubRoot) {
   if (obj->getOpsLookupProperty()) {
     return false;
   }
-  bool result =
-      NativeLookupPropertyInline<NoGC, LookupResolveMode::CheckMayResolve>(
-          cx, &obj->as<NativeObject>(), id, objp, propp);
-
-  if (result) {
-    if (static_cast<JSObject*>(*objp) == obj) {
-      lookup_cache.insert(std::make_pair(cache_key, std::make_tuple(*propp, false)));
-    } else if (static_cast<JSObject*>(*objp) == obj->staticPrototype()) {
-      lookup_cache.insert(std::make_pair(cache_key, std::make_tuple(*propp, true)));
-    }
-  }
-
-  return result;
+  return NativeLookupPropertyInline<NoGC, LookupResolveMode::CheckMayResolve>(
+      cx, &obj->as<NativeObject>(), id, objp, propp, stubRoot);
 }
 
 bool js::LookupOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id,
@@ -1762,7 +1727,7 @@ bool js::LookupOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id,
   }
   return NativeLookupOwnPropertyInline<NoGC,
                                        LookupResolveMode::CheckMayResolve>(
-      cx, &obj->as<NativeObject>(), id, propp);
+      cx, &obj->as<NativeObject>(), id, propp, nullptr);
 }
 
 static inline bool NativeGetPureInline(NativeObject* pobj, jsid id,
@@ -1788,10 +1753,11 @@ static inline bool NativeGetPureInline(NativeObject* pobj, jsid id,
   return true;
 }
 
-bool js::GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp) {
+bool js::GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp,
+                         IICStub** stubRoot) {
   NativeObject* pobj;
   PropertyResult prop;
-  if (!LookupPropertyPure(cx, obj, id, &pobj, &prop)) {
+  if (!LookupPropertyPure(cx, obj, id, &pobj, &prop, stubRoot)) {
     return false;
   }
 
@@ -1844,7 +1810,7 @@ bool js::GetGetterPure(JSContext* cx, JSObject* obj, jsid id, JSFunction** fp) {
    * it. */
   NativeObject* pobj;
   PropertyResult prop;
-  if (!LookupPropertyPure(cx, obj, id, &pobj, &prop)) {
+  if (!LookupPropertyPure(cx, obj, id, &pobj, &prop, nullptr)) {
     return false;
   }
 
@@ -2373,7 +2339,7 @@ bool JS::OrdinaryToPrimitive(JSContext* cx, HandleObject obj, JSType hint,
       }
     } else if (clasp == &PlainObject::class_) {
       JSFunction* fun;
-      if (GetPropertyPure(cx, obj, id, vp.address()) &&
+      if (GetPropertyPure(cx, obj, id, vp.address(), nullptr) &&
           IsFunctionObject(vp, &fun)) {
         // Common case: we have a toString function. Try to short-circuit if
         // it's Object.prototype.toString and there's no @@toStringTag.
@@ -3497,7 +3463,7 @@ void JSObject::traceChildren(JSTracer* trc) {
   //   getter.
   RootedValue ctor(cx);
   bool ctorGetSucceeded = GetPropertyPure(
-      cx, obj, NameToId(cx->names().constructor), ctor.address());
+      cx, obj, NameToId(cx->names().constructor), ctor.address(), nullptr);
   if (ctorGetSucceeded && ctor.isObject() && &ctor.toObject() == defaultCtor) {
     jsid speciesId = PropertyKey::Symbol(cx->wellKnownSymbols().species);
     JSFunction* getter;

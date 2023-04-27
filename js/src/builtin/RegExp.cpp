@@ -2166,7 +2166,7 @@ bool js::intrinsic_GetStringDataProperty(JSContext* cx, unsigned argc,
   }
 
   Value v;
-  if (GetPropertyPure(cx, obj, AtomToId(atom), &v) && v.isString()) {
+  if (GetPropertyPure(cx, obj, AtomToId(atom), &v, nullptr) && v.isString()) {
     args.rval().set(v);
   } else {
     args.rval().setUndefined();

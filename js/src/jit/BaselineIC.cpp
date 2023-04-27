@@ -1214,7 +1214,7 @@ bool DoGetPropFallback(JSContext* cx, BaselineFrame* frame,
   }
 
   MOZ_ASSERT(op == JSOp::GetProp);
-  if (!GetProperty(cx, val, name, res)) {
+  if (!GetProperty(cx, val, name, res, nullptr)) {
     return false;
   }
 

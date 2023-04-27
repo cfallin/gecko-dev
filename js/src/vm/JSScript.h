@@ -1261,18 +1261,30 @@ static_assert(sizeof(ScriptWarmUpData) == sizeof(uintptr_t),
 
 // Interpreter IC (IIC) stub.
 struct IICStub {
-  IICStub* next;
+  enum Kind {
+    GetProp,
+  };
+  Kind kind;
+  IICStub* nextBase;
 
   template<typename T>
   T* as() {
+    MOZ_ASSERT(kind_ == T::subkind);
     return reinterpret_cast<T*>(this);
   }
 };
 
 struct IICStub_GetProp : public IICStub {
-  js::Shape* shape;
-  js::PropertyName *prop;
-  uint32_t offset;
+  static const Kind subkind = Kind::GetProp;
+
+  IICStub_GetProp* next() { return nextBase->as<IICStub_GetProp>(); }
+  
+  js::HeapPtr<js::Shape*> shape;
+  enum { Self, Proto } location;
+  union {
+    IICStub_GetProp* proto;
+    uint32_t slot;
+  };
 };
 
 // [SMDOC] - JSScript data layout (unshared)
@@ -1355,6 +1367,8 @@ class alignas(uintptr_t) PrivateScriptData final : public TrailingArray {
   void trace(JSTracer* trc);
 
   size_t allocationSize() const;
+
+  void releaseIICs();
 
   // PrivateScriptData has trailing data so isn't copyable or movable.
   PrivateScriptData(const PrivateScriptData&) = delete;

@@ -669,7 +669,8 @@ template <AllowGC allowGC,
           LookupResolveMode resolveMode = LookupResolveMode::CheckResolve>
 static MOZ_ALWAYS_INLINE bool NativeLookupOwnPropertyInline(
     JSContext* cx, typename MaybeRooted<NativeObject*, allowGC>::HandleType obj,
-    typename MaybeRooted<jsid, allowGC>::HandleType id, PropertyResult* propp, IICStub** stubRoot) {
+    typename MaybeRooted<jsid, allowGC>::HandleType id, PropertyResult* propp,
+    IICStub** stubRoot) {
   // Native objects should should avoid `lookupProperty` hooks, and those that
   // use them should avoid recursively triggering lookup, and those that still
   // violate this guidance are the ModuleEnvironmentObject.
@@ -711,15 +712,19 @@ static MOZ_ALWAYS_INLINE bool NativeLookupOwnPropertyInline(
   if (PropMap* map = obj->shape()->lookup(cx, id, &index)) {
     propp->setNativeProperty(map->getPropertyInfo(index));
 
-    IICStub_GetProp* stub = cx->pod_malloc<IICStub_GetProp>();
-    if (!stub) {
-      return false;
+    printf("found property; stubRoot = %p\n", stubRoot);
+    if (stubRoot) {
+      IICStub_GetProp* stub = cx->pod_malloc<IICStub_GetProp>();
+      if (!stub) {
+        return false;
+      }
+      stub->location = IICStub_GetProp::Self;
+      stub->shape.set(obj->shape());
+      stub->slot = propp->propertyInfo().slot();
+      stub->nextBase = *stubRoot;
+      *stubRoot = stub;
     }
-    stub->location = IICStub_GetProp::Self;
-    stub->slot = propp->propertyInfo().slot();
-    stub->nextBase = *stubRoot;
-    *stubRoot = stub;
-    
+
     return true;
   }
 
@@ -762,7 +767,7 @@ static MOZ_ALWAYS_INLINE bool NativeLookupOwnPropertyInline(
 [[nodiscard]] static inline bool NativeLookupOwnPropertyNoResolve(
     JSContext* cx, NativeObject* obj, jsid id, PropertyResult* result) {
   return NativeLookupOwnPropertyInline<NoGC, LookupResolveMode::IgnoreResolve>(
-    cx, obj, id, result, nullptr);
+      cx, obj, id, result, nullptr);
 }
 
 template <AllowGC allowGC,
@@ -809,16 +814,19 @@ static MOZ_ALWAYS_INLINE bool NativeLookupPropertyInline(
       }
     }
 
-
-    // Add a link in the Interpreter IC chain.
-    IICStub_GetProp* stub = cx->pod_malloc<IICStub_GetProp>();
-    if (!stub) {
-      return false;
+    if (stubRoot) {
+      printf("going to parent; creating subchain on shape %p\n", obj->shape());
+      // Add a link in the Interpreter IC chain.
+      IICStub_GetProp* stub = cx->pod_malloc<IICStub_GetProp>();
+      if (!stub) {
+        return false;
+      }
+      stub->nextBase = *stubRoot;
+      *stubRoot = stub;
+      stub->shape.set(obj->shape());
+      stub->location = IICStub_GetProp::Proto;
+      stubRoot = (IICStub**)&stub->proto;
     }
-    stub->nextBase = *stubRoot;
-    *stubRoot = stub;
-    stub->location = IICStub_GetProp::Proto;
-    stubRoot = (IICStub**)&stub->proto;
 
     current = &proto->as<NativeObject>();
   }

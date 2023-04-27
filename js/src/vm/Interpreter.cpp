@@ -3230,7 +3230,10 @@ initial_dispatch:
         ReservedRooted<JSObject*> obj(&ictx.rootObject0, &lval.toObject());
         IICStub_GetProp* stub = (*stubRoot)->as<IICStub_GetProp>();
         if (GetPropIIC(stub, &obj, res)) {
+          printf("hit\n");
           goto getprop_ok;
+        } else {
+          printf("miss\n");
         }
       }
 

@@ -2331,7 +2331,7 @@ static void TraceIICStubGetProp(JSTracer* trc, IICStub_GetProp* stub) {
   for (IICStub_GetProp* gp = stub->as<IICStub_GetProp>(); gp;
        gp = gp->next()) {
     TraceNullableEdge(trc, &gp->shape, "IICStub_GetProp::shape");
-    if (gp->location == IICStub_GetProp::Proto) {
+    if (gp->location == IICStub_GetProp::Proto && gp->proto) {
       TraceIICStubGetProp(trc, gp->proto);
     }
   }
@@ -2356,7 +2356,7 @@ static void ReleaseIICGetProp(IICStub_GetProp* stub) {
   IICStub_GetProp* next;
   for (; stub; stub = next) {
     next = stub->next();
-    if (stub->location == IICStub_GetProp::Proto) {
+    if (stub->location == IICStub_GetProp::Proto && stub->proto) {
       ReleaseIICGetProp(stub->proto);
     }
     js_free(stub);
@@ -2365,6 +2365,9 @@ static void ReleaseIICGetProp(IICStub_GetProp* stub) {
 
 void PrivateScriptData::releaseIICs() {
   for (IICStub*& stub : iics()) {
+    if (!stub) {
+      continue;
+    }
     switch (stub->kind) {
     case IICStub::Kind::GetProp:
       ReleaseIICGetProp(stub->as<IICStub_GetProp>());

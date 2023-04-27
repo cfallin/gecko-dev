@@ -40,6 +40,7 @@
 #endif
 #include <ctime>
 #include <math.h>
+#include <optional>
 #ifndef __wasi__
 #  include <signal.h>
 #endif
@@ -10476,6 +10477,10 @@ auto minVal(T a, Ts... args) {
     }
   }
 
+#ifdef JS_SHELL_WIZER
+  defaultDelazificationMode = JS::DelazificationOption::ParseEverythingEagerly;
+#endif
+
   /* |scriptArgs| gets bound on the global before any code is run. */
   if (!BindScriptArgs(cx, op)) {
     return false;
@@ -11228,7 +11233,7 @@ static void SetWorkerContextOptions(JSContext* cx) {
   return true;
 }
 
-static int Shell(JSContext* cx, OptionParser* op) {
+static int Shell(JSContext* cx, OptionParser* op, MutableHandleObject lastGlobal) {
 #ifdef JS_STRUCTURED_SPEW
   cx->spewer().enableSpewing();
 #endif
@@ -11300,6 +11305,7 @@ static int Shell(JSContext* cx, OptionParser* op) {
     if (!glob) {
       return 1;
     }
+    lastGlobal.set(glob.get());
 
     JSAutoRealm ar(cx, glob);
 
@@ -11538,7 +11544,16 @@ static bool SetGCParameterFromArg(JSContext* cx, char* arg) {
   return true;
 }
 
-int main(int argc, char** argv) {
+struct JSAndShellContext {
+  JSContext* cx;
+  JSObject* glob;
+  UniquePtr<ShellContext> shellCx;
+  Maybe<FileContents> selfHostedXDRBuffer;
+  RCFile rcStdout;
+  RCFile rcStderr;
+};
+
+static Variant<JSAndShellContext, int> ShellMain(int argc, char** argv, bool retainContext) {
   PreInit();
 
   sArgc = argc;
@@ -11993,7 +12008,7 @@ int main(int argc, char** argv) {
                           "Output telemetry results in a directory") ||
       !op.addBoolOption('\0', "use-fdlibm-for-sin-cos-tan",
                         "Use fdlibm for Math.sin, Math.cos, and Math.tan")) {
-    return EXIT_FAILURE;
+    return AsVariant(EXIT_FAILURE);
   }
 
   op.setArgTerminatesOptions("script", true);
@@ -12001,18 +12016,18 @@ int main(int argc, char** argv) {
 
   switch (op.parseArgs(argc, argv)) {
     case OptionParser::EarlyExit:
-      return EXIT_SUCCESS;
+      return AsVariant(EXIT_SUCCESS);
     case OptionParser::ParseError:
       op.printHelp(argv[0]);
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     case OptionParser::Fail:
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     case OptionParser::Okay:
       break;
   }
 
   if (op.getHelpOption()) {
-    return EXIT_SUCCESS;
+    return AsVariant(EXIT_SUCCESS);
   }
 
   // Note: DisableJitBackend must be called before JS_InitWithFailureDiagnostic.
@@ -12056,37 +12071,37 @@ int main(int argc, char** argv) {
   if (op.getBoolOption("no-sse3")) {
     js::jit::CPUInfo::SetSSE3Disabled();
     if (!sCompilerProcessFlags.append("--no-sse3")) {
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     }
   }
   if (op.getBoolOption("no-ssse3")) {
     js::jit::CPUInfo::SetSSSE3Disabled();
     if (!sCompilerProcessFlags.append("--no-ssse3")) {
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     }
   }
   if (op.getBoolOption("no-sse4") || op.getBoolOption("no-sse41")) {
     js::jit::CPUInfo::SetSSE41Disabled();
     if (!sCompilerProcessFlags.append("--no-sse41")) {
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     }
   }
   if (op.getBoolOption("no-sse42")) {
     js::jit::CPUInfo::SetSSE42Disabled();
     if (!sCompilerProcessFlags.append("--no-sse42")) {
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     }
   }
   if (op.getBoolOption("no-avx")) {
     js::jit::CPUInfo::SetAVXDisabled();
     if (!sCompilerProcessFlags.append("--no-avx")) {
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     }
   }
   if (op.getBoolOption("enable-avx")) {
     js::jit::CPUInfo::SetAVXEnabled();
     if (!sCompilerProcessFlags.append("--enable-avx")) {
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     }
   }
 #endif
@@ -12094,7 +12109,7 @@ int main(int argc, char** argv) {
   // Start the engine.
   if (const char* message = JS_InitWithFailureDiagnostic()) {
     fprintf(gErrFile->fp, "JS_Init failed: %s\n", message);
-    return 1;
+    return AsVariant(1);
   }
 
   // `selfHostedXDRBuffer` contains XDR buffer of the self-hosted JS.
@@ -12112,7 +12127,7 @@ int main(int argc, char** argv) {
     if (!telemetryLock) {
       telemetryLock = js_new<Mutex>(mutexid::ShellTelemetry);
       if (!telemetryLock) {
-        return EXIT_FAILURE;
+        return AsVariant(EXIT_FAILURE);
       }
     }
   }
@@ -12184,7 +12199,7 @@ int main(int argc, char** argv) {
 #ifdef JS_WITHOUT_NSPR
   if (!op.getMultiStringOption("dll").empty()) {
     fprintf(stderr, "Error: --dll requires NSPR support!\n");
-    return EXIT_FAILURE;
+    return AsVariant(EXIT_FAILURE);
   }
 #else
   AutoLibraryLoader loader;
@@ -12201,7 +12216,7 @@ int main(int argc, char** argv) {
   }
 
   if (!InitSharedObjectMailbox()) {
-    return 1;
+    return AsVariant(1);
   }
 
   JS::SetProcessBuildIdOp(ShellBuildId);
@@ -12213,13 +12228,13 @@ int main(int argc, char** argv) {
     cpuCount = op.getIntOption("thread-count");  // Legacy name
   }
   if (cpuCount >= 0 && !SetFakeCPUCount(cpuCount)) {
-    return 1;
+    return AsVariant(1);
   }
 
   /* Use the same parameters as the browser in xpcjsruntime.cpp. */
   JSContext* const cx = JS_NewContext(JS::DefaultHeapMaxBytes);
   if (!cx) {
-    return 1;
+    return AsVariant(1);
   }
 
   // Register telemetry callbacks, if needed.
@@ -12232,7 +12247,7 @@ int main(int argc, char** argv) {
     fprintf(stderr, "Error: --nursery-size parameter must be non-zero.\n");
     fprintf(stderr,
             "The nursery can be disabled by passing the --no-ggc option.\n");
-    return EXIT_FAILURE;
+    return AsVariant(EXIT_FAILURE);
   }
   JS_SetGCParameter(cx, JSGC_MAX_NURSERY_BYTES, nurseryBytes);
 
@@ -12240,7 +12255,7 @@ int main(int argc, char** argv) {
 
   UniquePtr<ShellContext> sc = MakeUnique<ShellContext>(cx);
   if (!sc) {
-    return 1;
+    return AsVariant(1);
   }
   auto destroyShellContext = MakeScopeExit([cx, &sc] {
     // Must clear out some of sc's pointer containers before JS_DestroyContext.
@@ -12260,7 +12275,7 @@ int main(int argc, char** argv) {
   JS::SetWarningReporter(cx, WarningReporter);
 
   if (!SetContextOptions(cx, op)) {
-    return 1;
+    return AsVariant(EXIT_FAILURE);
   }
 
   JS_SetGCParameter(cx, JSGC_MAX_BYTES, 0xffffffff);
@@ -12282,7 +12297,7 @@ int main(int argc, char** argv) {
   bufferStreamState = js_new<ExclusiveWaitableData<BufferStreamState>>(
       mutexid::BufferStreamState);
   if (!bufferStreamState) {
-    return 1;
+    return AsVariant(EXIT_FAILURE);
   }
   auto shutdownBufferStreams = MakeScopeExit([] {
     ShutdownBufferStreams();
@@ -12359,7 +12374,7 @@ int main(int argc, char** argv) {
 #endif
 
   if (!JS::InitSelfHostedCode(cx, xdrSpan, xdrWriter)) {
-    return 1;
+    return AsVariant(EXIT_FAILURE);
   }
 
   EnvironmentPreparer environmentPreparer(cx);
@@ -12378,7 +12393,7 @@ int main(int argc, char** argv) {
   for (MultiStringRange args = op.getMultiStringOption("gc-param");
        !args.empty(); args.popFront()) {
     if (!SetGCParameterFromArg(cx, args.front())) {
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     }
   }
 
@@ -12391,7 +12406,7 @@ int main(int argc, char** argv) {
   // --disable-wasm-huge-memory needs to be propagated.  See bug 1518210.
   if (disabledHugeMemory &&
       !sCompilerProcessFlags.append("--disable-wasm-huge-memory")) {
-    return EXIT_FAILURE;
+    return AsVariant(EXIT_FAILURE);
   }
 
   // Also the following are to be propagated.
@@ -12412,7 +12427,7 @@ int main(int argc, char** argv) {
   for (const char** p = &to_propagate[0]; *p; p++) {
     if (op.getBoolOption(&(*p)[2] /* 2 => skip the leading '--' */)) {
       if (!sCompilerProcessFlags.append(*p)) {
-        return EXIT_FAILURE;
+        return AsVariant(EXIT_FAILURE);
       }
     }
   }
@@ -12437,12 +12452,13 @@ int main(int argc, char** argv) {
     memset(buf, 0, sizeof(buf));
     SprintfBuf(buf, n_avail, "--%s=%s", "wasm-compiler", wasm_compiler);
     if (!sCompilerProcessFlags.append(buf)) {
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     }
   }
 #endif  // __wasi__
 
-  result = Shell(cx, &op);
+  RootedObject lastGlobal(cx);
+  result = Shell(cx, &op, &lastGlobal);
 
 #ifdef DEBUG
   if (OOM_printAllocationCount) {
@@ -12450,5 +12466,65 @@ int main(int argc, char** argv) {
   }
 #endif
 
-  return result;
+    if (retainContext) {
+      shutdownEngine.release();
+      destroyCx.release();
+      destroyShellContext.release();
+      resetGrayGCRootsTracer.release();
+      shutdownBufferStreams.release();
+      shutdownShellThreads.release();
+      
+      JSAndShellContext ret { cx, lastGlobal.get(), std::move(sc), std::move(selfHostedXDRBuffer), std::move(rcStdout), std::move(rcStderr) };
+      return AsVariant(std::move(ret));
+    } else {
+      return AsVariant(result);
+    }
 }
+
+#ifdef JS_SHELL_WIZER
+
+#include <wizer.h>
+
+static std::optional<JSAndShellContext> wizenedContext;
+
+static void WizerInit() {
+  const int argc = 1;
+  char* argv[2] = { strdup("js"), NULL };
+
+  auto ret = ShellMain(argc, argv, /* retainContext = */ true);
+  if (!ret.is<JSAndShellContext>()) {
+    fprintf(stderr, "Could not execute shell main during Wizening!\n");
+    abort();
+  }
+
+  wizenedContext = std::move(ret.as<JSAndShellContext>());
+}
+
+WIZER_INIT(WizerInit);
+
+int main(int argc, char** argv) {
+  (void)argc;
+  (void)argv;
+
+  if (wizenedContext) {
+    JSContext* cx  = wizenedContext.value().cx;
+    RootedObject glob(cx, wizenedContext.value().glob);
+
+    JSAutoRealm ar(cx, glob);
+
+    // Look up a function called "main" in the global.
+    JS::Rooted<JS::Value> ret(cx);
+    if (!JS_CallFunctionName(cx, cx->global(), "main", JS::HandleValueArray::empty(), &ret)) {
+      fprintf(stderr, "Failed to call main() in Wizened JS source!\n");
+      abort();
+    }
+  }
+}
+
+#else  // JS_SHELL_WIZER
+
+int main(int argc, char** argv) {
+  return ShellMain(argc, argv, /* returnContext = */ false).as<int>();
+}
+
+#endif  // !JS_SHELL_WIZER

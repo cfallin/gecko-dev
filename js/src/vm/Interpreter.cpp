@@ -4876,6 +4876,9 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretCall(
   bool ret;
   CALL_INNER(ret);
   return ret;
+
+error:
+  return false;
 }
 
 bool js::ThrowOperation(JSContext* cx, HandleValue v) {

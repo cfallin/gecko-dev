@@ -2095,6 +2095,9 @@ static MOZ_ALWAYS_INLINE bool GetPropIIC(IICStub_GetProp* stub,
         case IICStub_GetProp::Proto:
           obj.set(nobj->staticPrototype());
           stub = stub->proto;
+          if (!stub) {
+            return false;
+          }
           break;
       }
     }

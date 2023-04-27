@@ -106,7 +106,7 @@ inline bool HasProperty(JSContext* cx, JS::Handle<JSObject*> obj,
  */
 inline bool GetProperty(JSContext* cx, JS::Handle<JSObject*> obj,
                         JS::Handle<JS::Value> receiver, JS::Handle<jsid> id,
-                        JS::MutableHandle<JS::Value> vp) {
+                        JS::MutableHandle<JS::Value> vp, IICStub** stubRoot) {
 #ifdef ENABLE_RECORD_TUPLE
   MOZ_ASSERT(!IsExtendedPrimitive(*obj));
 #endif
@@ -115,28 +115,29 @@ inline bool GetProperty(JSContext* cx, JS::Handle<JSObject*> obj,
     return op(cx, obj, receiver, id, vp);
   }
 
-  return NativeGetProperty(cx, obj.as<NativeObject>(), receiver, id, vp);
+  return NativeGetProperty(cx, obj.as<NativeObject>(), receiver, id, vp,
+                           stubRoot);
 }
 
 inline bool GetProperty(JSContext* cx, JS::Handle<JSObject*> obj,
                         JS::Handle<JS::Value> receiver, PropertyName* name,
-                        JS::MutableHandle<JS::Value> vp) {
+                        JS::MutableHandle<JS::Value> vp, IICStub** stubRoot) {
   JS::Rooted<jsid> id(cx, NameToId(name));
-  return GetProperty(cx, obj, receiver, id, vp);
+  return GetProperty(cx, obj, receiver, id, vp, stubRoot);
 }
 
 inline bool GetProperty(JSContext* cx, JS::Handle<JSObject*> obj,
                         JS::Handle<JSObject*> receiver, JS::Handle<jsid> id,
                         JS::MutableHandle<JS::Value> vp) {
   JS::Rooted<JS::Value> receiverValue(cx, JS::ObjectValue(*receiver));
-  return GetProperty(cx, obj, receiverValue, id, vp);
+  return GetProperty(cx, obj, receiverValue, id, vp, nullptr);
 }
 
 inline bool GetProperty(JSContext* cx, JS::Handle<JSObject*> obj,
                         JS::Handle<JSObject*> receiver, PropertyName* name,
                         JS::MutableHandle<JS::Value> vp) {
   JS::Rooted<JS::Value> receiverValue(cx, JS::ObjectValue(*receiver));
-  return GetProperty(cx, obj, receiverValue, name, vp);
+  return GetProperty(cx, obj, receiverValue, name, vp, nullptr);
 }
 
 inline bool GetElement(JSContext* cx, JS::Handle<JSObject*> obj,
@@ -147,7 +148,7 @@ inline bool GetElement(JSContext* cx, JS::Handle<JSObject*> obj,
     return false;
   }
 
-  return GetProperty(cx, obj, receiver, id, vp);
+  return GetProperty(cx, obj, receiver, id, vp, nullptr);
 }
 
 inline bool GetElement(JSContext* cx, JS::Handle<JSObject*> obj,
@@ -279,7 +280,7 @@ MOZ_ALWAYS_INLINE bool GetInterestingSymbolProperty(
   JS::Rooted<JSObject*> holderRoot(cx, holder);
   JS::Rooted<JS::Value> receiver(cx, JS::ObjectValue(*obj));
   JS::Rooted<jsid> id(cx, PropertyKey::Symbol(sym));
-  return GetProperty(cx, holderRoot, receiver, id, vp);
+  return GetProperty(cx, holderRoot, receiver, id, vp, nullptr);
 }
 
 /*

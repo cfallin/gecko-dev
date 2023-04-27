@@ -3237,6 +3237,7 @@ initial_dispatch:
         }
       }
 
+      printf("GetProp op: stubRoot = %p\n", stubRoot);
       if (!GetPropertyOperation(cx, name, lval, res, stubRoot)) {
         goto error;
       }
@@ -4938,6 +4939,8 @@ bool js::GetProperty(JSContext* cx, HandleValue v, Handle<PropertyName*> name,
     }
   }
 
+  printf("js::GetProperty: stubRoot = %p\n", stubRoot);
+
   // Optimize common cases like (2).toString() or "foo".valueOf() to not
   // create a wrapper object.
   if (v.isPrimitive() && !v.isNullOrUndefined()) {
@@ -4979,7 +4982,7 @@ bool js::GetProperty(JSContext* cx, HandleValue v, Handle<PropertyName*> name,
       return false;
     }
 
-    if (GetPropertyPure(cx, proto, NameToId(name), vp.address(), stubRoot)) {
+    if (GetPropertyPure(cx, proto, NameToId(name), vp.address())) {
       return true;
     }
   }
@@ -4991,7 +4994,7 @@ bool js::GetProperty(JSContext* cx, HandleValue v, Handle<PropertyName*> name,
     return false;
   }
 
-  return GetProperty(cx, obj, receiver, name, vp);
+  return GetProperty(cx, obj, receiver, name, vp, stubRoot);
 }
 
 JSObject* js::Lambda(JSContext* cx, HandleFunction fun, HandleObject parent) {

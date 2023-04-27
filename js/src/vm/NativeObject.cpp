@@ -1063,7 +1063,7 @@ template <AllowGC allowGC>
 bool js::NativeLookupOwnProperty(
     JSContext* cx, typename MaybeRooted<NativeObject*, allowGC>::HandleType obj,
     typename MaybeRooted<jsid, allowGC>::HandleType id, PropertyResult* propp) {
-  return NativeLookupOwnPropertyInline<allowGC>(cx, obj, id, propp, nullptr);
+  return NativeLookupOwnPropertyInline<allowGC>(cx, obj, id, propp);
 }
 
 template bool js::NativeLookupOwnProperty<CanGC>(JSContext* cx,
@@ -1910,7 +1910,7 @@ bool js::NativeHasProperty(JSContext* cx, Handle<NativeObject*> obj,
   // 7.a. below.
   for (;;) {
     // Steps 2-3.
-    if (!NativeLookupOwnPropertyInline<CanGC>(cx, pobj, id, &prop, nullptr)) {
+    if (!NativeLookupOwnPropertyInline<CanGC>(cx, pobj, id, &prop)) {
       return false;
     }
 
@@ -2165,7 +2165,8 @@ static MOZ_ALWAYS_INLINE bool NativeGetPropertyInline(
     JSContext* cx, typename MaybeRooted<NativeObject*, allowGC>::HandleType obj,
     typename MaybeRooted<Value, allowGC>::HandleType receiver,
     typename MaybeRooted<jsid, allowGC>::HandleType id, IsNameLookup nameLookup,
-    typename MaybeRooted<Value, allowGC>::MutableHandleType vp) {
+    typename MaybeRooted<Value, allowGC>::MutableHandleType vp,
+    IICStub** stubRoot = nullptr) {
   typename MaybeRooted<NativeObject*, allowGC>::RootType pobj(cx, obj);
   PropertyResult prop;
 
@@ -2173,7 +2174,8 @@ static MOZ_ALWAYS_INLINE bool NativeGetPropertyInline(
   // 4.d below.
   for (;;) {
     // Steps 2-3.
-    if (!NativeLookupOwnPropertyInline<allowGC>(cx, pobj, id, &prop, nullptr)) {
+    if (!NativeLookupOwnPropertyInline<allowGC>(cx, pobj, id, &prop,
+                                                stubRoot)) {
       return false;
     }
 
@@ -2214,15 +2216,29 @@ static MOZ_ALWAYS_INLINE bool NativeGetPropertyInline(
                                     vp);
     }
 
+    if (stubRoot) {
+      printf("going to parent; creating subchain on shape %p\n", obj->shape());
+      // Add a link in the Interpreter IC chain.
+      IICStub_GetProp* stub = cx->pod_calloc<IICStub_GetProp>();
+      if (!stub) {
+        return false;
+      }
+      stub->nextBase = *stubRoot;
+      *stubRoot = stub;
+      stub->shape.set(obj->shape());
+      stub->location = IICStub_GetProp::Proto;
+      stubRoot = (IICStub**)&stub->proto;
+    }
+
     pobj = &proto->as<NativeObject>();
   }
 }
 
 bool js::NativeGetProperty(JSContext* cx, Handle<NativeObject*> obj,
                            HandleValue receiver, HandleId id,
-                           MutableHandleValue vp) {
+                           MutableHandleValue vp, IICStub** stubRoot) {
   return NativeGetPropertyInline<CanGC>(cx, obj, receiver, id, NotNameLookup,
-                                        vp);
+                                        vp, stubRoot);
 }
 
 bool js::NativeGetPropertyNoGC(JSContext* cx, NativeObject* obj,
@@ -2564,7 +2580,7 @@ bool js::NativeSetProperty(JSContext* cx, Handle<NativeObject*> obj,
   // also reported at <https://github.com/tc39/ecma262/issues/1541>.
   for (;;) {
     // Steps 2-3.
-    if (!NativeLookupOwnPropertyInline<CanGC>(cx, pobj, id, &prop, nullptr)) {
+    if (!NativeLookupOwnPropertyInline<CanGC>(cx, pobj, id, &prop)) {
       return false;
     }
 

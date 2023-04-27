@@ -1551,7 +1551,7 @@ bool js::LookupProperty(JSContext* cx, HandleObject obj, js::HandleId id,
     return op(cx, obj, id, objp, propp);
   }
   return NativeLookupPropertyInline<CanGC>(cx, obj.as<NativeObject>(), id, objp,
-                                           propp, nullptr);
+                                           propp);
 }
 
 bool js::LookupName(JSContext* cx, Handle<PropertyName*> name,
@@ -1587,8 +1587,7 @@ bool js::LookupNameNoGC(JSContext* cx, PropertyName* name, JSObject* envChain,
       return false;
     }
     if (!NativeLookupPropertyInline<NoGC>(cx, &env->as<NativeObject>(),
-                                          NameToId(name), pobjp, propp,
-                                          nullptr)) {
+                                          NameToId(name), pobjp, propp)) {
       return false;
     }
     if (propp->isFound()) {
@@ -1711,13 +1710,12 @@ bool js::HasOwnProperty(JSContext* cx, HandleObject obj, HandleId id,
 }
 
 bool js::LookupPropertyPure(JSContext* cx, JSObject* obj, jsid id,
-                            NativeObject** objp, PropertyResult* propp,
-                            IICStub** stubRoot) {
+                            NativeObject** objp, PropertyResult* propp) {
   if (obj->getOpsLookupProperty()) {
     return false;
   }
   return NativeLookupPropertyInline<NoGC, LookupResolveMode::CheckMayResolve>(
-      cx, &obj->as<NativeObject>(), id, objp, propp, stubRoot);
+      cx, &obj->as<NativeObject>(), id, objp, propp);
 }
 
 bool js::LookupOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id,
@@ -1727,7 +1725,7 @@ bool js::LookupOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id,
   }
   return NativeLookupOwnPropertyInline<NoGC,
                                        LookupResolveMode::CheckMayResolve>(
-      cx, &obj->as<NativeObject>(), id, propp, nullptr);
+      cx, &obj->as<NativeObject>(), id, propp);
 }
 
 static inline bool NativeGetPureInline(NativeObject* pobj, jsid id,
@@ -1753,11 +1751,10 @@ static inline bool NativeGetPureInline(NativeObject* pobj, jsid id,
   return true;
 }
 
-bool js::GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp,
-                         IICStub** stubRoot) {
+bool js::GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp) {
   NativeObject* pobj;
   PropertyResult prop;
-  if (!LookupPropertyPure(cx, obj, id, &pobj, &prop, stubRoot)) {
+  if (!LookupPropertyPure(cx, obj, id, &pobj, &prop)) {
     return false;
   }
 
@@ -1810,7 +1807,7 @@ bool js::GetGetterPure(JSContext* cx, JSObject* obj, jsid id, JSFunction** fp) {
    * it. */
   NativeObject* pobj;
   PropertyResult prop;
-  if (!LookupPropertyPure(cx, obj, id, &pobj, &prop, nullptr)) {
+  if (!LookupPropertyPure(cx, obj, id, &pobj, &prop)) {
     return false;
   }
 
@@ -2339,7 +2336,7 @@ bool JS::OrdinaryToPrimitive(JSContext* cx, HandleObject obj, JSType hint,
       }
     } else if (clasp == &PlainObject::class_) {
       JSFunction* fun;
-      if (GetPropertyPure(cx, obj, id, vp.address(), nullptr) &&
+      if (GetPropertyPure(cx, obj, id, vp.address()) &&
           IsFunctionObject(vp, &fun)) {
         // Common case: we have a toString function. Try to short-circuit if
         // it's Object.prototype.toString and there's no @@toStringTag.
@@ -3463,7 +3460,7 @@ void JSObject::traceChildren(JSTracer* trc) {
   //   getter.
   RootedValue ctor(cx);
   bool ctorGetSucceeded = GetPropertyPure(
-      cx, obj, NameToId(cx->names().constructor), ctor.address(), nullptr);
+      cx, obj, NameToId(cx->names().constructor), ctor.address());
   if (ctorGetSucceeded && ctor.isObject() && &ctor.toObject() == defaultCtor) {
     jsid speciesId = PropertyKey::Symbol(cx->wellKnownSymbols().species);
     JSFunction* getter;

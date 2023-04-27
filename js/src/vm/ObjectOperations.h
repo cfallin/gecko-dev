@@ -145,11 +145,11 @@ inline bool HasProperty(JSContext* cx, JS::Handle<JSObject*> obj,
  */
 inline bool GetProperty(JSContext* cx, JS::Handle<JSObject*> obj,
                         JS::Handle<JS::Value> receiver, JS::Handle<jsid> id,
-                        JS::MutableHandle<JS::Value> vp);
+                        JS::MutableHandle<JS::Value> vp, IICStub** stubRoot = nullptr);
 
 inline bool GetProperty(JSContext* cx, JS::Handle<JSObject*> obj,
                         JS::Handle<JS::Value> receiver, PropertyName* name,
-                        JS::MutableHandle<JS::Value> vp);
+                        JS::MutableHandle<JS::Value> vp, IICStub** stubRoot = nullptr);
 
 inline bool GetProperty(JSContext* cx, JS::Handle<JSObject*> obj,
                         JS::Handle<JSObject*> receiver, JS::Handle<jsid> id,

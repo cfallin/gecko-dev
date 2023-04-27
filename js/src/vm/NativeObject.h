@@ -1672,7 +1672,7 @@ extern bool NativeGetOwnPropertyDescriptor(
 
 extern bool NativeGetProperty(JSContext* cx, Handle<NativeObject*> obj,
                               HandleValue receiver, HandleId id,
-                              MutableHandleValue vp);
+                              MutableHandleValue vp, IICStub** stubRoot = nullptr);
 
 extern bool NativeGetPropertyNoGC(JSContext* cx, NativeObject* obj,
                                   const Value& receiver, jsid id, Value* vp);
@@ -1680,7 +1680,7 @@ extern bool NativeGetPropertyNoGC(JSContext* cx, NativeObject* obj,
 inline bool NativeGetProperty(JSContext* cx, Handle<NativeObject*> obj,
                               HandleId id, MutableHandleValue vp) {
   RootedValue receiver(cx, ObjectValue(*obj));
-  return NativeGetProperty(cx, obj, receiver, id, vp);
+  return NativeGetProperty(cx, obj, receiver, id, vp, nullptr);
 }
 
 extern bool NativeGetElement(JSContext* cx, Handle<NativeObject*> obj,

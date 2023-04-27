@@ -873,14 +873,12 @@ extern bool LookupNameUnqualified(JSContext* cx, Handle<PropertyName*> name,
 namespace js {
 
 bool LookupPropertyPure(JSContext* cx, JSObject* obj, jsid id,
-                        NativeObject** objp, PropertyResult* propp,
-                        IICStub** stubRoot);
+                        NativeObject** objp, PropertyResult* propp);
 
 bool LookupOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id,
                            PropertyResult* propp);
 
-bool GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp,
-                     IICStub** stubRoot);
+bool GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp);
 
 bool GetOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp,
                         bool* found);

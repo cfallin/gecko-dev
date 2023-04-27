@@ -81,7 +81,7 @@ BaseScript* CacheIRHealth::maybeExtractBaseScript(JSContext* cx, Shape* shape) {
   Value cval;
   JSObject* proto = taggedProto.toObject();
   AutoRealm ar(cx, proto);
-  if (!GetPropertyPure(cx, proto, NameToId(cx->names().constructor), &cval, nullptr)) {
+  if (!GetPropertyPure(cx, proto, NameToId(cx->names().constructor), &cval)) {
     return nullptr;
   }
   if (!IsFunctionObject(cval)) {

@@ -6562,7 +6562,7 @@ static bool GetDataProperty(JSContext* cx, HandleValue objVal,
 
 static bool HasObjectValueOfMethodPure(JSObject* obj, JSContext* cx) {
   Value v;
-  if (!GetPropertyPure(cx, obj, NameToId(cx->names().valueOf), &v, nullptr)) {
+  if (!GetPropertyPure(cx, obj, NameToId(cx->names().valueOf), &v)) {
     return false;
   }
 

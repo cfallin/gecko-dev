@@ -164,7 +164,9 @@ void js::BaseScript::finalize(JS::GCContext* gcx) {
 #endif
 
   if (data_) {
+#if 0
     data_->releaseIICs();
+#endif
 
     // We don't need to triger any barriers here, just free the memory.
     size_t size = data_->allocationSize();

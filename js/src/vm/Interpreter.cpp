@@ -2085,7 +2085,11 @@ void js::RegisterInterpreterSpecialization(void** specialized,
 static MOZ_ALWAYS_INLINE bool GetPropIIC(IICStub_GetProp* stub,
                                          MutableHandleObject obj,
                                          MutableHandleValue res) {
+  int tries = 0;
   for (; stub; stub = stub->next()) {
+    if (tries++ >= 5) {
+      return false;
+    }
     if (stub->shape == obj->shape()) {
       NativeObject* nobj = &obj->as<NativeObject>();
       switch (stub->location) {

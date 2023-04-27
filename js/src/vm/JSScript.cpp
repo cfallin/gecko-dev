@@ -27,6 +27,7 @@
 #include <string.h>
 #include <type_traits>
 #include <utility>
+#include <weval.h>
 
 #include "jstypes.h"
 
@@ -64,6 +65,7 @@
 #include "vm/BytecodeUtil.h"  // Disassemble
 #include "vm/Compression.h"
 #include "vm/HelperThreadState.h"  // js::RunPendingSourceCompressions
+#include "vm/Interpreter.h"        // RegisterInterpreterSpecialization
 #include "vm/JSContext.h"
 #include "vm/JSFunction.h"
 #include "vm/JSObject.h"
@@ -383,6 +385,20 @@ ImmutableScriptData::ImmutableScriptData(uint32_t codeLength,
 
   // Sanity check
   MOZ_ASSERT(endOffset() == cursor);
+}
+
+bool ImmutableScriptData::RequestSpecialization(FrontendContext* fc) {
+#ifdef __wasi__
+  // Register specialization request for interpreter partial
+  // specialization.
+  this->specialized_ = fc->getAllocator()->pod_malloc<void*>(1);
+  if (!this->specialized_) {
+    return false;
+  }
+  *this->specialized_ = nullptr;
+  RegisterInterpreterSpecialization(this->specialized_, this, this->code());
+#endif
+  return true;
 }
 
 void js::FillImmutableFlagsFromCompileOptionsForTopLevel(
@@ -2067,6 +2083,10 @@ js::UniquePtr<ImmutableScriptData> js::ImmutableScriptData::new_(
   UniquePtr<ImmutableScriptData> result(new (raw) ImmutableScriptData(
       codeLength, noteLength, numResumeOffsets, numScopeNotes, numTryNotes));
   if (!result) {
+    return nullptr;
+  }
+
+  if (!result->RequestSpecialization(fc)) {
     return nullptr;
   }
 

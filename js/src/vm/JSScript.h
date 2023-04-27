@@ -22,6 +22,9 @@
 
 #include <type_traits>  // std::is_same
 #include <utility>      // std::move
+#ifdef __wasi__
+#include <weval.h>
+#endif
 
 #include "jstypes.h"
 
@@ -1685,7 +1688,11 @@ class JSScript : public js::BaseScript {
 
  public:
   js::ImmutableScriptData* immutableScriptData() const {
+#ifdef __wasi__
+    return weval::assume_const_memory_transitive(sharedData_->get());
+#else
     return sharedData_->get();
+#endif
   }
 
   // Script bytecode is immutable after creation.
@@ -1959,11 +1966,13 @@ class JSScript : public js::BaseScript {
     return immutableScriptData()->resumeOffsets();
   }
 
+  MOZ_ALWAYS_INLINE
   uint32_t tableSwitchCaseOffset(jsbytecode* pc, uint32_t caseIndex) const {
     MOZ_ASSERT(containsPC(pc));
     MOZ_ASSERT(JSOp(*pc) == JSOp::TableSwitch);
     uint32_t firstResumeIndex = GET_RESUMEINDEX(pc + 3 * JUMP_OFFSET_LEN);
-    return resumeOffsets()[firstResumeIndex + caseIndex];
+    uint32_t result = resumeOffsets()[firstResumeIndex + caseIndex];
+    return result;
   }
   jsbytecode* tableSwitchCasePC(jsbytecode* pc, uint32_t caseIndex) const {
     return offsetToPC(tableSwitchCaseOffset(pc, caseIndex));

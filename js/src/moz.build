@@ -638,3 +638,10 @@ if CONFIG["JS_HAS_INTL_API"]:
     ]
 
     USE_LIBS += ["intlcomponents"]
+
+LOCAL_INCLUDES += [
+    "/third_party/weval",
+]
+SOURCES += [
+    "/third_party/weval/weval-rt.c",
+]

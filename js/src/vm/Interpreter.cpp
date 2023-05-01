@@ -2031,8 +2031,45 @@ struct InterpretContext {
         frameHalfInitialized(false) {}
 };
 
+/*
+ * Inner function that contains the interpreter loop and executes it for a
+ * single JS callframe, or (if the inline-call optimization is active) across
+ * contiguous pure-JS callframes.
+ *
+ * This is split out from Interpret() so that, if the inline-call optimization
+ * is *not* active, we have a 1-to-1 correspondence beween JS and C++
+ * callframes. This is important for some external optimization approaches,
+ * such as partial interpreter specialization.
+ */
+static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
+    JSContext* cx, RunState& state, InterpretContext& ictx);
+
+#define SET_SCRIPT(s)                                         \
+  JS_BEGIN_MACRO                                              \
+    ictx.script = (s);                                        \
+    MOZ_ASSERT(cx->realm() == ictx.script->realm());          \
+    if (DebugAPI::hasAnyBreakpointsOrStepMode(ictx.script) || \
+        ictx.script->hasScriptCounts())                       \
+      ictx.activation.enableInterruptsUnconditionally();      \
+  JS_END_MACRO
+
 bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
                                                            RunState& state) {
+  gc::MaybeVerifyBarriers(cx, true);
+
+  InterpreterFrame* entryFrame = state.pushInterpreterFrame(cx);
+  if (!entryFrame) {
+    return false;
+  }
+
+  InterpretContext ictx(cx, state, entryFrame);
+  SET_SCRIPT(ictx.activation.regs().fp()->script());
+
+  return InterpretInner(cx, state, ictx);
+}
+
+static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
+    JSContext* cx, RunState& state, InterpretContext& ictx) {
 /*
  * Define macros for an interpreter loop. Opcode dispatch is done by
  * indirect goto (aka a threaded interpreter), which is technically
@@ -2144,15 +2181,6 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
     COUNT_COVERAGE_PC(REGS.pc);                       \
   JS_END_MACRO
 
-#define SET_SCRIPT(s)                                         \
-  JS_BEGIN_MACRO                                              \
-    ictx.script = (s);                                        \
-    MOZ_ASSERT(cx->realm() == ictx.script->realm());          \
-    if (DebugAPI::hasAnyBreakpointsOrStepMode(ictx.script) || \
-        ictx.script->hasScriptCounts())                       \
-      ictx.activation.enableInterruptsUnconditionally();      \
-  JS_END_MACRO
-
 #define SANITY_CHECKS()              \
   JS_BEGIN_MACRO                     \
     js::gc::MaybeVerifyBarriers(cx); \
@@ -2175,16 +2203,6 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
     /* nothing */                                   \
     JS_END_MACRO
 #endif
-
-  gc::MaybeVerifyBarriers(cx, true);
-
-  InterpreterFrame* entryFrame = state.pushInterpreterFrame(cx);
-  if (!entryFrame) {
-    return false;
-  }
-
-  InterpretContext ictx(cx, state, entryFrame);
-  SET_SCRIPT(REGS.fp()->script());
 
   if (!ictx.activation.entryFrame()->prologue(cx)) {
     goto prologue_error;

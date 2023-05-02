@@ -2204,11 +2204,11 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
     JS_END_MACRO
 #endif
 
-  if (!ictx.activation.entryFrame()->prologue(cx)) {
+  if (!REGS.fp()->prologue(cx)) {
     goto prologue_error;
   }
 
-  if (!DebugAPI::onEnterFrame(cx, ictx.activation.entryFrame())) {
+  if (!DebugAPI::onEnterFrame(cx, REGS.fp())) {
     goto error;
   }
 
@@ -2421,11 +2421,23 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
             ADVANCE_AND_DISPATCH(JSOpLength_Resume);
           }
 
+#ifdef ENABLE_JS_INTERP_NATIVE_CALLSTACK
+          return true;
+#else  // ENABLE_JS_INTERP_NATIVE_CALLSTACK
           MOZ_ASSERT(GetBytecodeLength(REGS.pc) == JSOpLength_Call);
           ADVANCE_AND_DISPATCH(JSOpLength_Call);
+#endif  // !ENABLE_JS_INTERP_NATIVE_CALLSTACK
         }
 
+#ifdef ENABLE_JS_INTERP_NATIVE_CALLSTACK
+        if (JSOp(*REGS.pc) == JSOp::Resume) {
+          goto error;
+        } else {
+          return false;
+        }
+#else  // ENABLE_JS_INTERP_NATIVE_CALLSTACK
         goto error;
+#endif  // !ENABLE_JS_INTERP_NATIVE_CALLSTACK
       } else {
         // Stack should be empty for the outer frame, unless we executed the
         // first |await| expression in an async function.
@@ -3525,6 +3537,12 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
 
       SET_SCRIPT(REGS.fp()->script());
 
+#ifdef ENABLE_JS_INTERP_NATIVE_CALLSTACK
+      if (!InterpretInner(cx, state, ictx)) {
+        goto error;
+      }
+      ADVANCE_AND_DISPATCH(JSOpLength_Call);
+#else  // ENABLE_JS_INTERP_NATIVE_CALLSTACK
       if (!REGS.fp()->prologue(cx)) {
         goto prologue_error;
       }
@@ -3539,6 +3557,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
 
       /* Load first op and dispatch it (safe since JSOp::RetRval). */
       ADVANCE_AND_DISPATCH(0);
+#endif  // !ENABLE_JS_INTERP_NATIVE_CALLSTACK
     }
 
     CASE(OptimizeSpreadCall) {

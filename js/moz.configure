@@ -1251,6 +1251,10 @@ set_define(
     "ENABLE_JS_INTERP_WEVAL",
     depends_if("--enable-js-interp-weval")(lambda x: True),
 )
+set_config(
+    "ENABLE_JS_INTERP_WEVAL",
+    depends_if("--enable-js-interp-weval")(lambda x: True),
+)
 
 # Enable change-array-by-copy
 # ===================================================

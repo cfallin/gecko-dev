@@ -4821,7 +4821,6 @@ error:
 #endif
   BAIL_IF_SPECIALIZED(InterpretEntryKind::ErrorBailout);
 
-  MOZ_ASSERT(pc == REGS.pc);
   switch (HandleError(cx, REGS)) {
     case SuccessfulReturnContinuation:
       pc = REGS.pc;

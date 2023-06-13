@@ -146,6 +146,7 @@ static bool AsyncFunctionResume(JSContext* cx,
   FixedInvokeArgs<1> args(cx);
   args[0].set(valueOrReason);
   RootedValue generatorOrValue(cx, ObjectValue(*generator));
+  printf("callselfhosted\n");
   if (!CallSelfHostedFunction(cx, funName, generatorOrValue, args,
                               &generatorOrValue)) {
     if (!generator->isClosed()) {
@@ -201,6 +202,7 @@ static bool AsyncFunctionResume(JSContext* cx,
 [[nodiscard]] bool js::AsyncFunctionAwaitedRejected(
     JSContext* cx, Handle<AsyncFunctionGeneratorObject*> generator,
     HandleValue reason) {
+    printf("awaitedrejected\n");
   return AsyncFunctionResume(cx, generator, ResumeKind::Throw, reason);
 }
 

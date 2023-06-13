@@ -2160,7 +2160,9 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
   SET_SCRIPT(ictx.activation.regs().fp()->script());
 
   bool ret;
+  printf("toplevel calling inner\n");
   CALL_INNER(ret);
+  printf("toplevel inner returned %d\n", ret);
   return ret;
 }
 
@@ -2181,13 +2183,15 @@ static InterpretCallResult InterpretCall(JSContext* cx, RunState& state,
 static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
     JSContext* cx, RunState& state, InterpretContext& ictx, jsbytecode* pc,
     ImmutableScriptData* isd, InterpretEntryKind entryKind) {
+
+    printf("enter: InterpretInner: pc %p kind %d\n", pc, (int)entryKind);
 /*
  * Define macros for an interpreter loop. Opcode dispatch is done by
  * indirect goto (aka a threaded interpreter), which is technically
  * non-standard but is supported by all of our supported compilers.
  */
 #define INTERPRETER_LOOP()
-#define CASE(OP) label_##OP:
+#define CASE(OP) label_##OP: printf("pc %p op " #OP "\n", pc);
 #define DEFAULT() \
   label_default:
 
@@ -2358,6 +2362,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool InterpretInner(
 #  define BAIL_IF_SPECIALIZED(kind)                                     \
     JS_BEGIN_MACRO                                                      \
       if (entryKind == InterpretEntryKind::Specialized) {               \
+          printf("bailing\n"); \
         return InterpretInnerBailout(cx, state, ictx, pc, isd, (kind)); \
       }                                                                 \
       weval_abort_specialization(__LINE__, 1);                          \
@@ -2562,6 +2567,7 @@ initial_dispatch:
       /* FALL THROUGH */
     }
     CASE(RetRval) {
+      printf("RetRval: TOS is %llx\n", REGS.sp[-1].asRawBits());
       /*
        * When the inlined frame exits with an exception or an error, ok will be
        * false after the inline_return label.
@@ -2615,6 +2621,7 @@ initial_dispatch:
           }
 
 #ifdef ENABLE_JS_INTERP_NATIVE_CALLSTACK
+          printf("leave true\n");
           return true;
 #else   // ENABLE_JS_INTERP_NATIVE_CALLSTACK
           MOZ_ASSERT(GetBytecodeLength(pc) == JSOpLength_Call);
@@ -2626,6 +2633,7 @@ initial_dispatch:
         if (JSOp(*pc) == JSOp::Resume) {
           goto error;
         } else {
+          printf("leave false\n");
           return false;
         }
 #else   // ENABLE_JS_INTERP_NATIVE_CALLSTACK
@@ -4548,12 +4556,14 @@ initial_dispatch:
 
     CASE(ResumeKind) {
       GeneratorResumeKind resumeKind = ResumeKindFromPC(pc);
+      printf("resumekind push: %d\n", (int32_t)resumeKind);
       PUSH_INT32(int32_t(resumeKind));
     }
     END_CASE(ResumeKind)
 
     CASE(CheckResumeKind) {
       int32_t kindInt = REGS.sp[-1].toInt32();
+      printf("resumeKind: %d\n", kindInt);
       GeneratorResumeKind resumeKind = IntToResumeKind(kindInt);
       if (MOZ_UNLIKELY(resumeKind != GeneratorResumeKind::Next)) {
         ReservedRooted<Value> val(&ictx.rootValue0, REGS.sp[-3]);
@@ -4561,6 +4571,7 @@ initial_dispatch:
             cx, &REGS.sp[-2].toObject().as<AbstractGeneratorObject>());
         MOZ_ALWAYS_FALSE(GeneratorThrowOrReturn(cx, ictx.activation.regs().fp(),
                                                 gen, val, resumeKind));
+        printf(" -> error\n");
         goto error;
       }
       REGS.sp -= 2;
@@ -4819,6 +4830,7 @@ error:
 #ifdef ENABLE_JS_INTERP_WEVAL
   weval::pop_context();
 #endif
+  printf("error, bail\n");
   BAIL_IF_SPECIALIZED(InterpretEntryKind::ErrorBailout);
 
   MOZ_ASSERT(pc == REGS.pc);
@@ -4878,6 +4890,7 @@ leave_on_safe_point:
 
   MOZ_ASSERT(pc == REGS.pc);
 
+  printf("leave: %d\n", ictx.interpReturnOK);
   return ictx.interpReturnOK;
 
 prologue_error:
@@ -5040,7 +5053,9 @@ static InterpretCallResult InterpretCall(JSContext* cx, RunState& state,
 
 #ifdef ENABLE_JS_INTERP_NATIVE_CALLSTACK
   bool ret;
+  printf("calling inner\n");
   CALL_INNER(ret);
+  printf("inner returned %d\n", ret);
   if (!ret) {
     goto error;
   }

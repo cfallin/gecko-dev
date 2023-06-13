@@ -2054,8 +2054,10 @@ static bool ForEachReaction(JSContext* cx, HandleValue reactionsVal, F f) {
     //                                          « argument »)).
     bool ok;
     if (reaction->targetState() == JS::PromiseState::Fulfilled) {
+        printf("resolvepromise\n");
       ok = ResolvePromiseInternal(cx, promiseToResolve, argument);
     } else {
+        printf("rejectpromise\n");
       ok = RejectPromiseInternal(cx, promiseToResolve, argument);
     }
 
@@ -2075,11 +2077,13 @@ static bool ForEachReaction(JSContext* cx, HandleValue reactionsVal, F f) {
     callee =
         reaction->getFixedSlot(ReactionRecordSlot_Resolve).toObjectOrNull();
 
+    printf("callpromiseresolve\n");
     return CallPromiseResolveFunction(cx, callee, handlerResult, promiseObj);
   }
 
   callee = reaction->getFixedSlot(ReactionRecordSlot_Reject).toObjectOrNull();
 
+  printf("callpromisereject\n");
   return CallPromiseRejectFunction(cx, callee, handlerResult, promiseObj,
                                    unwrappedRejectionStack,
                                    reaction->unhandledRejectionBehavior());
@@ -2099,6 +2103,7 @@ static bool ForEachReaction(JSContext* cx, HandleValue reactionsVal, F f) {
   MOZ_ASSERT(reaction->isAsyncFunction());
 
   auto handler = static_cast<PromiseHandler>(reaction->handler().toInt32());
+  printf("handler: %d\n", (int)handler);
   RootedValue argument(cx, reaction->handlerArg());
   Rooted<AsyncFunctionGeneratorObject*> generator(
       cx, reaction->asyncFunctionGenerator());
@@ -2135,6 +2140,8 @@ static bool ForEachReaction(JSContext* cx, HandleValue reactionsVal, F f) {
 static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
+  printf("promisereactionjob\n");
+
   RootedFunction job(cx, &args.callee().as<JSFunction>());
 
   // Promise reactions don't return any value.
@@ -2168,12 +2175,15 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp) {
   Handle<PromiseReactionRecord*> reaction =
       reactionObj.as<PromiseReactionRecord>();
   if (reaction->isDefaultResolvingHandler()) {
+      printf("defaultresolving\n");
     return DefaultResolvingPromiseReactionJob(cx, reaction);
   }
   if (reaction->isAsyncFunction()) {
+      printf("asyncfunctionpromisereactionjob\n");
     return AsyncFunctionPromiseReactionJob(cx, reaction);
   }
   if (reaction->isAsyncGenerator()) {
+      printf("asyncgenerator\n");
     RootedValue argument(cx, reaction->handlerArg());
     Rooted<AsyncGeneratorObject*> generator(cx, reaction->asyncGenerator());
     auto handler = static_cast<PromiseHandler>(reaction->handler().toInt32());
@@ -2189,6 +2199,8 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp) {
   // Step 1.c. Let handler be reaction.[[Handler]].
   RootedValue handlerVal(cx, reaction->handler());
 
+  printf("1.c\n");
+
   RootedValue argument(cx, reaction->handlerArg());
 
   RootedValue handlerResult(cx);
@@ -2201,12 +2213,15 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp) {
     // Step 1.b. Let type be reaction.[[Type]].
     // (reordered)
     auto handlerNum = static_cast<PromiseHandler>(handlerVal.toInt32());
+      printf("handlerVal is int32: %d\n", (int)handlerNum);
 
     // Step 1.d.i. If type is Fulfill, let handlerResult be
     //             NormalCompletion(argument).
     if (handlerNum == PromiseHandler::Identity) {
+        printf("identity\n");
       handlerResult = argument;
     } else if (handlerNum == PromiseHandler::Thrower) {
+        printf("thrower\n");
       // Step 1.d.ii. Else,
       // Step 1.d.ii.1. Assert: type is Reject.
       // Step 1.d.ii.2. Let handlerResult be ThrowCompletion(argument).
@@ -2234,6 +2249,8 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp) {
     MOZ_ASSERT(handlerVal.isObject());
     MOZ_ASSERT(IsCallable(handlerVal));
 
+    printf("1.e\n");
+
     // Step 1.e. Else, let handlerResult be
     //           Completion(HostCallJobCallback(handler, undefined,
     //                                          « argument »)).
@@ -2253,8 +2270,11 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp) {
     callee =
         reaction->getFixedSlot(ReactionRecordSlot_Resolve).toObjectOrNull();
 
+    printf("2");
+
     return CallPromiseResolveFunction(cx, callee, handlerResult, promiseObj);
   }
+  printf("3\n");
 
   callee = reaction->getFixedSlot(ReactionRecordSlot_Reject).toObjectOrNull();
 
@@ -5432,6 +5452,8 @@ template <typename T>
                                         PromiseHandler onFulfilled,
                                         PromiseHandler onRejected,
                                         T extraStep) {
+    printf("internalawait: onFulfilled %d onRejected %d\n", (int)onFulfilled, (int)onRejected);
+
   // Step 2. Let promise be ? PromiseResolve(%Promise%, value).
   RootedObject promise(cx, PromiseObject::unforgeableResolve(cx, value));
   if (!promise) {
@@ -5967,6 +5989,7 @@ bool js::Promise_then(JSContext* cx, unsigned argc, Value* vp) {
   // Step 9. If promise.[[PromiseState]] is pending, then
   JS::PromiseState state = unwrappedPromise->state();
   int32_t flags = unwrappedPromise->flags();
+  printf("PerformPromiseThenWithReaction: state = %d\n", (int)state);
   if (state == JS::PromiseState::Pending) {
     // Step 9.a. Append fulfillReaction as the last element of the List that is
     //           promise.[[PromiseFulfillReactions]].

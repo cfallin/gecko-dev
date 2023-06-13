@@ -7239,6 +7239,8 @@ bool BytecodeEmitter::emitSelfHostedCallFunction(CallNode* callNode, JSOp op) {
 bool BytecodeEmitter::emitSelfHostedResumeGenerator(CallNode* callNode) {
   ListNode* argsList = &callNode->right()->as<ListNode>();
 
+  printf("emitSelfHostedResumeGenerator\n");
+
   // Syntax: resumeGenerator(gen, value, 'next'|'throw'|'return')
   MOZ_ASSERT(argsList->count() == 3);
 

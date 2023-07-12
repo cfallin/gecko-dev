@@ -38,6 +38,7 @@
 #include "vm/Opcodes.h"
 #include "vm/PlainObject.h"
 #include "vm/Shape.h"
+#include "vm/Timing.h"
 
 #include "jit/BaselineFrame-inl.h"
 #include "jit/JitScript-inl.h"
@@ -2227,7 +2228,12 @@ DEFINE_IC(CloseIter, 1, {
 #define LABEL(op) (&&label_##op)
 #define CASE(op) label_##op:
 #ifndef TRACE_INTERP
-#  define DISPATCH() goto* addresses[*pc]
+#  define DISPATCH()                                                         \
+    timingEndCyc = timing::rdtsc();                                          \
+    js::timing::OpcodeTimers[timingOp].accum(timingEndCyc - timingStartCyc); \
+    timingStartCyc = timingEndCyc;                                           \
+    timingOp = int(*pc);                                                     \
+    goto* addresses[timingOp]
 #else
 #  define DISPATCH() goto dispatch
 #endif
@@ -2289,6 +2295,10 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
   ret->setUndefined();
 
   VMFrameManager frameMgr(cx_, frame);
+
+  uint64_t timingStartCyc = timing::rdtsc();
+  uint64_t timingEndCyc = timingStartCyc;
+  int timingOp = 256;
 
   if (CalleeTokenIsFunction(frame->calleeToken())) {
     JSFunction* func = CalleeTokenToFunction(frame->calleeToken());

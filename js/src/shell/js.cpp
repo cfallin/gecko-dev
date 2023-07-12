@@ -180,6 +180,7 @@
 #include "util/Text.h"
 #include "util/WindowsWrapper.h"
 #include "vm/ArgumentsObject.h"
+#include "vm/BytecodeUtil.h"
 #include "vm/Compression.h"
 #include "vm/ErrorObject.h"
 #include "vm/ErrorReporting.h"
@@ -198,6 +199,7 @@
 #include "vm/SharedArrayObject.h"
 #include "vm/StencilObject.h"  // js::StencilObject
 #include "vm/Time.h"
+#include "vm/Timing.h"
 #include "vm/ToSource.h"  // js::ValueToSource
 #include "vm/TypedArrayObject.h"
 #include "vm/WrapperObject.h"
@@ -3080,11 +3082,12 @@ static const char* ToSource(JSContext* cx, HandleValue vp, UniqueChars* bytes) {
 static bool AssertEq(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   if (!(args.length() == 2 || (args.length() == 3 && args[2].isString()))) {
-    JS_ReportErrorNumberASCII(cx, my_GetErrorMessage, nullptr,
-                              (args.length() < 2)    ? JSSMSG_NOT_ENOUGH_ARGS
-                              : (args.length() == 3) ? JSSMSG_INVALID_ARGS
-                                                     : JSSMSG_TOO_MANY_ARGS,
-                              "assertEq");
+    JS_ReportErrorNumberASCII(
+        cx, my_GetErrorMessage, nullptr,
+        (args.length() < 2)
+            ? JSSMSG_NOT_ENOUGH_ARGS
+            : (args.length() == 3) ? JSSMSG_INVALID_ARGS : JSSMSG_TOO_MANY_ARGS,
+        "assertEq");
     return false;
   }
 
@@ -11278,6 +11281,12 @@ int main(int argc, char** argv) {
   }
 
   result = Shell(cx, &op);
+
+  for (int i = 0; i < 256; i++) {
+    printf("op %d (%s): %" PRIu64 " count, %" PRIu64 " cycles\n", i,
+           CodeName(JSOp(i)), js::timing::OpcodeTimers[i].counts,
+           js::timing::OpcodeTimers[i].cycles);
+  }
 
 #ifdef DEBUG
   if (OOM_printAllocationCount) {

@@ -63,6 +63,7 @@
 #include "vm/StringType.h"
 #include "vm/ThrowMsgKind.h"  // ThrowMsgKind
 #include "vm/Time.h"
+#include "vm/Timing.h"
 #ifdef ENABLE_RECORD_TUPLE
 #  include "vm/RecordType.h"
 #  include "vm/TupleType.h"
@@ -86,6 +87,12 @@ using mozilla::DebugOnly;
 using mozilla::NumberEqualsInt32;
 
 using js::jit::JitScript;
+
+namespace js {
+namespace timing {
+Bin OpcodeTimers[257];
+}
+}  // namespace js
 
 template <bool Eq>
 static MOZ_ALWAYS_INLINE bool LooseEqualityOp(JSContext* cx,
@@ -1895,7 +1902,7 @@ class ReservedRooted : public RootedOperations<T, ReservedRooted<T>> {
 
   void set(const T& p) const { *savedRoot = p; }
   operator Handle<T>() { return *savedRoot; }
-  operator Rooted<T>&() { return *savedRoot; }
+  operator Rooted<T> &() { return *savedRoot; }
   MutableHandle<T> operator&() { return &*savedRoot; }
 
   DECLARE_NONPOINTER_ACCESSOR_METHODS(savedRoot->get())
@@ -1988,11 +1995,15 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
    * will enable interrupts, and activation.opMask() is or'd with the opcode
    * to implement a simple alternate dispatch.
    */
-#define ADVANCE_AND_DISPATCH(N)                  \
-  JS_BEGIN_MACRO                                 \
-    REGS.pc += (N);                              \
-    SANITY_CHECKS();                             \
-    DISPATCH_TO(*REGS.pc | activation.opMask()); \
+#define ADVANCE_AND_DISPATCH(N)                                              \
+  JS_BEGIN_MACRO                                                             \
+    REGS.pc += (N);                                                          \
+    SANITY_CHECKS();                                                         \
+    timingEndCyc = timing::rdtsc();                                          \
+    js::timing::OpcodeTimers[timingOp].accum(timingEndCyc - timingStartCyc); \
+    timingStartCyc = timingEndCyc;                                           \
+    timingOp = int(*REGS.pc);                                                \
+    DISPATCH_TO(timingOp | activation.opMask());                             \
   JS_END_MACRO
 
   /*
@@ -2123,6 +2134,10 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
   /* State communicated between non-local jumps: */
   bool interpReturnOK;
   bool frameHalfInitialized;
+
+  uint64_t timingStartCyc = timing::rdtsc();
+  uint64_t timingEndCyc = timingStartCyc;
+  int timingOp = 256;
 
   if (!activation.entryFrame()->prologue(cx)) {
     goto prologue_error;

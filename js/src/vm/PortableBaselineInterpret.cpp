@@ -12,6 +12,7 @@
 #include "vm/PortableBaselineInterpret.h"
 
 #include "mozilla/Maybe.h"
+#include <algorithm>
 
 #include "jsapi.h"
 
@@ -2041,28 +2042,22 @@ DEFINE_IC(GetName, 1, {
 DEFINE_IC(Call, 1, {
   uint32_t argc = uint32_t(icregs.icVals[0]);
   uint32_t totalArgs =
-      argc + icregs.extraArgs;  // this, callee, (cosntructing?), func args
+      argc + icregs.extraArgs;  // this, callee, (constructing?), func args
   Value* args = reinterpret_cast<Value*>(&sp[0]);
   TRACE_PRINTF("Call fallback: argc %d totalArgs %d args %p\n", argc, totalArgs,
                args);
   // Reverse values on the stack.
-  for (uint32_t i = 0; i < totalArgs / 2; i++) {
-    std::swap(args[i], args[totalArgs - 1 - i]);
-  }
+  std::reverse(args, args + totalArgs);
   {
     PUSH_FALLBACK_IC_FRAME();
     if (icregs.spreadCall) {
       if (!DoSpreadCallFallback(cx, frame, fallback, args, &state.res)) {
-        for (uint32_t i = 0; i < totalArgs / 2; i++) {
-          std::swap(args[i], args[totalArgs - 1 - i]);
-        }
+        std::reverse(args, args + totalArgs);
         goto error;
       }
     } else {
       if (!DoCallFallback(cx, frame, fallback, argc, args, &state.res)) {
-        for (uint32_t i = 0; i < totalArgs / 2; i++) {
-          std::swap(args[i], args[totalArgs - 1 - i]);
-        }
+        std::reverse(args, args + totalArgs);
         goto error;
       }
     }

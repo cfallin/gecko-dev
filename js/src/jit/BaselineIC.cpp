@@ -893,9 +893,12 @@ bool DoSetElemFallback(JSContext* cx, BaselineFrame* frame,
     }
   }
 
-  // Overwrite the object on the stack (pushed for the decompiler) with the rhs.
-  MOZ_ASSERT(stack[2] == objv);
-  stack[2] = rhs;
+  if (stack) {
+    // Overwrite the object on the stack (pushed for the decompiler) with the
+    // rhs.
+    MOZ_ASSERT(stack[2] == objv);
+    stack[2] = rhs;
+  }
 
   if (attached) {
     return true;
@@ -1400,7 +1403,7 @@ bool DoSetPropFallback(JSContext* cx, BaselineFrame* frame,
   Rooted<PropertyName*> name(cx, script->getName(pc));
   RootedId id(cx, NameToId(name));
 
-  int lhsIndex = -2;
+  int lhsIndex = stack ? -2 : JSDVG_IGNORE_STACK;
   RootedObject obj(cx,
                    ToObjectFromStackForPropertyAccess(cx, lhs, lhsIndex, id));
   if (!obj) {
@@ -1468,9 +1471,11 @@ bool DoSetPropFallback(JSContext* cx, BaselineFrame* frame,
     }
   }
 
-  // Overwrite the LHS on the stack (pushed for the decompiler) with the RHS.
-  MOZ_ASSERT(stack[1] == lhs);
-  stack[1] = rhs;
+  if (stack) {
+    // Overwrite the LHS on the stack (pushed for the decompiler) with the RHS.
+    MOZ_ASSERT(stack[1] == lhs);
+    stack[1] = rhs;
+  }
 
   if (attached) {
     return true;

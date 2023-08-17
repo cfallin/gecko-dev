@@ -173,11 +173,23 @@ def enable_decorators(value):
 set_config("ENABLE_DECORATORS", enable_decorators)
 set_define("ENABLE_DECORATORS", enable_decorators)
 
+# Portable Baseline Inteprreter
+# =======================================================
+option(
+    "--enable-portable-baseline-interp",
+    default=False,
+    help="{Enable|Disable} the portable baseline interpreter.",
+)
+set_define("ENABLE_PORTABLE_BASELINE_INTERP", depends_if("--enable-portable-baseline-interp")(lambda _: True))
+set_config("ENABLE_PORTABLE_BASELINE_INTERP", depends_if("--enable-portable-baseline-interp")(lambda _: True))
+
 # JIT support
 # =======================================================
-@depends(target, "--enable-record-tuple")
-def jit_default(target, enable_record_tuple):
+@depends(target, "--enable-record-tuple", "--enable-portable-baseline-interp")
+def jit_default(target, enable_record_tuple, enable_portable_baseline_interp):
     if enable_record_tuple:
+        return False
+    if enable_portable_baseline_interp:
         return False
     if target.cpu in (
         "x86",
@@ -502,16 +514,6 @@ option(
 )
 set_define("JS_MASM_VERBOSE", depends_if("--enable-masm-verbose")(lambda _: True))
 set_config("JS_MASM_VERBOSE", depends_if("--enable-masm-verbose")(lambda _: True))
-
-# Portable Baseline Inteprreter
-# =======================================================
-option(
-    "--enable-portable-baseline-interp",
-    default=False,
-    help="{Enable|Disable} the portable baseline interpreter.",
-)
-set_define("ENABLE_PORTABLE_BASELINE_INTERP", depends_if("--enable-portable-baseline-interp")(lambda _: True))
-set_config("ENABLE_PORTABLE_BASELINE_INTERP", depends_if("--enable-portable-baseline-interp")(lambda _: True))
 
 # Architecture feature flags
 # =======================================================

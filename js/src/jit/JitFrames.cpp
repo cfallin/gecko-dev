@@ -1126,9 +1126,11 @@ static void TraceBaselineStubFrame(JSTracer* trc, const JSJitFrameIter& frame) {
       MOZ_ASSERT(stub->toCacheIRStub()->makesGCCalls());
       stub->toCacheIRStub()->trace(trc);
 
-      for (int i = 0; i < stub->jitCode()->localTracingSlots(); ++i) {
-        TraceRoot(trc, layout->locallyTracedValuePtr(i),
-                  "baseline-local-tracing-slot");
+      if (stub->hasJitCode()) {
+        for (int i = 0; i < stub->jitCode()->localTracingSlots(); ++i) {
+          TraceRoot(trc, layout->locallyTracedValuePtr(i),
+                    "baseline-local-tracing-slot");
+        }
       }
     }
   }

@@ -92,6 +92,10 @@ struct StackValNative {
   }
 };
 
+// Assert that the stack alignment is no more than the size of a
+// StackValNative -- we rely on this when setting up call frames.
+static_assert(JitStackAlignment <= sizeof(StackValNative));
+
 #define PUSH(val) *--sp = (val)
 #define POP() (*sp++)
 #define POPN(n) sp += (n)

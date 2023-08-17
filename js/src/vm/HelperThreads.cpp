@@ -19,6 +19,7 @@
 #include "frontend/FrontendContext.h"
 #include "frontend/ScopeBindingCache.h"  // frontend::ScopeBindingCache
 #include "gc/GC.h"
+#include "jit/Ion.h"
 #include "jit/IonCompileTask.h"
 #include "jit/JitRuntime.h"
 #include "jit/JitScript.h"
@@ -313,6 +314,7 @@ void js::FinishOffThreadIonCompile(jit::IonCompileTask* task,
       ->numFinishedOffThreadTasksRef(lock)++;
 }
 
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
 static JSRuntime* GetSelectorRuntime(const CompilationSelector& selector) {
   struct Matcher {
     JSRuntime* operator()(JSScript* script) {
@@ -328,6 +330,7 @@ static JSRuntime* GetSelectorRuntime(const CompilationSelector& selector) {
 
   return selector.match(Matcher());
 }
+#endif
 
 static bool JitDataStructuresExist(const CompilationSelector& selector) {
   struct Matcher {
@@ -341,6 +344,7 @@ static bool JitDataStructuresExist(const CompilationSelector& selector) {
   return selector.match(Matcher());
 }
 
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
 static bool IonCompileTaskMatches(const CompilationSelector& selector,
                                   jit::IonCompileTask* task) {
   struct TaskMatches {
@@ -362,9 +366,11 @@ static bool IonCompileTaskMatches(const CompilationSelector& selector,
 
   return selector.match(TaskMatches{task});
 }
+#endif
 
 static void CancelOffThreadIonCompileLocked(const CompilationSelector& selector,
                                             AutoLockHelperThreadState& lock) {
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
   if (!HelperThreadState().isInitialized(lock)) {
     return;
   }
@@ -422,15 +428,18 @@ static void CancelOffThreadIonCompileLocked(const CompilationSelector& selector,
 
   /* Cancel lazy linking for pending tasks (attached to the ionScript). */
   JSRuntime* runtime = GetSelectorRuntime(selector);
-  jit::IonCompileTask* task =
-      runtime->jitRuntime()->ionLazyLinkList(runtime).getFirst();
-  while (task) {
-    jit::IonCompileTask* next = task->getNext();
-    if (IonCompileTaskMatches(selector, task)) {
-      jit::FinishOffThreadTask(runtime, task, lock);
+  if (runtime->jitRuntime()) {
+    jit::IonCompileTask* task =
+        runtime->jitRuntime()->ionLazyLinkList(runtime).getFirst();
+    while (task) {
+      jit::IonCompileTask* next = task->getNext();
+      if (IonCompileTaskMatches(selector, task)) {
+        jit::FinishOffThreadTask(runtime, task, lock);
+      }
+      task = next;
     }
-    task = next;
   }
+#endif  // ENABLE_PORTABLE_BASELINE_INTERP
 }
 
 void js::CancelOffThreadIonCompile(const CompilationSelector& selector) {
@@ -444,6 +453,9 @@ void js::CancelOffThreadIonCompile(const CompilationSelector& selector) {
 
 #ifdef DEBUG
 bool js::HasOffThreadIonCompile(Realm* realm) {
+#  ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  return false;
+#  else
   AutoLockHelperThreadState lock;
 
   if (!HelperThreadState().isInitialized(lock)) {
@@ -485,6 +497,7 @@ bool js::HasOffThreadIonCompile(Realm* realm) {
   }
 
   return false;
+#  endif  //   !ENABLE_PORTABLE_BASELINE_INTERP
 }
 #endif
 

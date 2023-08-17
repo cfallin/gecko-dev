@@ -667,7 +667,9 @@ void HandleException(ResumeFromException* rfe) {
   JSContext* cx = TlsContext.get();
 
 #ifdef DEBUG
-  cx->runtime()->jitRuntime()->clearDisallowArbitraryCode();
+  if (IsBaselineInterpreterEnabled()) {
+    cx->runtime()->jitRuntime()->clearDisallowArbitraryCode();
+  }
 
   // Reset the counter when we bailed after MDebugEnterGCUnsafeRegion, but
   // before the matching MDebugLeaveGCUnsafeRegion.
@@ -677,9 +679,11 @@ void HandleException(ResumeFromException* rfe) {
 #endif
 
   auto resetProfilerFrame = mozilla::MakeScopeExit([=] {
-    if (!cx->runtime()->jitRuntime()->isProfilerInstrumentationEnabled(
-            cx->runtime())) {
-      return;
+    if (IsBaselineInterpreterEnabled()) {
+      if (!cx->runtime()->jitRuntime()->isProfilerInstrumentationEnabled(
+              cx->runtime())) {
+        return;
+      }
     }
 
     MOZ_ASSERT(cx->jitActivation == cx->profilingActivation());
@@ -1118,9 +1122,11 @@ static void TraceBaselineStubFrame(JSTracer* trc, const JSJitFrameIter& frame) {
       MOZ_ASSERT(stub->toCacheIRStub()->makesGCCalls());
       stub->toCacheIRStub()->trace(trc);
 
-      for (int i = 0; i < stub->jitCode()->localTracingSlots(); ++i) {
-        TraceRoot(trc, layout->locallyTracedValuePtr(i),
-                  "baseline-local-tracing-slot");
+      if (stub->hasJitCode()) {
+        for (int i = 0; i < stub->jitCode()->localTracingSlots(); ++i) {
+          TraceRoot(trc, layout->locallyTracedValuePtr(i),
+                    "baseline-local-tracing-slot");
+        }
       }
     }
   }

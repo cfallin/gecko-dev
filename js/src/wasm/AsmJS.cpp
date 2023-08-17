@@ -7111,7 +7111,7 @@ static bool TypeFailureWarning(frontend::ParserBase& parser, const char* str) {
 // asm.js requires Ion to be available on the current hardware/OS and to be
 // enabled for wasm, since asm.js compilation goes via wasm.
 static bool IsAsmJSCompilerAvailable(JSContext* cx) {
-  return HasPlatformSupport() && WasmCompilerForAsmJSAvailable(cx);
+  return cx && HasPlatformSupport() && WasmCompilerForAsmJSAvailable(cx);
 }
 
 static bool EstablishPreconditions(frontend::ParserBase& parser) {

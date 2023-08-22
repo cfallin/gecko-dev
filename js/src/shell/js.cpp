@@ -40,6 +40,7 @@
 #endif
 #include <ctime>
 #include <math.h>
+#include <optional>
 #ifndef __wasi__
 #  include <signal.h>
 #endif
@@ -10767,7 +10768,8 @@ static void SetWorkerContextOptions(JSContext* cx) {
   return true;
 }
 
-static int Shell(JSContext* cx, OptionParser* op) {
+static int Shell(JSContext* cx, OptionParser* op,
+                 MutableHandleObject lastGlobal) {
 #ifdef JS_STRUCTURED_SPEW
   cx->spewer().enableSpewing();
 #endif
@@ -10826,6 +10828,7 @@ static int Shell(JSContext* cx, OptionParser* op) {
     if (!glob) {
       return 1;
     }
+    lastGlobal.set(glob.get());
 
     JSAutoRealm ar(cx, glob);
 
@@ -11068,7 +11071,8 @@ static bool SetGCParameterFromArg(JSContext* cx, char* arg) {
   return true;
 }
 
-int main(int argc, char** argv) {
+Variant<JSAndShellContext, int> js::shell::ShellMain(int argc, char** argv,
+                                                     bool retainContext) {
   PreInit();
 
   sArgc = argc;
@@ -11080,13 +11084,13 @@ int main(int argc, char** argv) {
 
   // Special-case stdout and stderr. We bump their refcounts to prevent them
   // from getting closed and then having some printf fail somewhere.
-  RCFile rcStdout(stdout);
-  rcStdout.acquire();
-  RCFile rcStderr(stderr);
-  rcStderr.acquire();
+  UniquePtr<RCFile> rcStdout(MakeUnique<RCFile>(stdout));
+  rcStdout->acquire();
+  UniquePtr<RCFile> rcStderr(MakeUnique<RCFile>(stderr));
+  rcStderr->acquire();
 
-  SetOutputFile("JS_STDOUT", &rcStdout, &gOutFile);
-  SetOutputFile("JS_STDERR", &rcStderr, &gErrFile);
+  SetOutputFile("JS_STDOUT", rcStdout.get(), &gOutFile);
+  SetOutputFile("JS_STDERR", rcStderr.get(), &gErrFile);
 
   // Use a larger jemalloc page cache. This should match the value for browser
   // foreground processes in ContentChild::RecvNotifyProcessPriorityChanged.
@@ -11094,33 +11098,33 @@ int main(int argc, char** argv) {
 
   OptionParser op("Usage: {progname} [options] [[script] scriptArgs*]");
   if (!InitOptionParser(op)) {
-    return EXIT_FAILURE;
+    return AsVariant(EXIT_FAILURE);
   }
 
   switch (op.parseArgs(argc, argv)) {
     case OptionParser::EarlyExit:
-      return EXIT_SUCCESS;
+      return AsVariant(EXIT_SUCCESS);
     case OptionParser::ParseError:
       op.printHelp(argv[0]);
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     case OptionParser::Fail:
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     case OptionParser::Okay:
       break;
   }
 
   if (op.getHelpOption()) {
-    return EXIT_SUCCESS;
+    return AsVariant(EXIT_SUCCESS);
   }
 
   if (!SetGlobalOptionsPreJSInit(op)) {
-    return EXIT_FAILURE;
+    return AsVariant(EXIT_FAILURE);
   }
 
   // Start the engine.
   if (const char* message = JS_InitWithFailureDiagnostic()) {
     fprintf(gErrFile->fp, "JS_Init failed: %s\n", message);
-    return 1;
+    return AsVariant(1);
   }
 
   // `selfHostedXDRBuffer` contains XDR buffer of the self-hosted JS.
@@ -11132,7 +11136,7 @@ int main(int argc, char** argv) {
   auto shutdownEngine = MakeScopeExit([] { JS_ShutDown(); });
 
   if (!SetGlobalOptionsPostJSInit(op)) {
-    return EXIT_FAILURE;
+    return AsVariant(EXIT_FAILURE);
   }
 
   // Record aggregated telemetry data on disk. Do this as early as possible such
@@ -11148,7 +11152,7 @@ int main(int argc, char** argv) {
   });
 
   if (!InitSharedObjectMailbox()) {
-    return EXIT_FAILURE;
+    return AsVariant(EXIT_FAILURE);
   }
 
   JS::SetProcessBuildIdOp(ShellBuildId);
@@ -11156,7 +11160,7 @@ int main(int argc, char** argv) {
   /* Use the same parameters as the browser in xpcjsruntime.cpp. */
   JSContext* const cx = JS_NewContext(JS::DefaultHeapMaxBytes);
   if (!cx) {
-    return 1;
+    return AsVariant(1);
   }
 
   // Register telemetry callbacks, if needed.
@@ -11168,7 +11172,7 @@ int main(int argc, char** argv) {
 
   UniquePtr<ShellContext> sc = MakeUnique<ShellContext>(cx);
   if (!sc) {
-    return 1;
+    return AsVariant(1);
   }
   auto destroyShellContext = MakeScopeExit([cx, &sc] {
     // Must clear out some of sc's pointer containers before JS_DestroyContext.
@@ -11189,7 +11193,7 @@ int main(int argc, char** argv) {
   JS::SetWarningReporter(cx, WarningReporter);
 
   if (!SetContextOptions(cx, op)) {
-    return 1;
+    return AsVariant(1);
   }
 
   JS_SetTrustedPrincipals(cx, &ShellPrincipals::fullyTrusted);
@@ -11206,7 +11210,7 @@ int main(int argc, char** argv) {
   bufferStreamState = js_new<ExclusiveWaitableData<BufferStreamState>>(
       mutexid::BufferStreamState);
   if (!bufferStreamState) {
-    return 1;
+    return AsVariant(1);
   }
   auto shutdownBufferStreams = MakeScopeExit([] {
     ShutdownBufferStreams();
@@ -11253,7 +11257,7 @@ int main(int argc, char** argv) {
   }
 
   if (!JS::InitSelfHostedCode(cx, xdrSpan, xdrWriter)) {
-    return 1;
+    return AsVariant(1);
   }
 
   EnvironmentPreparer environmentPreparer(cx);
@@ -11270,13 +11274,14 @@ int main(int argc, char** argv) {
     if (!WasmCompileAndSerialize(cx)) {
       // Errors have been printed directly to stderr.
       MOZ_ASSERT(!cx->isExceptionPending());
-      return EXIT_FAILURE;
+      return AsVariant(EXIT_FAILURE);
     }
 #endif
-    return EXIT_SUCCESS;
+    return AsVariant(EXIT_SUCCESS);
   }
 
-  result = Shell(cx, &op);
+  RootedObject lastGlobal(cx);
+  result = Shell(cx, &op, &lastGlobal);
 
 #ifdef DEBUG
   if (OOM_printAllocationCount) {
@@ -11284,8 +11289,34 @@ int main(int argc, char** argv) {
   }
 #endif
 
-  return result;
+  if (retainContext) {
+    shutdownEngine.release();
+    destroyCx.release();
+    destroyShellContext.release();
+    resetGrayGCRootsTracer.release();
+    shutdownBufferStreams.release();
+    shutdownShellThreads.release();
+
+    JSAndShellContext ret{cx,
+                          lastGlobal.get(),
+                          std::move(sc),
+                          std::move(selfHostedXDRBuffer),
+                          std::move(rcStdout),
+                          std::move(rcStderr)};
+    return AsVariant(std::move(ret));
+  } else {
+    return AsVariant(result);
+  }
 }
+
+// N.B.: When Wizer support is enabled, a separate main() is used.
+#ifndef JS_SHELL_WIZER
+
+int main(int argc, char** argv) {
+  return ShellMain(argc, argv, /* returnContext = */ false).as<int>();
+}
+
+#endif  // !JS_SHELL_WIZER
 
 bool InitOptionParser(OptionParser& op) {
   op.setDescription(
@@ -11900,6 +11931,12 @@ bool SetGlobalOptionsPostJSInit(const OptionParser& op) {
     defaultDelazificationMode =
         JS::DelazificationOption::ParseEverythingEagerly;
   }
+
+  // Likewise, if we have Wizer support built into the shell, we
+  // unconditionally parse everything eagerly.
+#ifdef JS_SHELL_WIZER
+  defaultDelazificationMode = JS::DelazificationOption::ParseEverythingEagerly;
+#endif
 
   if (const char* xdr = op.getStringOption("selfhosted-xdr-path")) {
     shell::selfHostedXDRPath = xdr;

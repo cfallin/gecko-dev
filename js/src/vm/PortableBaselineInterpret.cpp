@@ -3926,13 +3926,19 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
     CASE(CallIter)
     CASE(CallContentIter)
     CASE(Eval)
-    CASE(StrictEval) {
+    CASE(StrictEval)
+    CASE(SuperCall)
+    CASE(New)
+    CASE(NewContent) {
       static_assert(JSOpLength_Call == JSOpLength_CallIgnoresRv);
       static_assert(JSOpLength_Call == JSOpLength_CallContent);
       static_assert(JSOpLength_Call == JSOpLength_CallIter);
       static_assert(JSOpLength_Call == JSOpLength_CallContentIter);
       static_assert(JSOpLength_Call == JSOpLength_Eval);
       static_assert(JSOpLength_Call == JSOpLength_StrictEval);
+      static_assert(JSOpLength_Call == JSOpLength_SuperCall);
+      static_assert(JSOpLength_Call == JSOpLength_New);
+      static_assert(JSOpLength_Call == JSOpLength_NewContent);
       uint32_t argc = GET_ARGC(pc);
       do {
         HandleValue callee = Stack::handle(sp + argc + 1);
@@ -4069,28 +4075,16 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
       } while (0);
 
       // Slow path: use the IC!
+      JSOp op = JSOp(*pc);
+      bool constructing =
+          (op == JSOp::New || op == JSOp::NewContent || op == JSOp::SuperCall);
       icregs.icVals[0] = argc;
-      icregs.extraArgs = 2;
+      icregs.extraArgs = 2 + constructing;
       icregs.spreadCall = false;
       INVOKE_IC(Call);
-      POPN(argc + 2);
+      POPN(argc + 2 + constructing);
       PUSH(StackVal(Value::fromRawBits(icregs.icResult)));
       END_OP(Call);
-    }
-
-    CASE(SuperCall)
-    CASE(New)
-    CASE(NewContent) {
-      static_assert(JSOpLength_SuperCall == JSOpLength_New);
-      static_assert(JSOpLength_SuperCall == JSOpLength_NewContent);
-      uint32_t argc = GET_ARGC(pc);
-      icregs.icVals[0] = argc;
-      icregs.extraArgs = 3;
-      icregs.spreadCall = false;
-      INVOKE_IC(Call);
-      POPN(argc + 3);
-      PUSH(StackVal(Value::fromRawBits(icregs.icResult)));
-      END_OP(SuperCall);
     }
 
     CASE(SpreadCall)

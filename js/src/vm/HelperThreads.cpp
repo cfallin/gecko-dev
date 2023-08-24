@@ -310,6 +310,7 @@ void js::FinishOffThreadIonCompile(jit::IonCompileTask* task,
       ->numFinishedOffThreadTasksRef(lock)++;
 }
 
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
 static JSRuntime* GetSelectorRuntime(const CompilationSelector& selector) {
   struct Matcher {
     JSRuntime* operator()(JSScript* script) {
@@ -322,6 +323,7 @@ static JSRuntime* GetSelectorRuntime(const CompilationSelector& selector) {
 
   return selector.match(Matcher());
 }
+#endif
 
 static bool JitDataStructuresExist(const CompilationSelector& selector) {
   struct Matcher {
@@ -334,6 +336,7 @@ static bool JitDataStructuresExist(const CompilationSelector& selector) {
   return selector.match(Matcher());
 }
 
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
 static bool IonCompileTaskMatches(const CompilationSelector& selector,
                                   jit::IonCompileTask* task) {
   struct TaskMatches {
@@ -354,9 +357,11 @@ static bool IonCompileTaskMatches(const CompilationSelector& selector,
 
   return selector.match(TaskMatches{task});
 }
+#endif
 
 static void CancelOffThreadIonCompileLocked(const CompilationSelector& selector,
                                             AutoLockHelperThreadState& lock) {
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
   if (!HelperThreadState().isInitialized(lock)) {
     return;
   }
@@ -425,6 +430,7 @@ static void CancelOffThreadIonCompileLocked(const CompilationSelector& selector,
       task = next;
     }
   }
+#endif  // ENABLE_PORTABLE_BASELINE_INTERP
 }
 
 void js::CancelOffThreadIonCompile(const CompilationSelector& selector) {

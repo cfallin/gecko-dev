@@ -12431,6 +12431,9 @@ bool SetContextJITOptions(JSContext* cx, const OptionParser& op) {
   if (op.getBoolOption("no-portable-baseline")) {
     jit::JitOptions.portableBaselineInterpreter = false;
   }
+  // For testing only: always enable PBL eagerly.
+  jit::JitOptions.portableBaselineInterpreter = true;
+  jit::JitOptions.setEagerPortableBaselineInterpreter();
 #endif
 
   if (op.getBoolOption("blinterp")) {

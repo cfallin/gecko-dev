@@ -30,6 +30,10 @@ jit::MethodStatus CanEnterPortableBaselineInterpreter(JSContext* cx,
 bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
                                            size_t numActualArgs);
 
+#ifdef ENABLE_JS_PBL_WEVAL
+void EnqueuePortableBaselineSpecialization(JSScript* script);
+#endif
+
 } /* namespace js */
 
 #endif /* vm_PortableBaselineInterpret_h */

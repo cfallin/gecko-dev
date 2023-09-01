@@ -59,3 +59,8 @@ OBJDIR_FILES.js.src += ["!/dist/bin/js%s" % CONFIG["BIN_SUFFIX"]]
 if CONFIG["OS_ARCH"] == "WASI":
     LDFLAGS += ["-Wl,-z,stack-size=1048576", "-Wl,--stack-first"]
     OS_LIBS += ["wasi-emulated-process-clocks", "wasi-emulated-getpid"]
+
+if CONFIG["ENABLE_JS_PBL_WEVAL"]:
+    LOCAL_INCLUDES += [
+        "../../../third_party/weval",
+    ]

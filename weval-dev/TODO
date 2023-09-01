@@ -1,0 +1,21 @@
+- weval
+  X get specialized/generic-bailout architecture working
+    - add a config option to test it
+  X add intrinsics for memory-constantness and for interpreter loop
+  X add specialization requests at call-points
+  X add specialization requests when creating JSScripts (and put the weval state
+    in JSScript instead of JitScript)
+  - get Octane passing
+  - === milestone 1: weval of JSOp loop
+  - add pointers on ICStubs for specialized funcs
+  - add weval intrinsics to IC loop
+  - add CacheIRWriter bodies for common ICs (find a way to collect these: print
+    in CacheIRWriter?)
+  - === milestone 2: weval'd IC stubs
+  - add stack-renaming and renaming for icregs
+  - ensure that IC invocation code is minimized (put error-case switch off the
+    critical path, ensure it's not in PC-specialized code)
+  - === milestone 3: opts
+
+- perf regression from 3.3.0 to 3.3.1 (Jake)
+  - from async resume in PBL?

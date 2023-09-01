@@ -2471,6 +2471,10 @@ bool JSScript::fullyInitFromStencil(
     }
   }
 
+#ifdef ENABLE_JS_PBL_WEVAL
+  EnqueuePortableBaselineSpecialization(script);
+#endif
+
   return true;
 }
 

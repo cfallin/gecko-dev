@@ -59,3 +59,8 @@ UNIFIED_SOURCES += [
 SOURCES += [
     "StoreBuffer.cpp",
 ]
+
+if CONFIG["ENABLE_JS_PBL_WEVAL"]:
+    LOCAL_INCLUDES += [
+        "../../../third_party/weval",
+    ]

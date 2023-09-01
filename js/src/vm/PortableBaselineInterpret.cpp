@@ -41,6 +41,7 @@
 #include "vm/Opcodes.h"
 #include "vm/PlainObject.h"
 #include "vm/Shape.h"
+#include "vm/Weval.h"
 
 #include "debugger/DebugAPI-inl.h"
 #include "jit/BaselineFrame-inl.h"
@@ -48,6 +49,11 @@
 #include "vm/EnvironmentObject-inl.h"
 #include "vm/Interpreter-inl.h"
 #include "vm/JSScript-inl.h"
+#include "vm/SharedStencil-inl.h"
+
+#ifdef ENABLE_JS_PBL_WEVAL
+WEVAL_DEFINE_REQ_LIST();
+#endif
 
 // #define TRACE_INTERP
 // #define DETERMINISTIC_TRACE
@@ -366,9 +372,74 @@ enum class PBIResult {
   UnwindRet,
 };
 
-static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
-                                           Stack& stack, StackVal* sp,
-                                           JSObject* envChain, Value* ret);
+enum class PBISpecialization {
+  Generic,
+  Specialized,
+  TestSpecialized,
+  GenericRestart,
+};
+
+enum class PBIRestart {
+  None,
+  Error,
+  Unwind,
+  UnwindError,
+  UnwindRet,
+};
+
+typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
+                             StackVal* sp, jsbytecode* pc, JSScript* script,
+                             ImmutableScriptData* isd, JSObject* envChain,
+                             Value* ret, BaselineFrame* frame,
+                             StackVal* entryFrame, PBIRestart restart);
+
+template <PBISpecialization spec = PBISpecialization::Generic>
+static PBIResult PortableBaselineInterpret(
+    JSContext* cx_, State& state, Stack& stack, StackVal* sp, jsbytecode* pc,
+    JSScript* script, ImmutableScriptData* isd, JSObject* envChain, Value* ret,
+    BaselineFrame* frame = nullptr, StackVal* entryFrame = nullptr,
+    PBIRestart restart = PBIRestart::None);
+
+static PBIResult MaybeSpecializedPBI(JSContext* cx, State& state, Stack& stack,
+                                     StackVal* sp, jsbytecode* pc,
+                                     JSScript* script, ImmutableScriptData* isd,
+                                     JSObject* envChain, Value* ret) {
+#ifdef ENABLE_JS_PBL_WEVAL
+  auto& weval = script->weval();
+  if (weval.func) {
+    PBIFunc f = reinterpret_cast<PBIFunc>(weval.func);
+    MOZ_ASSERT(pc == script->code());
+    return f(cx, state, stack, sp, pc, script, isd, envChain, ret, nullptr,
+             nullptr, PBIRestart::None);
+  }
+  return PortableBaselineInterpret(cx, state, stack, sp, pc, script, isd,
+                                   envChain, ret);
+#else
+  return PortableBaselineInterpret(cx, state, stack, sp, pc, script, isd,
+                                   envChain, ret);
+#endif
+}
+
+#ifdef ENABLE_JS_PBL_WEVAL
+void js::EnqueuePortableBaselineSpecialization(JSScript* script) {
+  auto& weval = script->weval();
+  if (!weval.req) {
+    using weval::Runtime;
+    using weval::Specialize;
+
+    jsbytecode* pc = script->code();
+    ImmutableScriptData* isd = script->immutableScriptData();
+    weval.req = weval::weval(
+        reinterpret_cast<PBIFunc*>(&weval.func),
+        &PortableBaselineInterpret<PBISpecialization::Specialized>,
+        Runtime<JSContext*>(), Runtime<State&>(), Runtime<Stack&>(),
+        Runtime<StackVal*>(), Specialize<jsbytecode*>(pc), Runtime<JSScript*>(),
+        Specialize<ImmutableScriptData*>(isd), Runtime<JSObject*>(),
+        Runtime<Value*>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),
+        Runtime<PBIRestart>());
+  }
+}
+#endif
 
 #define TRY(x)               \
   if (!(x)) {                \
@@ -1359,9 +1430,13 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         PUSHNATIVE(StackValNative(
             MakeFrameDescriptorForJitCall(FrameType::BaselineStub, argc)));
 
-        switch (PortableBaselineInterpret(
-            cx, state, stack, sp, /* envChain = */ nullptr,
-            reinterpret_cast<Value*>(&icregs.icResult))) {
+        JSScript* script = callee->nonLazyScript();
+        ImmutableScriptData* isd = script->immutableScriptData();
+        jsbytecode* pc = script->code();
+        Value* ret = reinterpret_cast<Value*>(&icregs.icResult);
+
+        switch (MaybeSpecializedPBI(cx, state, stack, sp, pc, script, isd,
+                                    /* envChain = */ nullptr, ret)) {
           case PBIResult::Ok:
             break;
           case PBIResult::Error:
@@ -1922,21 +1997,30 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
 #undef PREDICT_NEXT
 }
 
+#ifdef ENABLE_JS_PBL_WEVAL
+#  define WEVAL_POP_CONTEXT() weval::pop_context()
+#else
+#  define WEVAL_POP_CONTEXT()
+#endif
+
+static ICInterpretOpResult MOZ_NEVER_INLINE
+ICInterpretOpsOutlined(BaselineFrame* frame, VMFrameManager& frameMgr,
+                       State& state, ICRegs& icregs, Stack& stack, StackVal* sp,
+                       ICCacheIRStub* cstub, jsbytecode* pc) {
+  return ICInterpretOps(frame, frameMgr, state, icregs, stack, sp, cstub, pc);
+}
+
 #define NEXT_IC() frame->interpreterICEntry()++;
 
-#define INVOKE_IC(kind)                                              \
-  switch (IC##kind(frame, frameMgr, state, icregs, stack, sp, pc)) { \
-    case PBIResult::Ok:                                              \
-      break;                                                         \
-    case PBIResult::Error:                                           \
-      goto error;                                                    \
-    case PBIResult::Unwind:                                          \
-      goto unwind;                                                   \
-    case PBIResult::UnwindError:                                     \
-      goto unwind_error;                                             \
-    case PBIResult::UnwindRet:                                       \
-      goto unwind_ret;                                               \
-  }                                                                  \
+#define INVOKE_IC(kind)                                                       \
+  icResult =                                                                  \
+      (spec == PBISpecialization::Specialized)                                \
+          ? IC##kind##Outlined(frame, frameMgr, state, icregs, stack, sp, pc) \
+          : IC##kind(frame, frameMgr, state, icregs, stack, sp, pc);          \
+  if (icResult != PBIResult::Ok) {                                            \
+    WEVAL_POP_CONTEXT();                                                      \
+    goto ic_fail;                                                             \
+  }                                                                           \
   NEXT_IC();
 
 #define SAVE_INPUTS(arity)            \
@@ -1979,47 +2063,67 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     }                                 \
   } while (0)
 
-#define DEFINE_IC(kind, arity, fallback_body)                                 \
-  static PBIResult MOZ_ALWAYS_INLINE IC##kind(                                \
-      BaselineFrame* frame, VMFrameManager& frameMgr, State& state,           \
-      ICRegs& icregs, Stack& stack, StackVal* sp, jsbytecode* pc) {           \
-    ICStub* stub = frame->interpreterICEntry()->firstStub();                  \
-    uint64_t inputs[3];                                                       \
-    SAVE_INPUTS(arity);                                                       \
-    while (true) {                                                            \
-    next_stub:                                                                \
-      if (stub->isFallback()) {                                               \
-        ICFallbackStub* fallback = stub->toFallbackStub();                    \
-        fallback_body;                                                        \
-        icregs.icResult = state.res.asRawBits();                              \
-        state.res = UndefinedValue();                                         \
-        return PBIResult::Ok;                                                 \
-      error:                                                                  \
-        return PBIResult::Error;                                              \
-      } else {                                                                \
-        ICCacheIRStub* cstub = stub->toCacheIRStub();                         \
-        cstub->incrementEnteredCount();                                       \
-        new (&icregs.cacheIRReader) CacheIRReader(cstub->stubInfo()->code()); \
-        switch (ICInterpretOps(frame, frameMgr, state, icregs, stack, sp,     \
-                               cstub, pc)) {                                  \
-          case ICInterpretOpResult::NextIC:                                   \
-            stub = stub->maybeNext();                                         \
-            RESTORE_INPUTS(arity);                                            \
-            goto next_stub;                                                   \
-          case ICInterpretOpResult::Return:                                   \
-            return PBIResult::Ok;                                             \
-          case ICInterpretOpResult::Error:                                    \
-            return PBIResult::Error;                                          \
-          case ICInterpretOpResult::Unwind:                                   \
-            return PBIResult::Unwind;                                         \
-          case ICInterpretOpResult::UnwindError:                              \
-            return PBIResult::UnwindError;                                    \
-          case ICInterpretOpResult::UnwindRet:                                \
-            return PBIResult::UnwindRet;                                      \
-        }                                                                     \
-      }                                                                       \
-    }                                                                         \
+#define DEFINE_IC_IMPL(kind, arity, fallback_body, ool)                        \
+  static PBIResult MOZ_ALWAYS_INLINE IC##kind##ool(                            \
+      BaselineFrame* frame, VMFrameManager& frameMgr, State& state,            \
+      ICRegs& icregs, Stack& stack, StackVal* sp, jsbytecode* pc) {            \
+    ICStub* stub = frame->interpreterICEntry()->firstStub();                   \
+    uint64_t inputs[3];                                                        \
+    SAVE_INPUTS(arity);                                                        \
+    while (true) {                                                             \
+    next_stub:                                                                 \
+      if (stub->isFallback()) {                                                \
+        ICFallbackStub* fallback = stub->toFallbackStub();                     \
+        fallback_body;                                                         \
+        icregs.icResult = state.res.asRawBits();                               \
+        state.res = UndefinedValue();                                          \
+        return PBIResult::Ok;                                                  \
+      } else {                                                                 \
+        ICCacheIRStub* cstub = stub->toCacheIRStub();                          \
+        cstub->incrementEnteredCount();                                        \
+        new (&icregs.cacheIRReader) CacheIRReader(cstub->stubInfo()->code());  \
+        switch (ICInterpretOps##ool(frame, frameMgr, state, icregs, stack, sp, \
+                                    cstub, pc)) {                              \
+          case ICInterpretOpResult::NextIC:                                    \
+            stub = stub->maybeNext();                                          \
+            RESTORE_INPUTS(arity);                                             \
+            goto next_stub;                                                    \
+          case ICInterpretOpResult::Return:                                    \
+            return PBIResult::Ok;                                              \
+          case ICInterpretOpResult::Error:                                     \
+            return PBIResult::Error;                                           \
+          case ICInterpretOpResult::Unwind:                                    \
+            return PBIResult::Unwind;                                          \
+          case ICInterpretOpResult::UnwindError:                               \
+            return PBIResult::UnwindError;                                     \
+          case ICInterpretOpResult::UnwindRet:                                 \
+            return PBIResult::UnwindRet;                                       \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
   }
+
+#define DEFINE_IC(kind, arity, fallback_body)                                 \
+  DEFINE_IC_IMPL(kind, arity, fallback_body, )                                \
+                                                                              \
+  static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(                       \
+      BaselineFrame* frame, VMFrameManager& frameMgr, State& state,           \
+      ICRegs& icregs, Stack& stack, StackVal* sp, jsbytecode* pc,             \
+      ICFallbackStub* fallback) {                                             \
+    fallback_body;                                                            \
+    return PBIResult::Ok;                                                     \
+  }                                                                           \
+                                                                              \
+  DEFINE_IC_IMPL(                                                             \
+      kind, arity,                                                            \
+      {                                                                       \
+        PBIResult result = IC##kind##Fallback(frame, frameMgr, state, icregs, \
+                                              stack, sp, pc, fallback);       \
+        if (result != PBIResult::Ok) {                                        \
+          return result;                                                      \
+        }                                                                     \
+      },                                                                      \
+      Outlined)
 
 #define IC_LOAD_VAL(state_elem, index)                \
   ReservedRooted<Value> state_elem(&state.state_elem, \
@@ -2034,7 +2138,7 @@ DEFINE_IC(Typeof, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoTypeOfFallback(cx, frame, fallback, value0, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2042,7 +2146,7 @@ DEFINE_IC(GetName, 1, {
   IC_LOAD_OBJ(obj0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoGetNameFallback(cx, frame, fallback, obj0, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2060,12 +2164,12 @@ DEFINE_IC(Call, 1, {
     if (icregs.spreadCall) {
       if (!DoSpreadCallFallback(cx, frame, fallback, args, &state.res)) {
         std::reverse(args, args + totalArgs);
-        goto error;
+        return PBIResult::Error;
       }
     } else {
       if (!DoCallFallback(cx, frame, fallback, argc, args, &state.res)) {
         std::reverse(args, args + totalArgs);
-        goto error;
+        return PBIResult::Error;
       }
     }
   }
@@ -2075,7 +2179,7 @@ DEFINE_IC(UnaryArith, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoUnaryArithFallback(cx, frame, fallback, value0, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2084,7 +2188,7 @@ DEFINE_IC(BinaryArith, 2, {
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoBinaryArithFallback(cx, frame, fallback, value0, value1, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2092,7 +2196,7 @@ DEFINE_IC(ToBool, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoToBoolFallback(cx, frame, fallback, value0, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2101,7 +2205,7 @@ DEFINE_IC(Compare, 2, {
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoCompareFallback(cx, frame, fallback, value0, value1, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2110,7 +2214,7 @@ DEFINE_IC(InstanceOf, 2, {
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoInstanceOfFallback(cx, frame, fallback, value0, value1, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2119,7 +2223,7 @@ DEFINE_IC(In, 2, {
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoInFallback(cx, frame, fallback, value0, value1, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2127,7 +2231,7 @@ DEFINE_IC(BindName, 1, {
   IC_LOAD_OBJ(obj0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoBindNameFallback(cx, frame, fallback, obj0, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2136,14 +2240,14 @@ DEFINE_IC(SetProp, 2, {
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoSetPropFallback(cx, frame, fallback, nullptr, value0, value1)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
 DEFINE_IC(NewObject, 0, {
   PUSH_FALLBACK_IC_FRAME();
   if (!DoNewObjectFallback(cx, frame, fallback, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2151,7 +2255,7 @@ DEFINE_IC(GetProp, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoGetPropFallback(cx, frame, fallback, &value0, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2161,7 +2265,7 @@ DEFINE_IC(GetPropSuper, 2, {
   PUSH_FALLBACK_IC_FRAME();
   if (!DoGetPropSuperFallback(cx, frame, fallback, value0, &value1,
                               &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2170,7 +2274,7 @@ DEFINE_IC(GetElem, 2, {
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoGetElemFallback(cx, frame, fallback, value0, value1, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2181,21 +2285,21 @@ DEFINE_IC(GetElemSuper, 3, {
   PUSH_FALLBACK_IC_FRAME();
   if (!DoGetElemSuperFallback(cx, frame, fallback, value1, value2, value0,
                               &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
 DEFINE_IC(NewArray, 0, {
   PUSH_FALLBACK_IC_FRAME();
   if (!DoNewArrayFallback(cx, frame, fallback, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
 DEFINE_IC(GetIntrinsic, 0, {
   PUSH_FALLBACK_IC_FRAME();
   if (!DoGetIntrinsicFallback(cx, frame, fallback, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2206,7 +2310,7 @@ DEFINE_IC(SetElem, 3, {
   PUSH_FALLBACK_IC_FRAME();
   if (!DoSetElemFallback(cx, frame, fallback, nullptr, value0, value1,
                          value2)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2215,7 +2319,7 @@ DEFINE_IC(HasOwn, 2, {
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoHasOwnFallback(cx, frame, fallback, value0, value1, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2225,7 +2329,7 @@ DEFINE_IC(CheckPrivateField, 2, {
   PUSH_FALLBACK_IC_FRAME();
   if (!DoCheckPrivateFieldFallback(cx, frame, fallback, value0, value1,
                                    &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2233,7 +2337,7 @@ DEFINE_IC(GetIterator, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoGetIteratorFallback(cx, frame, fallback, value0, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2241,7 +2345,7 @@ DEFINE_IC(ToPropertyKey, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoToPropertyKeyFallback(cx, frame, fallback, value0, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2249,14 +2353,14 @@ DEFINE_IC(OptimizeSpreadCall, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoOptimizeSpreadCallFallback(cx, frame, fallback, value0, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
 DEFINE_IC(Rest, 0, {
   PUSH_FALLBACK_IC_FRAME();
   if (!DoRestFallback(cx, frame, fallback, &state.res)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2264,7 +2368,7 @@ DEFINE_IC(CloseIter, 1, {
   IC_LOAD_OBJ(obj0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoCloseIterFallback(cx, frame, fallback, obj0)) {
-    goto error;
+    return PBIResult::Error;
   }
 });
 
@@ -2272,7 +2376,7 @@ DEFINE_IC(CloseIter, 1, {
 
 #ifndef __wasi__
 #  define DEBUG_CHECK()                                                   \
-    if (frame->isDebuggee()) {                                            \
+    if (spec != PBISpecialization::Specialized && frame->isDebuggee()) {  \
       TRACE_PRINTF(                                                       \
           "Debug check: frame is debuggee, checking for debug script\n"); \
       if (script->hasDebugScript()) {                                     \
@@ -2283,12 +2387,28 @@ DEFINE_IC(CloseIter, 1, {
 #  define DEBUG_CHECK()
 #endif
 
+#ifdef ENABLE_JS_PBL_WEVAL
+#  define WEVAL_UPDATE_CONTEXT(pc)                                  \
+    weval_assert_const32(reinterpret_cast<uint32_t>(pc), __LINE__); \
+    weval::update_context(reinterpret_cast<uint32_t>(pc));
+#else
+#  define WEVAL_UPDATE_CONTEXT(pc)
+#endif
+
 #define LABEL(op) (&&label_##op)
 #define CASE(op) label_##op:
+
+#ifdef ENABLE_JS_PBL_WEVAL
+#  define GOTO_OP_AT_PC() goto* addresses_table[*pc];
+#else
+#  define GOTO_OP_AT_PC() goto* addresses[*pc];
+#endif
+
 #if !defined(TRACE_INTERP) && !defined(DETERMINISTIC_TRACE)
-#  define DISPATCH() \
-    DEBUG_CHECK();   \
-    goto* addresses[*pc]
+#  define DISPATCH()          \
+    DEBUG_CHECK();            \
+    WEVAL_UPDATE_CONTEXT(pc); \
+    GOTO_OP_AT_PC();
 #else
 #  define DISPATCH() \
     DEBUG_CHECK();   \
@@ -2311,10 +2431,10 @@ DEFINE_IC(CloseIter, 1, {
 #define IC_PUSH_RESULT() PUSH(StackVal(icregs.icResult));
 
 #if !defined(TRACE_INTERP) && !defined(DETERMINISTIC_TRACE)
-#  define PREDICT_NEXT(op)       \
-    if (JSOp(*pc) == JSOp::op) { \
-      DEBUG_CHECK();             \
-      goto label_##op;           \
+#  define PREDICT_NEXT(op)                                                 \
+    if (spec != PBISpecialization::Specialized && JSOp(*pc) == JSOp::op) { \
+      DEBUG_CHECK();                                                       \
+      goto label_##op;                                                     \
     }
 #else
 #  define PREDICT_NEXT(op)
@@ -2332,9 +2452,19 @@ DEFINE_IC(CloseIter, 1, {
     if (!BytecodeIsJumpTarget(JSOp(*main))) COUNT_COVERAGE_PC(main); \
   }
 
-static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
-                                           Stack& stack, StackVal* sp,
-                                           JSObject* envChain, Value* ret) {
+#define ENSURE_GENERIC(restartKind)                                            \
+  if (spec == PBISpecialization::Specialized ||                                \
+      spec == PBISpecialization::TestSpecialized) {                            \
+    return PortableBaselineInterpret<PBISpecialization::GenericRestart>(       \
+        frameMgr.cxForLocalUseOnly(), state, stack, sp, pc, script.get(), isd, \
+        nullptr, ret, frame, entryFrame, restartKind);                         \
+  }
+
+template <PBISpecialization spec>
+static PBIResult PortableBaselineInterpret(
+    JSContext* cx_, State& state, Stack& stack, StackVal* sp, jsbytecode* pc,
+    JSScript* script_, ImmutableScriptData* isd, JSObject* envChain, Value* ret,
+    BaselineFrame* frame, StackVal* entryFrame, PBIRestart restartKind) {
 #define OPCODE_LABEL(op, ...) LABEL(op),
 #define TRAILING_LABEL(v) LABEL(default),
 
@@ -2345,98 +2475,130 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
 #undef OPCODE_LABEL
 #undef TRAILING_LABEL
 
-  PUSHNATIVE(StackValNative(nullptr));  // Fake return address.
-  BaselineFrame* frame = stack.pushFrame(sp, cx_, envChain);
-  MOZ_ASSERT(frame);  // safety: stack margin.
-  sp = reinterpret_cast<StackVal*>(frame);
-
-  // Save the entry frame so that when unwinding, we know when to
-  // return from this C++ frame.
-  StackVal* entryFrame = sp;
-
   ICRegs icregs;
-  RootedScript script(cx_, frame->script());
-  jsbytecode* pc = frame->interpreterPC();
+  PBIResult icResult = PBIResult::Ok;
+  RootedScript script(cx_, script_);
+  VMFrameManager frameMgr(cx_, frame);
   bool from_unwind = false;
 
-  VMFrameManager frameMgr(cx_, frame);
+#ifdef ENABLE_JS_PBL_WEVAL
+  pc = weval::assume_const_memory(pc);
+  isd = weval::assume_const_memory_transitive(isd);
+  auto* addresses_table = weval::assume_const_memory_transitive(addresses);
+#endif
 
-  AutoCheckRecursionLimit recursion(frameMgr.cxForLocalUseOnly());
-  if (!recursion.checkDontReport(frameMgr.cxForLocalUseOnly())) {
-    PUSH_EXIT_FRAME();
-    ReportOverRecursed(frameMgr.cxForLocalUseOnly());
-    return PBIResult::Error;
-  }
+  MOZ_ASSERT(isd == script->immutableScriptData());
 
-  // Check max stack depth once, so we don't need to check it
-  // otherwise below for ordinary stack-manipulation opcodes (just for
-  // exit frames).
-  if (!stack.check(sp, sizeof(StackVal) * script->nslots())) {
-    PUSH_EXIT_FRAME();
-    ReportOverRecursed(frameMgr.cxForLocalUseOnly());
-    return PBIResult::Error;
-  }
+  if (spec != PBISpecialization::GenericRestart) {
+    PUSHNATIVE(StackValNative(nullptr));  // Fake return address.
+    frame = stack.pushFrame(sp, cx_, envChain);
+    MOZ_ASSERT(frame);  // safety: stack margin.
+    sp = reinterpret_cast<StackVal*>(frame);
 
-  uint32_t nfixed = script->nfixed();
-  for (uint32_t i = 0; i < nfixed; i++) {
-    PUSH(StackVal(UndefinedValue()));
-  }
-  ret->setUndefined();
+    // Save the entry frame so that when unwinding, we know when to
+    // return from this C++ frame.
+    entryFrame = sp;
 
-  if (CalleeTokenIsFunction(frame->calleeToken())) {
-    JSFunction* func = CalleeTokenToFunction(frame->calleeToken());
-    frame->setEnvironmentChain(func->environment());
-    if (func->needsFunctionEnvironmentObjects()) {
+    frameMgr.switchToFrame(frame);
+
+    AutoCheckRecursionLimit recursion(frameMgr.cxForLocalUseOnly());
+    if (!recursion.checkDontReport(frameMgr.cxForLocalUseOnly())) {
       PUSH_EXIT_FRAME();
-      TRY(js::InitFunctionEnvironmentObjects(cx, frame));
-      TRACE_PRINTF("callee is func %p; created environment object: %p\n", func,
-                   frame->environmentChain());
+      ReportOverRecursed(frameMgr.cxForLocalUseOnly());
+      return PBIResult::Error;
     }
-  }
 
-  // Check if we are being debugged, and set a flag in the frame if
-  // so.
-  if (script->isDebuggee()) {
-    TRACE_PRINTF("Script is debuggee\n");
-    frame->setIsDebuggee();
-
-    PUSH_EXIT_FRAME();
-    if (!DebugPrologue(cx, frame)) {
-      goto error;
-    }
-  }
-
-  if (!script->hasScriptCounts()) {
-    if (frameMgr.cxForLocalUseOnly()->realm()->collectCoverageForDebug()) {
+    // Check max stack depth once, so we don't need to check it
+    // otherwise below for ordinary stack-manipulation opcodes (just for
+    // exit frames).
+    if (!stack.check(sp, sizeof(StackVal) * script->nslots())) {
       PUSH_EXIT_FRAME();
-      if (!script->initScriptCounts(cx)) {
-        goto error;
+      ReportOverRecursed(frameMgr.cxForLocalUseOnly());
+      return PBIResult::Error;
+    }
+
+    uint32_t nfixed = script->nfixed();
+    for (uint32_t i = 0; i < nfixed; i++) {
+      PUSH(StackVal(UndefinedValue()));
+    }
+    ret->setUndefined();
+
+    if (CalleeTokenIsFunction(frame->calleeToken())) {
+      JSFunction* func = CalleeTokenToFunction(frame->calleeToken());
+      frame->setEnvironmentChain(func->environment());
+      if (func->needsFunctionEnvironmentObjects()) {
+        PUSH_EXIT_FRAME();
+        TRY(js::InitFunctionEnvironmentObjects(cx, frame));
+        TRACE_PRINTF("callee is func %p; created environment object: %p\n",
+                     func, frame->environmentChain());
       }
     }
-  }
-  COUNT_COVERAGE_MAIN();
+
+    if (spec != PBISpecialization::Specialized) {
+      // Check if we are being debugged, and set a flag in the frame if
+      // so.
+      if (script->isDebuggee()) {
+        TRACE_PRINTF("Script is debuggee\n");
+        frame->setIsDebuggee();
+
+        PUSH_EXIT_FRAME();
+        if (!DebugPrologue(cx, frame)) {
+          goto error;
+        }
+      }
+
+      if (!script->hasScriptCounts()) {
+        if (frameMgr.cxForLocalUseOnly()->realm()->collectCoverageForDebug()) {
+          PUSH_EXIT_FRAME();
+          if (!script->initScriptCounts(cx)) {
+            goto error;
+          }
+        }
+      }
+      COUNT_COVERAGE_MAIN();
 
 #ifndef __wasi__
-  if (frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
-    PUSH_EXIT_FRAME();
-    if (!InterruptCheck(cx)) {
-      goto error;
+      if (frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
+        PUSH_EXIT_FRAME();
+        if (!InterruptCheck(cx)) {
+          goto error;
+        }
+      }
+#endif
     }
   }
-#endif
+
+  if (spec == PBISpecialization::GenericRestart) {
+    switch (restartKind) {
+      case PBIRestart::None:
+        break;
+      case PBIRestart::Error:
+        goto error_restart;
+      case PBIRestart::Unwind:
+        goto unwind_restart;
+      case PBIRestart::UnwindError:
+        goto unwind_error_restart;
+      case PBIRestart::UnwindRet:
+        goto unwind_ret_restart;
+    }
+  }
 
   TRACE_PRINTF("Entering: sp = %p fp = %p frame = %p, script = %p, pc = %p\n",
                sp, stack.fp, frame, script.get(), pc);
   TRACE_PRINTF("nslots = %d nfixed = %d\n", int(script->nslots()),
                int(script->nfixed()));
 
+#ifdef ENABLE_JS_PBL_WEVAL
+  weval::push_context(reinterpret_cast<uint32_t>(pc));
+#endif
+
   while (true) {
     DEBUG_CHECK();
 
-#ifndef __wasi__
-  dispatch :
-#endif
+    // Avoid unused-label warnings:
+    goto dispatch;
 
+  dispatch :
 #ifdef TRACE_INTERP
   {
     JSOp op = JSOp(*pc);
@@ -2471,7 +2633,8 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
     }
 #endif
 
-    goto* addresses[*pc];
+    WEVAL_UPDATE_CONTEXT(pc);
+    GOTO_OP_AT_PC();
 
     CASE(Nop) { END_OP(Nop); }
     CASE(Undefined) {
@@ -2677,10 +2840,11 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
         ADVANCE(jumpOffset);
         PREDICT_NEXT(JumpTarget);
         PREDICT_NEXT(LoopHead);
+        DISPATCH();
       } else {
         ADVANCE(JSOpLength_And);
+        DISPATCH();
       }
-      DISPATCH();
     }
     CASE(Or) {
       bool result;
@@ -2697,10 +2861,11 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
         ADVANCE(jumpOffset);
         PREDICT_NEXT(JumpTarget);
         PREDICT_NEXT(LoopHead);
+        DISPATCH();
       } else {
         ADVANCE(JSOpLength_Or);
+        DISPATCH();
       }
-      DISPATCH();
     }
     CASE(JumpIfTrue) {
       bool result;
@@ -2718,10 +2883,11 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
         ADVANCE(jumpOffset);
         PREDICT_NEXT(JumpTarget);
         PREDICT_NEXT(LoopHead);
+        DISPATCH();
       } else {
         ADVANCE(JSOpLength_JumpIfTrue);
+        DISPATCH();
       }
-      DISPATCH();
     }
     CASE(JumpIfFalse) {
       bool result;
@@ -2739,10 +2905,11 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
         ADVANCE(jumpOffset);
         PREDICT_NEXT(JumpTarget);
         PREDICT_NEXT(LoopHead);
+        DISPATCH();
       } else {
         ADVANCE(JSOpLength_JumpIfFalse);
+        DISPATCH();
       }
-      DISPATCH();
     }
 
     CASE(Add) {
@@ -3451,8 +3618,9 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
                     JSOpLength_InitHiddenElemSetter);
       {
         ReservedRooted<JSObject*> obj1(&state.obj1,
-                                       &POP().asValue().toObject());   // val
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());  // idval
+                                       &POP().asValue().toObject());  // val
+        ReservedRooted<Value> value0(&state.value0,
+                                     POP().asValue());  // idval
         ReservedRooted<JSObject*> obj0(
             &state.obj0, &sp[0].asValue().toObject());  // obj; leave on stack
         {
@@ -3671,7 +3839,8 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
       {
         ReservedRooted<Value> value3(&state.value3, POP().asValue());  // rval
         ReservedRooted<Value> value2(&state.value2, POP().asValue());  // lval
-        ReservedRooted<Value> value1(&state.value1, POP().asValue());  // index
+        ReservedRooted<Value> value1(&state.value1,
+                                     POP().asValue());  // index
         ReservedRooted<Value> value0(&state.value0,
                                      POP().asValue());  // receiver
         {
@@ -3946,7 +4115,8 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
       uint32_t argc = GET_ARGC(pc);
       do {
         HandleValue callee = Stack::handle(sp + argc + 1);
-        if (callee.isObject() && callee.toObject().is<JSFunction>()) {
+        if (spec != PBISpecialization::Specialized && callee.isObject() &&
+            callee.toObject().is<JSFunction>()) {
           JSFunction* func = &callee.toObject().as<JSFunction>();
           if (!func->hasBaseScript() || !func->isInterpreted() ||
               func->isClassConstructor()) {
@@ -4013,6 +4183,7 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
           // 5. Push fake return address, set script, push baseline frame.
           PUSHNATIVE(StackValNative(nullptr));
           script.set(calleeScript);
+          isd = script->immutableScriptData();
           BaselineFrame* newFrame =
               stack.pushFrame(sp, frameMgr.cxForLocalUseOnly(),
                               /* envChain = */ func->environment());
@@ -4179,7 +4350,6 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
       }
       END_OP(CheckThis);
     }
-
     CASE(CheckThisReinit) {
       if (!sp[0].asValue().isMagic(JS_UNINITIALIZED_LEXICAL)) {
         PUSH_EXIT_FRAME();
@@ -4254,8 +4424,9 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
       JSObject* promise;
       {
         ReservedRooted<JSObject*> obj0(&state.obj0,
-                                       &POP().asValue().toObject());   // gen
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());  // value
+                                       &POP().asValue().toObject());  // gen
+        ReservedRooted<Value> value0(&state.value0,
+                                     POP().asValue());  // value
         PUSH_EXIT_FRAME();
         promise = AsyncFunctionAwait(
             cx, obj0.as<AsyncFunctionGeneratorObject>(), value0);
@@ -4305,7 +4476,8 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
       // value, can_skip => value_or_resolved, can_skip
       {
         Value can_skip = POP().asValue();
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());  // value
+        ReservedRooted<Value> value0(&state.value0,
+                                     POP().asValue());  // value
         if (can_skip.toBoolean()) {
           PUSH_EXIT_FRAME();
           if (!ExtractAwaitValue(cx, value0, &value0)) {
@@ -4449,10 +4621,19 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
         DISPATCH();
       }
 
+      MOZ_ASSERT(isd == script->immutableScriptData());
+
       i = uint32_t(i) - uint32_t(low);
+#ifdef ENABLE_JS_PBL_WEVAL
+      i = int32_t(
+          weval_specialize_value(uint32_t(i), 0, uint32_t(high - low + 1)));
+      weval_assert_const32(uint32_t(i), __LINE__);
+#endif
       if ((uint32_t(i) < uint32_t(high - low + 1))) {
-        len = script->tableSwitchCaseOffset(pc, uint32_t(i)) -
-              script->pcToOffset(pc);
+        int32_t caseLen =
+            isd->tableSwitchCaseOffset(pc, uint32_t(i)) - isd->pcToOffset(pc);
+        ADVANCE(caseLen);
+        DISPATCH();
       }
       ADVANCE(len);
       DISPATCH();
@@ -4491,7 +4672,7 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
       if (stack.fp > entryFrame) {
         *ret = frame->returnValue();
         return ok ? PBIResult::Ok : PBIResult::Error;
-      } else {
+      } else if (spec != PBISpecialization::Specialized) {
         TRACE_PRINTF("Return fastpath\n");
         Value ret = frame->returnValue();
 
@@ -4513,6 +4694,7 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
         frameMgr.switchToFrame(frame);
         pc = frame->interpreterPC();
         script.set(frame->script());
+        isd = script->immutableScriptData();
 
         if (!ok) {
           goto error;
@@ -4523,6 +4705,8 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
         ADVANCE(JSOpLength_Call);
 
         DISPATCH();
+      } else {
+        MOZ_CRASH("Nested inline frames in specialized copy of PBI");
       }
     }
 
@@ -5062,7 +5246,24 @@ static PBIResult PortableBaselineInterpret(JSContext* cx_, State& state,
     MOZ_CRASH("Bad opcode");
   }
 
+ic_fail:
+  switch (icResult) {
+    case PBIResult::Ok:
+      MOZ_CRASH("Unreachable: should not reach ic_fail with PBIResult::Ok");
+    case PBIResult::Error:
+      goto error;
+    case PBIResult::Unwind:
+      goto unwind;
+    case PBIResult::UnwindError:
+      goto unwind_error;
+    case PBIResult::UnwindRet:
+      goto unwind_ret;
+  }
+
 error:
+  ENSURE_GENERIC(PBIRestart::Error);
+error_restart:
+
   TRACE_PRINTF("HandleException: frame %p\n", frame);
   {
     ResumeFromException rfe;
@@ -5124,6 +5325,9 @@ unwind:
     TRACE_PRINTF(" -> returning\n");
     return PBIResult::Unwind;
   }
+  ENSURE_GENERIC(PBIRestart::Unwind);
+unwind_restart:
+
   sp = stack.unwindingSP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(stack.fp) - BaselineFrame::Size());
@@ -5131,6 +5335,7 @@ unwind:
   frameMgr.switchToFrame(frame);
   pc = frame->interpreterPC();
   script.set(frame->script());
+  isd = script->immutableScriptData();
   DISPATCH();
 unwind_error:
   TRACE_PRINTF("unwind_error: fp = %p entryFrame = %p\n", stack.fp, entryFrame);
@@ -5142,6 +5347,9 @@ unwind_error:
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     return PBIResult::Error;
   }
+  ENSURE_GENERIC(PBIRestart::UnwindError);
+unwind_error_restart:
+
   sp = stack.unwindingSP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(stack.fp) - BaselineFrame::Size());
@@ -5149,6 +5357,7 @@ unwind_error:
   frameMgr.switchToFrame(frame);
   pc = frame->interpreterPC();
   script.set(frame->script());
+  isd = script->immutableScriptData();
   goto error;
 unwind_ret:
   TRACE_PRINTF("unwind_ret: fp = %p entryFrame = %p\n", stack.fp, entryFrame);
@@ -5161,6 +5370,9 @@ unwind_ret:
     *ret = frame->returnValue();
     return PBIResult::Ok;
   }
+  ENSURE_GENERIC(PBIRestart::UnwindRet);
+unwind_ret_restart:
+
   sp = stack.unwindingSP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(stack.fp) - BaselineFrame::Size());
@@ -5168,6 +5380,7 @@ unwind_ret:
   frameMgr.switchToFrame(frame);
   pc = frame->interpreterPC();
   script.set(frame->script());
+  isd = script->immutableScriptData();
   from_unwind = true;
   goto do_return;
 
@@ -5239,7 +5452,12 @@ bool js::PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   PUSHNATIVE(StackValNative(
       MakeFrameDescriptorForJitCall(FrameType::CppToJSJit, numActuals)));
 
-  switch (PortableBaselineInterpret(cx, state, stack, sp, envChain, result)) {
+  JSScript* script = ScriptFromCalleeToken(calleeToken);
+  jsbytecode* pc = script->code();
+  ImmutableScriptData* isd = script->immutableScriptData();
+
+  switch (MaybeSpecializedPBI(cx, state, stack, sp, pc, script, isd, envChain,
+                              result)) {
     case PBIResult::Ok:
     case PBIResult::UnwindRet:
       TRACE_PRINTF("PBI returned Ok/UnwindRet\n");

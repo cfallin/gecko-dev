@@ -1,0 +1,3 @@
+weval:
+
+$ ../weval/target/release/weval -w -i obj-weval-release/dist/bin/js -o concat-all-weval.wasm < ../octane-wasm/concat-all.js

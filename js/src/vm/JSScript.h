@@ -41,6 +41,7 @@
 #include "vm/SharedImmutableStringsCache.h"
 #include "vm/SharedStencil.h"  // js::GCThingIndex, js::SourceExtent, js::SharedImmutableScriptData, MemberInitializers
 #include "vm/StencilEnums.h"   // SourceRetrievable
+#include "vm/Weval.h"
 
 namespace JS {
 struct ScriptSourceInfo;
@@ -1460,6 +1461,11 @@ class BaseScript : public gc::TenuredCellWithNonGCPointer<uint8_t> {
   // will be nullptr.
   RefPtr<js::SharedImmutableScriptData> sharedData_ = {};
 
+  // weval info for specialization of interpreter.
+#ifdef ENABLE_JS_PBL_WEVAL
+  UniquePtr<Weval> weval_;
+#endif
+
   // End of fields.
 
   BaseScript(uint8_t* stubEntry, JSFunction* function,
@@ -1601,6 +1607,15 @@ class BaseScript : public gc::TenuredCellWithNonGCPointer<uint8_t> {
     }
     return false;
   }
+
+#ifdef ENABLE_JS_PBL_WEVAL
+  Weval& weval() {
+    if (!weval_) {
+      weval_ = MakeUnique<Weval>();
+    }
+    return *weval_;
+  }
+#endif
 
  public:
   static const JS::TraceKind TraceKind = JS::TraceKind::Script;

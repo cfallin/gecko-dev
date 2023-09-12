@@ -244,14 +244,13 @@ struct Stack {
 };
 
 struct ICRegs {
-  CacheIRReader cacheIRReader;
   static const int kMaxICVals = 16;
   uint64_t icVals[kMaxICVals];
   uint64_t icResult;
   int extraArgs;
   bool spreadCall;
 
-  ICRegs() : cacheIRReader(nullptr, nullptr) {}
+  ICRegs() {}
 };
 
 struct State {
@@ -420,6 +419,27 @@ static PBIResult MaybeSpecializedPBI(JSContext* cx, State& state, Stack& stack,
 #endif
 }
 
+enum class ICInterpretOpResult {
+  NextIC,
+  Return,
+  Error,
+  Unwind,
+  UnwindError,
+  UnwindRet,
+};
+
+typedef ICInterpretOpResult (*ICFunc)(BaselineFrame* frame,
+                                      VMFrameManager& frameMgr, State& state,
+                                      ICRegs& icregs, Stack& stack,
+                                      StackVal* sp, ICCacheIRStub* cstub,
+                                      const CacheIRStubInfo* stubInfo,
+                                      const uint8_t* code, jsbytecode* pc);
+
+static ICInterpretOpResult ICInterpretOps(
+    BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
+    ICRegs& icregs, Stack& stack, StackVal* sp, ICCacheIRStub* cstub,
+    const CacheIRStubInfo* stubInfo, const uint8_t* code, jsbytecode* pc);
+
 #ifdef ENABLE_JS_PBL_WEVAL
 void js::EnqueuePortableBaselineSpecialization(JSScript* script) {
   auto& weval = script->weval();
@@ -439,6 +459,24 @@ void js::EnqueuePortableBaselineSpecialization(JSScript* script) {
         Runtime<PBIRestart>());
   }
 }
+
+void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
+  auto& weval = stubInfo->weval();
+  if (!weval.req) {
+    using weval::Runtime;
+    using weval::Specialize;
+
+    const uint8_t* code = stubInfo->code();
+
+    weval.req =
+        weval::weval(reinterpret_cast<ICFunc*>(&weval.func), &ICInterpretOps,
+                     Runtime<BaselineFrame*>(), Runtime<VMFrameManager&>(),
+                     Runtime<State&>(), Runtime<ICRegs&>(), Runtime<Stack&>(),
+                     Runtime<StackVal*>(), Runtime<ICCacheIRStub*>(),
+                     Specialize<const CacheIRStubInfo*>(stubInfo),
+                     Specialize<const uint8_t*>(code), Runtime<jsbytecode*>());
+  }
+}
 #endif
 
 #define TRY(x)               \
@@ -454,21 +492,14 @@ void js::EnqueuePortableBaselineSpecialization(JSScript* script) {
   StackVal* sp = cx.spBelowFrame(); /* shadow the definition */ \
   (void)sp;                         /* avoid unused-variable warnings */
 
-enum class ICInterpretOpResult {
-  NextIC,
-  Return,
-  Error,
-  Unwind,
-  UnwindError,
-  UnwindRet,
-};
-
 #define PUSH_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(ICInterpretOpResult::Error);
 
-static ICInterpretOpResult MOZ_ALWAYS_INLINE
-ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
-               ICRegs& icregs, Stack& stack, StackVal* sp, ICCacheIRStub* cstub,
-               jsbytecode* pc) {
+static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
+    BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
+    ICRegs& icregs, Stack& stack, StackVal* sp, ICCacheIRStub* cstub,
+    const CacheIRStubInfo* stubInfo, const uint8_t* code, jsbytecode* pc) {
+  CacheIRReader reader(code);
+
 #define CACHEOP_CASE(name)                                                   \
   cacheop_##name                                                             \
       : TRACE_PRINTF("cacheop (frame %p pc %p stub %p): " #name "\n", frame, \
@@ -482,17 +513,17 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
 #undef OP
   };
 
-#define DISPATCH_CACHEOP()                 \
-  cacheop = icregs.cacheIRReader.readOp(); \
+#define DISPATCH_CACHEOP()   \
+  cacheop = reader.readOp(); \
   goto* addresses[long(cacheop)];
 
 #define BOUNDSCHECK(resultId) \
   if (resultId.id() >= ICRegs::kMaxICVals) return ICInterpretOpResult::NextIC;
 
-#define PREDICT_NEXT(name)                              \
-  if (icregs.cacheIRReader.peekOp() == CacheOp::name) { \
-    icregs.cacheIRReader.readOp();                      \
-    goto cacheop_##name;                                \
+#define PREDICT_NEXT(name)                \
+  if (reader.peekOp() == CacheOp::name) { \
+    reader.readOp();                      \
+    goto cacheop_##name;                  \
   }
 
   CacheOp cacheop;
@@ -505,7 +536,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardToInt32) {
-    ValOperandId inputId = icregs.cacheIRReader.valOperandId();
+    ValOperandId inputId = reader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     TRACE_PRINTF("GuardToInt32 (%d): icVal %" PRIx64 "\n", inputId.id(),
                  icregs.icVals[inputId.id()]);
@@ -521,7 +552,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardToObject) {
-    ValOperandId inputId = icregs.cacheIRReader.valOperandId();
+    ValOperandId inputId = reader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     TRACE_PRINTF("GuardToObject: icVal %" PRIx64 "\n",
                  icregs.icVals[inputId.id()]);
@@ -535,7 +566,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardToString) {
-    ValOperandId inputId = icregs.cacheIRReader.valOperandId();
+    ValOperandId inputId = reader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isString()) {
       return ICInterpretOpResult::NextIC;
@@ -546,7 +577,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardToSymbol) {
-    ValOperandId inputId = icregs.cacheIRReader.valOperandId();
+    ValOperandId inputId = reader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isSymbol()) {
       return ICInterpretOpResult::NextIC;
@@ -557,7 +588,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardToBigInt) {
-    ValOperandId inputId = icregs.cacheIRReader.valOperandId();
+    ValOperandId inputId = reader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isBigInt()) {
       return ICInterpretOpResult::NextIC;
@@ -567,7 +598,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardToBoolean) {
-    ValOperandId inputId = icregs.cacheIRReader.valOperandId();
+    ValOperandId inputId = reader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isBoolean()) {
       return ICInterpretOpResult::NextIC;
@@ -577,7 +608,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardIsNullOrUndefined) {
-    ObjOperandId inputId = icregs.cacheIRReader.objOperandId();
+    ObjOperandId inputId = reader.objOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isNullOrUndefined()) {
       return ICInterpretOpResult::NextIC;
@@ -586,7 +617,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardIsNull) {
-    ObjOperandId inputId = icregs.cacheIRReader.objOperandId();
+    ObjOperandId inputId = reader.objOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isNull()) {
       return ICInterpretOpResult::NextIC;
@@ -595,7 +626,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardIsUndefined) {
-    ObjOperandId inputId = icregs.cacheIRReader.objOperandId();
+    ObjOperandId inputId = reader.objOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isUndefined()) {
       return ICInterpretOpResult::NextIC;
@@ -604,8 +635,8 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardNonDoubleType) {
-    ValOperandId inputId = icregs.cacheIRReader.valOperandId();
-    ValueType type = icregs.cacheIRReader.valueType();
+    ValOperandId inputId = reader.valOperandId();
+    ValueType type = reader.valueType();
     Value val = Value::fromRawBits(icregs.icVals[inputId.id()]);
     switch (type) {
       case ValueType::String:
@@ -650,11 +681,10 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardShape) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    uint32_t shapeOffset = icregs.cacheIRReader.stubOffset();
+    ObjOperandId objId = reader.objOperandId();
+    uint32_t shapeOffset = reader.stubOffset();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
-    uintptr_t expectedShape =
-        cstub->stubInfo()->getStubRawWord(cstub, shapeOffset);
+    uintptr_t expectedShape = stubInfo->getStubRawWord(cstub, shapeOffset);
     if (reinterpret_cast<uintptr_t>(obj->shape()) != expectedShape) {
       return ICInterpretOpResult::NextIC;
     }
@@ -662,11 +692,10 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardProto) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    uint32_t protoOffset = icregs.cacheIRReader.stubOffset();
+    ObjOperandId objId = reader.objOperandId();
+    uint32_t protoOffset = reader.stubOffset();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
-    uintptr_t expectedProto =
-        cstub->stubInfo()->getStubRawWord(cstub, protoOffset);
+    uintptr_t expectedProto = stubInfo->getStubRawWord(cstub, protoOffset);
     if (reinterpret_cast<uintptr_t>(obj->staticPrototype()) != expectedProto) {
       return ICInterpretOpResult::NextIC;
     }
@@ -675,8 +704,8 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadProto) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    ObjOperandId resultId = icregs.cacheIRReader.objOperandId();
+    ObjOperandId objId = reader.objOperandId();
+    ObjOperandId resultId = reader.objOperandId();
     BOUNDSCHECK(resultId);
     NativeObject* nobj =
         reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
@@ -686,12 +715,11 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardSpecificFunction) {
-    ObjOperandId funId = icregs.cacheIRReader.objOperandId();
-    uint32_t expectedOffset = icregs.cacheIRReader.stubOffset();
-    uint32_t nargsAndFlagsOffset = icregs.cacheIRReader.stubOffset();
+    ObjOperandId funId = reader.objOperandId();
+    uint32_t expectedOffset = reader.stubOffset();
+    uint32_t nargsAndFlagsOffset = reader.stubOffset();
     (void)nargsAndFlagsOffset;  // Unused.
-    uintptr_t expected =
-        cstub->stubInfo()->getStubRawWord(cstub, expectedOffset);
+    uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
     if (expected != icregs.icVals[funId.id()]) {
       return ICInterpretOpResult::NextIC;
     }
@@ -700,10 +728,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardSpecificObject) {
-    ObjOperandId funId = icregs.cacheIRReader.objOperandId();
-    uint32_t expectedOffset = icregs.cacheIRReader.stubOffset();
-    uintptr_t expected =
-        cstub->stubInfo()->getStubRawWord(cstub, expectedOffset);
+    ObjOperandId funId = reader.objOperandId();
+    uint32_t expectedOffset = reader.stubOffset();
+    uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
     if (expected != icregs.icVals[funId.id()]) {
       return ICInterpretOpResult::NextIC;
     }
@@ -711,10 +738,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardSpecificAtom) {
-    StringOperandId strId = icregs.cacheIRReader.stringOperandId();
-    uint32_t expectedOffset = icregs.cacheIRReader.stubOffset();
-    uintptr_t expected =
-        cstub->stubInfo()->getStubRawWord(cstub, expectedOffset);
+    StringOperandId strId = reader.stringOperandId();
+    uint32_t expectedOffset = reader.stubOffset();
+    uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
     if (expected != icregs.icVals[strId.id()]) {
       return ICInterpretOpResult::NextIC;
     }
@@ -722,10 +748,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardSpecificSymbol) {
-    SymbolOperandId symId = icregs.cacheIRReader.symbolOperandId();
-    uint32_t expectedOffset = icregs.cacheIRReader.stubOffset();
-    uintptr_t expected =
-        cstub->stubInfo()->getStubRawWord(cstub, expectedOffset);
+    SymbolOperandId symId = reader.symbolOperandId();
+    uint32_t expectedOffset = reader.stubOffset();
+    uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
     if (expected != icregs.icVals[symId.id()]) {
       return ICInterpretOpResult::NextIC;
     }
@@ -733,10 +758,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardSpecificInt32) {
-    Int32OperandId int32Id = icregs.cacheIRReader.int32OperandId();
-    uint32_t expectedOffset = icregs.cacheIRReader.stubOffset();
-    uint32_t expected =
-        cstub->stubInfo()->getStubRawInt32(cstub, expectedOffset);
+    Int32OperandId int32Id = reader.int32OperandId();
+    uint32_t expectedOffset = reader.stubOffset();
+    uint32_t expected = stubInfo->getStubRawInt32(cstub, expectedOffset);
     if (expected != uint32_t(icregs.icVals[int32Id.id()])) {
       return ICInterpretOpResult::NextIC;
     }
@@ -744,8 +768,8 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardClass) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    GuardClassKind kind = icregs.cacheIRReader.guardClassKind();
+    ObjOperandId objId = reader.objOperandId();
+    GuardClassKind kind = reader.guardClassKind();
     JSObject* object = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     switch (kind) {
       case GuardClassKind::Array:
@@ -814,10 +838,10 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(StoreFixedSlot) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    uint32_t offsetOffset = icregs.cacheIRReader.stubOffset();
-    ValOperandId valId = icregs.cacheIRReader.valOperandId();
-    uintptr_t offset = cstub->stubInfo()->getStubRawInt32(cstub, offsetOffset);
+    ObjOperandId objId = reader.objOperandId();
+    uint32_t offsetOffset = reader.stubOffset();
+    ValOperandId valId = reader.valOperandId();
+    uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
     NativeObject* nobj =
         reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
     GCPtr<Value>* slot = reinterpret_cast<GCPtr<Value>*>(
@@ -829,10 +853,10 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(StoreDynamicSlot) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    uint32_t offsetOffset = icregs.cacheIRReader.stubOffset();
-    uint32_t offset = cstub->stubInfo()->getStubRawInt32(cstub, offsetOffset);
-    ValOperandId valId = icregs.cacheIRReader.valOperandId();
+    ObjOperandId objId = reader.objOperandId();
+    uint32_t offsetOffset = reader.stubOffset();
+    uint32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
+    ValOperandId valId = reader.valOperandId();
     NativeObject* nobj =
         reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
     HeapSlot* slots = nobj->getSlotsUnchecked();
@@ -845,9 +869,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadObject) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    uint32_t objOffset = icregs.cacheIRReader.stubOffset();
-    intptr_t obj = cstub->stubInfo()->getStubRawWord(cstub, objOffset);
+    ObjOperandId objId = reader.objOperandId();
+    uint32_t objOffset = reader.stubOffset();
+    intptr_t obj = stubInfo->getStubRawWord(cstub, objOffset);
     BOUNDSCHECK(objId);
     icregs.icVals[objId.id()] = obj;
     PREDICT_NEXT(GuardShape);
@@ -855,10 +879,10 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadProtoObject) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    uint32_t objOffset = icregs.cacheIRReader.stubOffset();
-    intptr_t obj = cstub->stubInfo()->getStubRawWord(cstub, objOffset);
-    ObjOperandId receiverObjId = icregs.cacheIRReader.objOperandId();
+    ObjOperandId objId = reader.objOperandId();
+    uint32_t objOffset = reader.stubOffset();
+    intptr_t obj = stubInfo->getStubRawWord(cstub, objOffset);
+    ObjOperandId receiverObjId = reader.objOperandId();
     (void)receiverObjId;
     BOUNDSCHECK(objId);
     icregs.icVals[objId.id()] = obj;
@@ -867,21 +891,21 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadOperandResult) {
-    ValOperandId valId = icregs.cacheIRReader.valOperandId();
+    ValOperandId valId = reader.valOperandId();
     icregs.icResult = icregs.icVals[valId.id()];
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadValueResult) {
-    uint32_t valOffset = icregs.cacheIRReader.stubOffset();
-    icregs.icResult = cstub->stubInfo()->getStubRawInt64(cstub, valOffset);
+    uint32_t valOffset = reader.stubOffset();
+    icregs.icResult = stubInfo->getStubRawInt64(cstub, valOffset);
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadObjectResult) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
+    ObjOperandId objId = reader.objOperandId();
     icregs.icResult =
         ObjectValue(*reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]))
             .asRawBits();
@@ -890,7 +914,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadStringResult) {
-    StringOperandId stringId = icregs.cacheIRReader.stringOperandId();
+    StringOperandId stringId = reader.stringOperandId();
     icregs.icResult =
         StringValue(reinterpret_cast<JSString*>(icregs.icVals[stringId.id()]))
             .asRawBits();
@@ -898,25 +922,25 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadConstantStringResult) {
-    uint32_t offset = icregs.cacheIRReader.stubOffset();
-    JSString* str = reinterpret_cast<JSString*>(
-        cstub->stubInfo()->getStubRawWord(cstub, offset));
+    uint32_t offset = reader.stubOffset();
+    JSString* str =
+        reinterpret_cast<JSString*>(stubInfo->getStubRawWord(cstub, offset));
     icregs.icResult = StringValue(str).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadInt32Constant) {
-    uint32_t valueOffset = icregs.cacheIRReader.stubOffset();
-    Int32OperandId resultId = icregs.cacheIRReader.int32OperandId();
-    uint32_t value = cstub->stubInfo()->getStubRawInt32(cstub, valueOffset);
+    uint32_t valueOffset = reader.stubOffset();
+    Int32OperandId resultId = reader.int32OperandId();
+    uint32_t value = stubInfo->getStubRawInt32(cstub, valueOffset);
     BOUNDSCHECK(resultId);
     icregs.icVals[resultId.id()] = value;
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadSymbolResult) {
-    SymbolOperandId symbolId = icregs.cacheIRReader.symbolOperandId();
+    SymbolOperandId symbolId = reader.symbolOperandId();
     icregs.icResult =
         SymbolValue(reinterpret_cast<JS::Symbol*>(icregs.icVals[symbolId.id()]))
             .asRawBits();
@@ -925,14 +949,14 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadInt32Result) {
-    Int32OperandId intId = icregs.cacheIRReader.int32OperandId();
+    Int32OperandId intId = reader.int32OperandId();
     icregs.icResult = Int32Value(icregs.icVals[intId.id()]).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadBigIntResult) {
-    BigIntOperandId bigintId = icregs.cacheIRReader.bigIntOperandId();
+    BigIntOperandId bigintId = reader.bigIntOperandId();
     icregs.icResult =
         BigIntValue(reinterpret_cast<JS::BigInt*>(icregs.icVals[bigintId.id()]))
             .asRawBits();
@@ -941,7 +965,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadDoubleResult) {
-    NumberOperandId numId = icregs.cacheIRReader.numberOperandId();
+    NumberOperandId numId = reader.numberOperandId();
     Value val = Value::fromRawBits(icregs.icVals[numId.id()]);
     if (val.isInt32()) {
       val = DoubleValue(val.toInt32());
@@ -952,15 +976,15 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadBooleanResult) {
-    icregs.icResult = BooleanValue(icregs.cacheIRReader.readBool()).asRawBits();
+    icregs.icResult = BooleanValue(reader.readBool()).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadFixedSlotResult) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    uint32_t offsetOffset = icregs.cacheIRReader.stubOffset();
-    uintptr_t offset = cstub->stubInfo()->getStubRawInt32(cstub, offsetOffset);
+    ObjOperandId objId = reader.objOperandId();
+    uint32_t offsetOffset = reader.stubOffset();
+    uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
     NativeObject* nobj =
         reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
     Value* slot =
@@ -975,9 +999,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadDynamicSlotResult) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    uint32_t offsetOffset = icregs.cacheIRReader.stubOffset();
-    uintptr_t offset = cstub->stubInfo()->getStubRawInt32(cstub, offsetOffset);
+    ObjOperandId objId = reader.objOperandId();
+    uint32_t offsetOffset = reader.stubOffset();
+    uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
     NativeObject* nobj =
         reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
     HeapSlot* slots = nobj->getSlotsUnchecked();
@@ -987,10 +1011,10 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardDynamicSlotIsSpecificObject) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    ObjOperandId expectedId = icregs.cacheIRReader.objOperandId();
-    uint32_t offsetOffset = icregs.cacheIRReader.stubOffset();
-    uintptr_t offset = cstub->stubInfo()->getStubRawInt32(cstub, offsetOffset);
+    ObjOperandId objId = reader.objOperandId();
+    ObjOperandId expectedId = reader.objOperandId();
+    uint32_t offsetOffset = reader.stubOffset();
+    uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
     NativeObject* nobj =
         reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
     HeapSlot* slots = nobj->getSlotsUnchecked();
@@ -1003,10 +1027,10 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadArgumentDynamicSlot) {
-    ValOperandId resultId = icregs.cacheIRReader.valOperandId();
+    ValOperandId resultId = reader.valOperandId();
     BOUNDSCHECK(resultId);
-    Int32OperandId argcId = icregs.cacheIRReader.int32OperandId();
-    uint8_t slotIndex = icregs.cacheIRReader.readByte();
+    Int32OperandId argcId = reader.int32OperandId();
+    uint8_t slotIndex = reader.readByte();
     int32_t argc = int32_t(icregs.icVals[argcId.id()]);
     Value val = sp[slotIndex + argc].asValue();
     icregs.icVals[resultId.id()] = val.asRawBits();
@@ -1014,9 +1038,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadArgumentFixedSlot) {
-    ValOperandId resultId = icregs.cacheIRReader.valOperandId();
+    ValOperandId resultId = reader.valOperandId();
     BOUNDSCHECK(resultId);
-    uint8_t slotIndex = icregs.cacheIRReader.readByte();
+    uint8_t slotIndex = reader.readByte();
     Value val = sp[slotIndex].asValue();
     TRACE_PRINTF(" -> slot %d: val %" PRIx64 "\n", int(slotIndex),
                  val.asRawBits());
@@ -1024,20 +1048,20 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     DISPATCH_CACHEOP();
   }
 
-#define INT32_OP(name, op, extra_check)                           \
-  CACHEOP_CASE(Int32##name##Result) {                             \
-    Int32OperandId lhsId = icregs.cacheIRReader.int32OperandId(); \
-    Int32OperandId rhsId = icregs.cacheIRReader.int32OperandId(); \
-    int64_t lhs = int64_t(int32_t(icregs.icVals[lhsId.id()]));    \
-    int64_t rhs = int64_t(int32_t(icregs.icVals[rhsId.id()]));    \
-    extra_check;                                                  \
-    int64_t result = lhs op rhs;                                  \
-    if (result < INT32_MIN || result > INT32_MAX) {               \
-      return ICInterpretOpResult::NextIC;                         \
-    }                                                             \
-    icregs.icResult = Int32Value(int32_t(result)).asRawBits();    \
-    PREDICT_NEXT(ReturnFromIC);                                   \
-    DISPATCH_CACHEOP();                                           \
+#define INT32_OP(name, op, extra_check)                        \
+  CACHEOP_CASE(Int32##name##Result) {                          \
+    Int32OperandId lhsId = reader.int32OperandId();            \
+    Int32OperandId rhsId = reader.int32OperandId();            \
+    int64_t lhs = int64_t(int32_t(icregs.icVals[lhsId.id()])); \
+    int64_t rhs = int64_t(int32_t(icregs.icVals[rhsId.id()])); \
+    extra_check;                                               \
+    int64_t result = lhs op rhs;                               \
+    if (result < INT32_MIN || result > INT32_MAX) {            \
+      return ICInterpretOpResult::NextIC;                      \
+    }                                                          \
+    icregs.icResult = Int32Value(int32_t(result)).asRawBits(); \
+    PREDICT_NEXT(ReturnFromIC);                                \
+    DISPATCH_CACHEOP();                                        \
   }
 
   INT32_OP(Add, +, {});
@@ -1070,8 +1094,8 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   INT32_OP(BitOr, |, {});
 
   CACHEOP_CASE(Int32PowResult) {
-    Int32OperandId lhsId = icregs.cacheIRReader.int32OperandId();
-    Int32OperandId rhsId = icregs.cacheIRReader.int32OperandId();
+    Int32OperandId lhsId = reader.int32OperandId();
+    Int32OperandId rhsId = reader.int32OperandId();
     int64_t lhs = int64_t(int32_t(icregs.icVals[lhsId.id()]));
     int64_t rhs = int64_t(int32_t(icregs.icVals[rhsId.id()]));
     int64_t result;
@@ -1107,7 +1131,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(Int32IncResult) {
-    Int32OperandId intId = icregs.cacheIRReader.int32OperandId();
+    Int32OperandId intId = reader.int32OperandId();
     int64_t value = int64_t(int32_t(icregs.icVals[intId.id()]));
     value++;
     if (value > INT32_MAX) {
@@ -1119,9 +1143,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(CompareInt32Result) {
-    JSOp op = icregs.cacheIRReader.jsop();
-    Int32OperandId lhsId = icregs.cacheIRReader.int32OperandId();
-    Int32OperandId rhsId = icregs.cacheIRReader.int32OperandId();
+    JSOp op = reader.jsop();
+    Int32OperandId lhsId = reader.int32OperandId();
+    Int32OperandId rhsId = reader.int32OperandId();
     int64_t lhs = int64_t(int32_t(icregs.icVals[lhsId.id()]));
     int64_t rhs = int64_t(int32_t(icregs.icVals[rhsId.id()]));
     TRACE_PRINTF("lhs (%d) = %" PRIi64 " rhs (%d) = %" PRIi64 "\n", lhsId.id(),
@@ -1157,10 +1181,10 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(Int32MinMax) {
-    bool isMax = icregs.cacheIRReader.readBool();
-    Int32OperandId lhsId = icregs.cacheIRReader.int32OperandId();
-    Int32OperandId rhsId = icregs.cacheIRReader.int32OperandId();
-    Int32OperandId resultId = icregs.cacheIRReader.int32OperandId();
+    bool isMax = reader.readBool();
+    Int32OperandId lhsId = reader.int32OperandId();
+    Int32OperandId rhsId = reader.int32OperandId();
+    Int32OperandId resultId = reader.int32OperandId();
     BOUNDSCHECK(resultId);
     int32_t lhs = int32_t(icregs.icVals[lhsId.id()]);
     int32_t rhs = int32_t(icregs.icVals[rhsId.id()]);
@@ -1170,7 +1194,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(IsObjectResult) {
-    ValOperandId valId = icregs.cacheIRReader.valOperandId();
+    ValOperandId valId = reader.valOperandId();
     Value val = Value::fromRawBits(icregs.icVals[valId.id()]);
     icregs.icResult = BooleanValue(val.isObject()).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -1178,9 +1202,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(CompareStringResult) {
-    JSOp op = icregs.cacheIRReader.jsop();
-    StringOperandId lhsId = icregs.cacheIRReader.stringOperandId();
-    StringOperandId rhsId = icregs.cacheIRReader.stringOperandId();
+    JSOp op = reader.jsop();
+    StringOperandId lhsId = reader.stringOperandId();
+    StringOperandId rhsId = reader.stringOperandId();
     {
       PUSH_IC_FRAME();
       ReservedRooted<JSString*> lhs(
@@ -1235,9 +1259,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(CompareNullUndefinedResult) {
-    JSOp op = icregs.cacheIRReader.jsop();
-    bool isUndefined = icregs.cacheIRReader.readBool();
-    ValOperandId inputId = icregs.cacheIRReader.valOperandId();
+    JSOp op = reader.jsop();
+    bool isUndefined = reader.readBool();
+    ValOperandId inputId = reader.valOperandId();
     Value val = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (val.isObject() && val.toObject().getClass()->isProxyObject()) {
       return ICInterpretOpResult::NextIC;
@@ -1270,7 +1294,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadObjectTruthyResult) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
+    ObjOperandId objId = reader.objOperandId();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     const JSClass* cls = obj->getClass();
     if (cls->isProxyObject()) {
@@ -1282,8 +1306,8 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardToInt32Index) {
-    ValOperandId valId = icregs.cacheIRReader.valOperandId();
-    Int32OperandId resultId = icregs.cacheIRReader.int32OperandId();
+    ValOperandId valId = reader.valOperandId();
+    Int32OperandId resultId = reader.int32OperandId();
     BOUNDSCHECK(resultId);
     Value val = Value::fromRawBits(icregs.icVals[valId.id()]);
     if (val.isInt32()) {
@@ -1300,12 +1324,11 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardGlobalGeneration) {
-    uint32_t expectedOffset = icregs.cacheIRReader.stubOffset();
-    uint32_t generationAddrOffset = icregs.cacheIRReader.stubOffset();
-    uint32_t expected =
-        cstub->stubInfo()->getStubRawInt32(cstub, expectedOffset);
+    uint32_t expectedOffset = reader.stubOffset();
+    uint32_t generationAddrOffset = reader.stubOffset();
+    uint32_t expected = stubInfo->getStubRawInt32(cstub, expectedOffset);
     uint32_t* generationAddr = reinterpret_cast<uint32_t*>(
-        cstub->stubInfo()->getStubRawWord(cstub, generationAddrOffset));
+        stubInfo->getStubRawWord(cstub, generationAddrOffset));
     if (*generationAddr != expected) {
       return ICInterpretOpResult::NextIC;
     }
@@ -1313,12 +1336,12 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(GuardFunctionScript) {
-    ObjOperandId funId = icregs.cacheIRReader.objOperandId();
+    ObjOperandId funId = reader.objOperandId();
     JSFunction* fun = reinterpret_cast<JSFunction*>(icregs.icVals[funId.id()]);
-    uint32_t expectedOffset = icregs.cacheIRReader.stubOffset();
+    uint32_t expectedOffset = reader.stubOffset();
     BaseScript* expected = reinterpret_cast<BaseScript*>(
-        cstub->stubInfo()->getStubRawWord(cstub, expectedOffset));
-    uint32_t nargsFlagsAndOffset = icregs.cacheIRReader.stubOffset();
+        stubInfo->getStubRawWord(cstub, expectedOffset));
+    uint32_t nargsFlagsAndOffset = reader.stubOffset();
     (void)nargsFlagsAndOffset;
 
     if (!fun->hasBaseScript() || fun->baseScript() != expected) {
@@ -1334,17 +1357,17 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     bool isNative = cacheop == CacheOp::CallNativeFunction;
     TRACE_PRINTF("CallScriptedFunction / CallNativeFunction (native: %d)\n",
                  isNative);
-    ObjOperandId calleeId = icregs.cacheIRReader.objOperandId();
+    ObjOperandId calleeId = reader.objOperandId();
     JSFunction* callee =
         reinterpret_cast<JSFunction*>(icregs.icVals[calleeId.id()]);
-    Int32OperandId argcId = icregs.cacheIRReader.int32OperandId();
+    Int32OperandId argcId = reader.int32OperandId();
     uint32_t argc = uint32_t(icregs.icVals[argcId.id()]);
-    CallFlags flags = icregs.cacheIRReader.callFlags();
-    uint32_t argcFixed = icregs.cacheIRReader.uint32Immediate();
+    CallFlags flags = reader.callFlags();
+    uint32_t argcFixed = reader.uint32Immediate();
     (void)argcFixed;
     bool ignoresRv = false;
     if (isNative) {
-      ignoresRv = icregs.cacheIRReader.readBool();
+      ignoresRv = reader.readBool();
     }
 
     if (!isNative) {
@@ -1455,9 +1478,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(AssertPropertyLookup) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    uint32_t idOffset = icregs.cacheIRReader.stubOffset();
-    uint32_t slotOffset = icregs.cacheIRReader.stubOffset();
+    ObjOperandId objId = reader.objOperandId();
+    uint32_t idOffset = reader.stubOffset();
+    uint32_t slotOffset = reader.stubOffset();
     // Debug-only assertion; we can ignore.
     (void)objId;
     (void)idOffset;
@@ -1466,8 +1489,8 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(CallInt32ToString) {
-    Int32OperandId inputId = icregs.cacheIRReader.int32OperandId();
-    StringOperandId resultId = icregs.cacheIRReader.stringOperandId();
+    Int32OperandId inputId = reader.int32OperandId();
+    StringOperandId resultId = reader.stringOperandId();
     BOUNDSCHECK(resultId);
     int32_t input = int32_t(icregs.icVals[inputId.id()]);
     JSLinearString* str =
@@ -1481,8 +1504,8 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(CallStringConcatResult) {
-    StringOperandId lhsId = icregs.cacheIRReader.stringOperandId();
-    StringOperandId rhsId = icregs.cacheIRReader.stringOperandId();
+    StringOperandId lhsId = reader.stringOperandId();
+    StringOperandId rhsId = reader.stringOperandId();
     // We don't push a frame and do a CanGC invocation here; we do a
     // pure (NoGC) invocation only, because it's cheaper.
     FakeRooted<JSString*> lhs(
@@ -1501,8 +1524,8 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadInt32ArrayLength) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    Int32OperandId resultId = icregs.cacheIRReader.int32OperandId();
+    ObjOperandId objId = reader.objOperandId();
+    Int32OperandId resultId = reader.int32OperandId();
     BOUNDSCHECK(resultId);
     NativeObject* nobj =
         reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
@@ -1516,7 +1539,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadInt32ArrayLengthResult) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
+    ObjOperandId objId = reader.objOperandId();
     NativeObject* nobj =
         reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
     ObjectElements* elems = nobj->getElementsHeader();
@@ -1530,7 +1553,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadStringLengthResult) {
-    StringOperandId strId = icregs.cacheIRReader.stringOperandId();
+    StringOperandId strId = reader.stringOperandId();
     JSString* str = reinterpret_cast<JSString*>(icregs.icVals[strId.id()]);
     size_t length = str->length();
     if (length > size_t(INT32_MAX)) {
@@ -1542,9 +1565,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadStringCharResult) {
-    StringOperandId strId = icregs.cacheIRReader.stringOperandId();
-    Int32OperandId indexId = icregs.cacheIRReader.int32OperandId();
-    bool handleOOB = icregs.cacheIRReader.readBool();
+    StringOperandId strId = reader.stringOperandId();
+    Int32OperandId indexId = reader.int32OperandId();
+    bool handleOOB = reader.readBool();
 
     JSString* str =
         reinterpret_cast<JSLinearString*>(icregs.icVals[strId.id()]);
@@ -1579,9 +1602,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadStringCharCodeResult) {
-    StringOperandId strId = icregs.cacheIRReader.stringOperandId();
-    Int32OperandId indexId = icregs.cacheIRReader.int32OperandId();
-    bool handleOOB = icregs.cacheIRReader.readBool();
+    StringOperandId strId = reader.stringOperandId();
+    Int32OperandId indexId = reader.int32OperandId();
+    bool handleOOB = reader.readBool();
 
     JSString* str =
         reinterpret_cast<JSLinearString*>(icregs.icVals[strId.id()]);
@@ -1607,9 +1630,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LinearizeForCharAccess) {
-    StringOperandId strId = icregs.cacheIRReader.stringOperandId();
-    Int32OperandId indexId = icregs.cacheIRReader.int32OperandId();
-    StringOperandId resultId = icregs.cacheIRReader.stringOperandId();
+    StringOperandId strId = reader.stringOperandId();
+    Int32OperandId indexId = reader.int32OperandId();
+    StringOperandId resultId = reader.stringOperandId();
     BOUNDSCHECK(resultId);
     JSString* str =
         reinterpret_cast<JSLinearString*>(icregs.icVals[strId.id()]);
@@ -1630,7 +1653,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadStringTruthyResult) {
-    StringOperandId strId = icregs.cacheIRReader.stringOperandId();
+    StringOperandId strId = reader.stringOperandId();
     JSString* str =
         reinterpret_cast<JSLinearString*>(icregs.icVals[strId.id()]);
     icregs.icResult = BooleanValue(str->length() > 0).asRawBits();
@@ -1639,7 +1662,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadInt32TruthyResult) {
-    ValOperandId valId = icregs.cacheIRReader.valOperandId();
+    ValOperandId valId = reader.valOperandId();
     int32_t val = int32_t(icregs.icVals[valId.id()]);
     icregs.icResult = BooleanValue(val != 0).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -1647,8 +1670,8 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(LoadDenseElementResult) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    Int32OperandId indexId = icregs.cacheIRReader.int32OperandId();
+    ObjOperandId objId = reader.objOperandId();
+    Int32OperandId indexId = reader.int32OperandId();
     NativeObject* nobj =
         reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
     ObjectElements* elems = nobj->getElementsHeader();
@@ -1667,9 +1690,9 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE(StoreDenseElement) {
-    ObjOperandId objId = icregs.cacheIRReader.objOperandId();
-    Int32OperandId indexId = icregs.cacheIRReader.int32OperandId();
-    ValOperandId valId = icregs.cacheIRReader.valOperandId();
+    ObjOperandId objId = reader.objOperandId();
+    Int32OperandId indexId = reader.int32OperandId();
+    ValOperandId valId = reader.valOperandId();
     NativeObject* nobj =
         reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
     ObjectElements* elems = nobj->getElementsHeader();
@@ -1689,9 +1712,8 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   }
 
   CACHEOP_CASE_UNIMPL(GuardNoAllocationMetadataBuilder) {
-    uint32_t builderAddrOffset = icregs.cacheIRReader.stubOffset();
-    uintptr_t builderAddr =
-        cstub->stubInfo()->getStubRawWord(cstub, builderAddrOffset);
+    uint32_t builderAddrOffset = reader.stubOffset();
+    uintptr_t builderAddr = stubInfo->getStubRawWord(cstub, builderAddrOffset);
     if (*reinterpret_cast<uintptr_t*>(builderAddr) != 0) {
       return ICInterpretOpResult::NextIC;
     }
@@ -2003,11 +2025,12 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
 #  define WEVAL_POP_CONTEXT()
 #endif
 
-static ICInterpretOpResult MOZ_NEVER_INLINE
-ICInterpretOpsOutlined(BaselineFrame* frame, VMFrameManager& frameMgr,
-                       State& state, ICRegs& icregs, Stack& stack, StackVal* sp,
-                       ICCacheIRStub* cstub, jsbytecode* pc) {
-  return ICInterpretOps(frame, frameMgr, state, icregs, stack, sp, cstub, pc);
+static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
+    BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
+    ICRegs& icregs, Stack& stack, StackVal* sp, ICCacheIRStub* cstub,
+    const CacheIRStubInfo* stubInfo, const uint8_t* code, jsbytecode* pc) {
+  return ICInterpretOps(frame, frameMgr, state, icregs, stack, sp, cstub,
+                        stubInfo, code, pc);
 }
 
 #define NEXT_IC() frame->interpreterICEntry()++;
@@ -2063,44 +2086,56 @@ ICInterpretOpsOutlined(BaselineFrame* frame, VMFrameManager& frameMgr,
     }                                 \
   } while (0)
 
-#define DEFINE_IC_IMPL(kind, arity, fallback_body, ool)                        \
-  static PBIResult MOZ_ALWAYS_INLINE IC##kind##ool(                            \
-      BaselineFrame* frame, VMFrameManager& frameMgr, State& state,            \
-      ICRegs& icregs, Stack& stack, StackVal* sp, jsbytecode* pc) {            \
-    ICStub* stub = frame->interpreterICEntry()->firstStub();                   \
-    uint64_t inputs[3];                                                        \
-    SAVE_INPUTS(arity);                                                        \
-    while (true) {                                                             \
-    next_stub:                                                                 \
-      if (stub->isFallback()) {                                                \
-        ICFallbackStub* fallback = stub->toFallbackStub();                     \
-        fallback_body;                                                         \
-        icregs.icResult = state.res.asRawBits();                               \
-        state.res = UndefinedValue();                                          \
-        return PBIResult::Ok;                                                  \
-      } else {                                                                 \
-        ICCacheIRStub* cstub = stub->toCacheIRStub();                          \
-        cstub->incrementEnteredCount();                                        \
-        new (&icregs.cacheIRReader) CacheIRReader(cstub->stubInfo()->code());  \
-        switch (ICInterpretOps##ool(frame, frameMgr, state, icregs, stack, sp, \
-                                    cstub, pc)) {                              \
-          case ICInterpretOpResult::NextIC:                                    \
-            stub = stub->maybeNext();                                          \
-            RESTORE_INPUTS(arity);                                             \
-            goto next_stub;                                                    \
-          case ICInterpretOpResult::Return:                                    \
-            return PBIResult::Ok;                                              \
-          case ICInterpretOpResult::Error:                                     \
-            return PBIResult::Error;                                           \
-          case ICInterpretOpResult::Unwind:                                    \
-            return PBIResult::Unwind;                                          \
-          case ICInterpretOpResult::UnwindError:                               \
-            return PBIResult::UnwindError;                                     \
-          case ICInterpretOpResult::UnwindRet:                                 \
-            return PBIResult::UnwindRet;                                       \
-        }                                                                      \
-      }                                                                        \
-    }                                                                          \
+#ifdef ENABLE_JS_PBL_WEVAL
+#  define INVOKE_WEVALED_OR_GENERIC_IC(result, generic, args)     \
+    auto func = reinterpret_cast<ICFunc>(stubInfo->weval().func); \
+    auto result = func ? func args : generic args
+#else
+#  define INVOKE_WEVALED_OR_GENERIC_IC(result, generic, args) \
+    auto result = generic args
+#endif
+
+#define DEFINE_IC_IMPL(kind, arity, fallback_body, ool)                      \
+  static PBIResult MOZ_ALWAYS_INLINE IC##kind##ool(                          \
+      BaselineFrame* frame, VMFrameManager& frameMgr, State& state,          \
+      ICRegs& icregs, Stack& stack, StackVal* sp, jsbytecode* pc) {          \
+    ICStub* stub = frame->interpreterICEntry()->firstStub();                 \
+    uint64_t inputs[3];                                                      \
+    SAVE_INPUTS(arity);                                                      \
+    while (true) {                                                           \
+    next_stub:                                                               \
+      if (stub->isFallback()) {                                              \
+        ICFallbackStub* fallback = stub->toFallbackStub();                   \
+        fallback_body;                                                       \
+        icregs.icResult = state.res.asRawBits();                             \
+        state.res = UndefinedValue();                                        \
+        return PBIResult::Ok;                                                \
+      } else {                                                               \
+        ICCacheIRStub* cstub = stub->toCacheIRStub();                        \
+        cstub->incrementEnteredCount();                                      \
+        const CacheIRStubInfo* stubInfo = cstub->stubInfo();                 \
+        const uint8_t* code = stubInfo->code();                              \
+        INVOKE_WEVALED_OR_GENERIC_IC(result, ICInterpretOps##ool,            \
+                                     (frame, frameMgr, state, icregs, stack, \
+                                      sp, cstub, stubInfo, code, pc));       \
+        switch (result) {                                                    \
+          case ICInterpretOpResult::NextIC:                                  \
+            stub = stub->maybeNext();                                        \
+            RESTORE_INPUTS(arity);                                           \
+            goto next_stub;                                                  \
+          case ICInterpretOpResult::Return:                                  \
+            return PBIResult::Ok;                                            \
+          case ICInterpretOpResult::Error:                                   \
+            return PBIResult::Error;                                         \
+          case ICInterpretOpResult::Unwind:                                  \
+            return PBIResult::Unwind;                                        \
+          case ICInterpretOpResult::UnwindError:                             \
+            return PBIResult::UnwindError;                                   \
+          case ICInterpretOpResult::UnwindRet:                               \
+            return PBIResult::UnwindRet;                                     \
+        }                                                                    \
+      }                                                                      \
+    }                                                                        \
   }
 
 #define DEFINE_IC(kind, arity, fallback_body)                                 \

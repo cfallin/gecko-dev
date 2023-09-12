@@ -18,6 +18,7 @@
 #include "jit/PerfSpewer.h"
 #include "jit/SharedICRegisters.h"
 #include "js/ScalarType.h"  // js::Scalar::Type
+#include "vm/Weval.h"
 
 namespace JS {
 class BigInt;
@@ -1244,6 +1245,9 @@ class CacheIRStubInfo {
   ICStubEngine engine_;
   uint8_t stubDataOffset_;
   bool makesGCCalls_;
+#ifdef ENABLE_JS_PBL_WEVAL
+  Weval weval_;
+#endif
 
   CacheIRStubInfo(CacheKind kind, ICStubEngine engine, bool makesGCCalls,
                   uint32_t stubDataOffset, uint32_t codeLength)
@@ -1265,6 +1269,12 @@ class CacheIRStubInfo {
   CacheKind kind() const { return kind_; }
   ICStubEngine engine() const { return engine_; }
   bool makesGCCalls() const { return makesGCCalls_; }
+
+  
+#ifdef ENABLE_JS_PBL_WEVAL
+  Weval& weval() { return weval_; }
+  const Weval& weval() const { return weval_; }
+#endif
 
   const uint8_t* code() const {
     return reinterpret_cast<const uint8_t*>(this) + sizeof(CacheIRStubInfo);

@@ -14,6 +14,7 @@
 
 #include "jspubtd.h"
 
+#include "jit/CacheIRCompiler.h"
 #include "jit/JitContext.h"
 #include "jit/JitScript.h"
 #include "vm/Interpreter.h"
@@ -32,6 +33,7 @@ bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
 
 #ifdef ENABLE_JS_PBL_WEVAL
 void EnqueuePortableBaselineSpecialization(JSScript* script);
+void EnqueuePortableBaselineICSpecialization(jit::CacheIRStubInfo* stubInfo);
 #endif
 
 } /* namespace js */

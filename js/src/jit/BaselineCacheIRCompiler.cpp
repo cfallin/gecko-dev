@@ -25,6 +25,7 @@
 #include "proxy/Proxy.h"
 #include "util/Unicode.h"
 #include "vm/JSAtom.h"
+#include "vm/PortableBaselineInterpret.h"
 #include "vm/StaticStrings.h"
 
 #include "jit/JitScript-inl.h"
@@ -2485,6 +2486,12 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
                                              /* code = */ nullptr)) {
       return ICAttachResult::OOM;
     }
+
+#ifdef ENABLE_JS_PBL_WEVAL
+    // Request a weval specialization of the IC interpreter on the
+    // stub code.
+    EnqueuePortableBaselineICSpecialization(stubInfo);
+#endif
   }
   MOZ_ASSERT_IF(IsBaselineInterpreterEnabled(), code);
   MOZ_ASSERT(stubInfo);

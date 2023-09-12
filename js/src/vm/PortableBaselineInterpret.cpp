@@ -5597,6 +5597,7 @@ void js::PreloadCommonICs(JSContext* cx) {
       if (!stubInfo) {                                                         \
         stubInfo = CacheIRStubInfo::New(kind, ICStubEngine::Baseline, true, 0, \
                                         writer);                               \
+        EnqueuePortableBaselineICSpecialization(stubInfo);                     \
         CacheIRStubKey key(stubInfo);                                          \
         (void)jitZone->putBaselineCacheIRStubCode(lookup, key, nullptr);       \
       }                                                                        \

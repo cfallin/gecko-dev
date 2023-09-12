@@ -10421,7 +10421,7 @@ static JSObject* NewGlobalObject(JSContext* cx, JS::RealmOptions& options,
       return nullptr;
     }
 
-#ifdef ENABLED_JS_PBL_WEVAL
+#ifdef ENABLE_JS_PBL_WEVAL
     PreloadCommonICs(cx);
 #endif
 

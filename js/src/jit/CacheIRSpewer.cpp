@@ -58,7 +58,8 @@ class MOZ_RAII CacheIROpsJitSpewer {
   void spewRawOperandId(const char* name, uint32_t id) {
     out_.printf("%s %u", name, id);
   }
-  void spewField(const char* name, uint32_t offset) {
+  void spewField(const char* name, uint32_t offset, StubField::Type type) {
+    (void)type;
     out_.printf("%s %u", name, offset);
   }
   void spewBoolImm(const char* name, bool b) {
@@ -205,7 +206,8 @@ class MOZ_RAII CacheIROpsJSONSpewer {
   void spewRawOperandId(const char* name, uint32_t id) {
     spewArgImpl(name, "Id", id);
   }
-  void spewField(const char* name, uint32_t offset) {
+  void spewField(const char* name, uint32_t offset, StubField::Type type) {
+    (void)type;
     spewArgImpl(name, "Field", offset);
   }
   void spewBoolImm(const char* name, bool b) { spewArgImpl(name, "Imm", b); }

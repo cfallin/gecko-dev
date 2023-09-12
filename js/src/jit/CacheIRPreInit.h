@@ -10,7 +10,7 @@
 namespace js {
 namespace jit {
 
-void DumpCacheIRPreInit(GenericPrinter& out, const uint8_t* code);
+void DumpCacheIRPreInit(GenericPrinter& out, const CacheIRStubInfo* stubInfo);
 
 }  // namespace jit
 }  // namespace js

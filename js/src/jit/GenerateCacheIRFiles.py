@@ -260,21 +260,6 @@ arg_spewer_method = {
     "ValueTagId": "spewOperandId",
     "IntPtrId": "spewOperandId",
     "RawId": "spewRawOperandId",
-    "ShapeField": "spewField",
-    "GetterSetterField": "spewField",
-    "ObjectField": "spewField",
-    "StringField": "spewField",
-    "AtomField": "spewField",
-    "SymbolField": "spewField",
-    "BaseScriptField": "spewField",
-    "JitCodeField": "spewField",
-    "RawInt32Field": "spewField",
-    "RawPointerField": "spewField",
-    "IdField": "spewField",
-    "ValueField": "spewField",
-    "RawInt64Field": "spewField",
-    "DoubleField": "spewField",
-    "AllocSiteField": "spewField",
     "JSOpImm": "spewJSOpImm",
     "BoolImm": "spewBoolImm",
     "ByteImm": "spewByteImm",
@@ -293,6 +278,23 @@ arg_spewer_method = {
     "CompletionKindImm": "spewCompletionKindImm",
 }
 
+arg_spewer_method_with_type = {
+    "ShapeField": ("spewField", "StubField::Type::Shape"),
+    "GetterSetterField": ("spewField", "StubField::Type::GetterSetter"),
+    "ObjectField": ("spewField", "StubField::Type::JSObject"),
+    "StringField": ("spewField", "StubField::Type::String"),
+    "AtomField": ("spewField", "StubField::Type::String"),
+    "SymbolField": ("spewField", "StubField::Type::String"),
+    "BaseScriptField": ("spewField", "StubField::Type::BaseScript"),
+    "JitCodeField": ("spewField", "StubField::Type::JitCode"),
+    "RawInt32Field": ("spewField", "StubField::Type::RawInt32"),
+    "RawPointerField": ("spewField", "StubField::Type::RawPointer"),
+    "IdField": ("spewField", "StubField::Type::Id"),
+    "ValueField": ("spewField", "StubField::Type::Value"),
+    "RawInt64Field": ("spewField", "StubField::Type::RawInt64"),
+    "DoubleField": ("spewField", "StubField::Type::Double"),
+    "AllocSiteField": ("spewField", "StubField::Type::AllocSite"),
+}
 
 def gen_spewer_method(name, args):
     """Generates spewer code for a single opcode."""
@@ -314,11 +316,16 @@ def gen_spewer_method(name, args):
         for arg_name, arg_type in six.iteritems(args):
             _, suffix, readexpr = arg_reader_info[arg_type]
             arg_name += suffix
-            spew_method = arg_spewer_method[arg_type]
             if not is_first:
                 args_code += "  spewArgSeparator();\\\n"
-            args_code += '  {}("{}", {});\\\n'.format(spew_method, arg_name, readexpr)
             is_first = False
+
+            if arg_type in arg_spewer_method_with_type:
+                spew_method, type_arg = arg_spewer_method_with_type[arg_type]
+                args_code += '  {}("{}", {}, {});\\\n'.format(spew_method, arg_name, readexpr, type_arg)
+            else:
+                spew_method = arg_spewer_method[arg_type]
+                args_code += '  {}("{}", {});\\\n'.format(spew_method, arg_name, readexpr)
 
     code = "void {}(CacheIRReader& reader) {{\\\n".format(method_name)
     code += "  spewOp(CacheOp::{});\\\n".format(name)

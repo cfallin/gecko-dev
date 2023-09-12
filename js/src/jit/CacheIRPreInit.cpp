@@ -26,73 +26,119 @@ class MOZ_RAII CacheIRPreInitDumper {
 
   void spewOp(CacheOp op) {
     const char* opName = CacheIROpNames[size_t(op)];
-    out_.printf("%-30s", opName);
+    out_.printf("  writer.writeOp(CacheOp::%s);\n", opName);
   }
-  void spewOpEnd() { out_.printf("\n"); }
+  void spewOpEnd() {}
 
-  void spewArgSeparator() { out_.printf(", "); }
+  void spewArgSeparator() {}
 
   void spewOperandId(const char* name, OperandId id) {
     spewRawOperandId(name, id.id());
   }
   void spewRawOperandId(const char* name, uint32_t id) {
-    out_.printf("%s %u", name, id);
+    out_.printf("  writer.writeOperandId(OperandId(%d));\n", id);
   }
-  void spewField(const char* name, uint32_t offset) {
-    out_.printf("%s %u", name, offset);
+  void spewField(const char* name, uint32_t offset, StubField::Type type) {
+    const char* ty;
+    switch (type) {
+      case StubField::Type::RawInt32:
+        ty = "RawInt32";
+        break;
+      case StubField::Type::RawPointer:
+        ty = "RawPointer";
+        break;
+      case StubField::Type::Shape:
+        ty = "Shape";
+        break;
+      case StubField::Type::GetterSetter:
+        ty = "GetterSetter";
+        break;
+      case StubField::Type::JSObject:
+        ty = "JSObject";
+        break;
+      case StubField::Type::Symbol:
+        ty = "Symbol";
+        break;
+      case StubField::Type::String:
+        ty = "String";
+        break;
+      case StubField::Type::BaseScript:
+        ty = "BaseScript";
+        break;
+      case StubField::Type::JitCode:
+        ty = "JitCode";
+        break;
+      case StubField::Type::Id:
+        ty = "Id";
+        break;
+      case StubField::Type::AllocSite:
+        ty = "AllocSite";
+        break;
+      case StubField::Type::RawInt64:
+        ty = "RawInt64";
+        break;
+      case StubField::Type::Value:
+        ty = "Value";
+        break;
+      case StubField::Type::Double:
+        ty = "Double";
+        break;
+      default:
+        MOZ_CRASH("Unknown StubField type");
+    }
+    out_.printf("  writer.addStubField(0, %s);\n", ty);
   }
   void spewBoolImm(const char* name, bool b) {
-    out_.printf("%s %s", name, b ? "true" : "false");
+    out_.printf("  writer.writeBoolImm(%s);\n", b ? "true" : "false");
   }
   void spewByteImm(const char* name, uint8_t val) {
-    out_.printf("%s %u", name, val);
+    out_.printf("  writer.writeByteImm(%d);\n", val);
   }
   void spewJSOpImm(const char* name, JSOp op) {
-    out_.printf("%s JSOp::%s", name, CodeName(op));
+    out_.printf("  writer.writeJSOpImm(JSOp::%s);\n", CodeName(op));
   }
   void spewStaticStringImm(const char* name, const char* str) {
-    out_.printf("%s \"%s\"", name, str);
+    out_.printf("  writer.addStubField(0, StubField::Type::RawPointer);\n");
   }
   void spewInt32Imm(const char* name, int32_t val) {
-    out_.printf("%s %d", name, val);
+    out_.printf("  writer.writeInt32Imm(%d);\n", val);
   }
   void spewUInt32Imm(const char* name, uint32_t val) {
-    out_.printf("%s %u", name, val);
+    out_.printf("  writer.writeUInt32Imm(%u);\n", val);
   }
   void spewCallFlagsImm(const char* name, CallFlags flags) {
-    out_.printf(
-        "%s (format %u%s%s%s)", name, flags.getArgFormat(),
-        flags.isConstructing() ? ", isConstructing" : "",
-        flags.isSameRealm() ? ", isSameRealm" : "",
-        flags.needsUninitializedThis() ? ", needsUninitializedThis" : "");
+    out_.printf("  writer.writeByteImm(%d);\n", flags.toByte());
   }
   void spewJSWhyMagicImm(const char* name, JSWhyMagic magic) {
-    out_.printf("%s JSWhyMagic(%u)", name, unsigned(magic));
+    out_.printf("  writer.writeByteImm(%d);\n", int(magic));
   }
   void spewScalarTypeImm(const char* name, Scalar::Type type) {
-    out_.printf("%s Scalar::Type(%u)", name, unsigned(type));
+    // See comment on Scalar::Type: existing types are guaranteed
+    // not to be renumbered, so we can embed the integer value here.
+    out_.printf("  writer.writeByteImm(%d);\n", int(type));
   }
   void spewUnaryMathFunctionImm(const char* name, UnaryMathFunction fun) {
     const char* funName = GetUnaryMathFunctionName(fun);
-    out_.printf("%s UnaryMathFunction::%s", name, funName);
+    out_.printf("  writer.writeUnaryMathFunctionImm(UnaryMathFunction::%s);\n",
+                funName);
   }
   void spewValueTypeImm(const char* name, ValueType type) {
-    out_.printf("%s ValueType(%u)", name, unsigned(type));
+    out_.printf("  writer.writeByteImm(%d);\n", int(type));
   }
   void spewJSNativeImm(const char* name, JSNative native) {
-    out_.printf("%s %p", name, native);
+    out_.printf("  writer.addStubField(0, StubField::Type::RawPointer);\n");
   }
   void spewGuardClassKindImm(const char* name, GuardClassKind kind) {
-    out_.printf("%s GuardClassKind(%u)", name, unsigned(kind));
+    out_.printf("  writer.writeByteImm(%d);\n", int(kind));
   }
   void spewWasmValTypeImm(const char* name, wasm::ValType::Kind kind) {
-    out_.printf("%s WasmValTypeKind(%u)", name, unsigned(kind));
+    out_.printf("  writer.writeByteImm(%d);\n", int(kind));
   }
   void spewAllocKindImm(const char* name, gc::AllocKind kind) {
-    out_.printf("%s AllocKind(%u)", name, unsigned(kind));
+    out_.printf("  writer.writeByteImm(%d);\n", int(kind));
   }
   void spewCompletionKindImm(const char* name, CompletionKind kind) {
-    out_.printf("%s CompletionKind(%u)", name, unsigned(kind));
+    out_.printf("  writer.writeByteImm(%d);\n", int(kind));
   }
 
  public:
@@ -115,15 +161,18 @@ class MOZ_RAII CacheIRPreInitDumper {
   }
 };
 
-void js::jit::DumpCacheIRPreInit(GenericPrinter& out, const uint8_t* code) {
-  CacheIRReader reader(code);
+void js::jit::DumpCacheIRPreInit(GenericPrinter& out,
+                                 const CacheIRStubInfo* stubInfo) {
+  CacheIRReader reader(stubInfo);
   CacheIRPreInitDumper dumper(out);
   dumper.spew(reader);
 }
 
 void js::jit::JitZone::dumpCacheIRPreInit(GenericPrinter& out) {
-    for (auto it = baselineCacheIRStubCodes_.iter(); !it.done(); it.next()) {
-        const CacheIRStubInfo* stubInfo = it.get().key().stubInfo.get();
-        DumpCacheIRPreInit(out, stubInfo->code());
-    }
+  for (auto it = baselineCacheIRStubCodes_.iter(); !it.done(); it.next()) {
+    out.printf("_({\n");
+    const CacheIRStubInfo* stubInfo = it.get().key().stubInfo.get();
+    DumpCacheIRPreInit(out, stubInfo);
+    out.printf("});\n");
+  }
 }

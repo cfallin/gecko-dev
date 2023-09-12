@@ -634,6 +634,11 @@ class MOZ_RAII CacheIRWriter : public JS::CustomAutoRooter {
   friend class CacheIRCloner;
 
   CACHE_IR_WRITER_GENERATED
+
+#ifdef ENABLE_JS_PBL_WEVAL
+ private:
+  friend void js::PreloadCommonICs(JSContext* cx);
+#endif
 };
 
 }  // namespace jit

@@ -34,6 +34,7 @@ bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
 #ifdef ENABLE_JS_PBL_WEVAL
 void EnqueuePortableBaselineSpecialization(JSScript* script);
 void EnqueuePortableBaselineICSpecialization(jit::CacheIRStubInfo* stubInfo);
+void PreloadCommonICs(JSContext* cx);
 #endif
 
 } /* namespace js */

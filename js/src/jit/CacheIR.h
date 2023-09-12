@@ -22,6 +22,10 @@
 struct JS_PUBLIC_API JSContext;
 
 namespace js {
+void PreloadCommonICs(JSContext* cx);
+}
+
+namespace js {
 namespace jit {
 
 // [SMDOC] CacheIR
@@ -75,6 +79,11 @@ class OperandId {
   OperandId() : id_(InvalidId) {}
   uint16_t id() const { return id_; }
   bool valid() const { return id_ != InvalidId; }
+
+#ifdef ENABLE_JS_PBL_WEVAL
+ private:
+  friend void js::PreloadCommonICs(JSContext* cx);
+#endif
 };
 
 class ValOperandId : public OperandId {
@@ -209,7 +218,7 @@ enum class CacheOp : uint16_t {
 #define DEFINE_OP(op, ...) op,
   CACHE_IR_OPS(DEFINE_OP)
 #undef DEFINE_OP
-  NumOpcodes,
+      NumOpcodes,
 };
 
 // CacheIR opcode info that's read in performance-sensitive code. Stored as a

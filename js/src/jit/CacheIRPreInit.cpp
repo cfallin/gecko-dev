@@ -86,7 +86,7 @@ class MOZ_RAII CacheIRPreInitDumper {
       default:
         MOZ_CRASH("Unknown StubField type");
     }
-    out_.printf("  writer.addStubField(0, %s);\n", ty);
+    out_.printf("  writer.addStubField(0, StubField::Type::%s);\n", ty);
   }
   void spewBoolImm(const char* name, bool b) {
     out_.printf("  writer.writeBoolImm(%s);\n", b ? "true" : "false");
@@ -118,9 +118,7 @@ class MOZ_RAII CacheIRPreInitDumper {
     out_.printf("  writer.writeByteImm(%d);\n", int(type));
   }
   void spewUnaryMathFunctionImm(const char* name, UnaryMathFunction fun) {
-    const char* funName = GetUnaryMathFunctionName(fun);
-    out_.printf("  writer.writeUnaryMathFunctionImm(UnaryMathFunction::%s);\n",
-                funName);
+    out_.printf("  writer.writeByteImm(%d);\n", int(fun));
   }
   void spewValueTypeImm(const char* name, ValueType type) {
     out_.printf("  writer.writeByteImm(%d);\n", int(type));

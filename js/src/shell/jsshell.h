@@ -269,8 +269,6 @@ struct JSAndShellContext {
   JSObject* glob;
   UniquePtr<ShellContext> shellCx;
   mozilla::Maybe<js::FileContents> selfHostedXDRBuffer;
-  UniquePtr<RCFile> rcStdout;
-  UniquePtr<RCFile> rcStderr;
 };
 
 extern ShellContext* GetShellContext(JSContext* cx);

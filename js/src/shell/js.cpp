@@ -11075,6 +11075,11 @@ static bool SetGCParameterFromArg(JSContext* cx, char* arg) {
   return true;
 }
 
+// Special-case stdout and stderr. We bump their refcounts to prevent them
+// from getting closed and then having some printf fail somewhere.
+RCFile rcStdout(stdout);
+RCFile rcStderr(stderr);
+
 Variant<JSAndShellContext, int> js::shell::ShellMain(int argc, char** argv,
                                                      bool retainContext) {
   PreInit();
@@ -11086,15 +11091,10 @@ Variant<JSAndShellContext, int> js::shell::ShellMain(int argc, char** argv,
 
   setlocale(LC_ALL, "");
 
-  // Special-case stdout and stderr. We bump their refcounts to prevent them
-  // from getting closed and then having some printf fail somewhere.
-  UniquePtr<RCFile> rcStdout(MakeUnique<RCFile>(stdout));
-  rcStdout->acquire();
-  UniquePtr<RCFile> rcStderr(MakeUnique<RCFile>(stderr));
-  rcStderr->acquire();
-
-  SetOutputFile("JS_STDOUT", rcStdout.get(), &gOutFile);
-  SetOutputFile("JS_STDERR", rcStderr.get(), &gErrFile);
+  rcStdout.acquire();
+  rcStderr.acquire();
+  SetOutputFile("JS_STDOUT", &rcStdout, &gOutFile);
+  SetOutputFile("JS_STDERR", &rcStderr, &gErrFile);
 
   // Use a larger jemalloc page cache. This should match the value for browser
   // foreground processes in ContentChild::RecvNotifyProcessPriorityChanged.
@@ -11316,12 +11316,8 @@ Variant<JSAndShellContext, int> js::shell::ShellMain(int argc, char** argv,
     shutdownBufferStreams.release();
     shutdownShellThreads.release();
 
-    JSAndShellContext ret{cx,
-                          lastGlobal.get(),
-                          std::move(sc),
-                          std::move(selfHostedXDRBuffer),
-                          std::move(rcStdout),
-                          std::move(rcStderr)};
+    JSAndShellContext ret{cx, lastGlobal.get(), std::move(sc),
+                          std::move(selfHostedXDRBuffer)};
     return AsVariant(std::move(ret));
   } else {
     return AsVariant(result);

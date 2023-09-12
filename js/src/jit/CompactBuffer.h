@@ -68,6 +68,7 @@ class CompactBufferReader {
       : buffer_(start), end_(end) {}
   CompactBufferReader(const uint8_t* start) : buffer_(start), end_(nullptr) {}
   inline explicit CompactBufferReader(const CompactBufferWriter& writer);
+  const uint8_t* cur() const { return buffer_; }
   uint8_t readByte() {
     MOZ_ASSERT_IF(!!end_, buffer_ < end_);
     return *buffer_++;

@@ -49,6 +49,8 @@ class MOZ_RAII CacheIRReader {
       : CacheIRReader(writer.codeStart(), writer.codeEnd()) {}
   explicit CacheIRReader(const CacheIRStubInfo* stubInfo);
 
+  const uint8_t* cur() const { return buffer_.cur(); }
+
   bool more() const { return buffer_.more(); }
 
   CacheOp readOp() { return CacheOp(buffer_.readFixedUint16_t()); }

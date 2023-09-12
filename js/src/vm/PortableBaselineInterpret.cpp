@@ -498,6 +498,11 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ICRegs& icregs, Stack& stack, StackVal* sp, ICCacheIRStub* cstub,
     const CacheIRStubInfo* stubInfo, const uint8_t* code, jsbytecode* pc) {
+#ifdef ENABLE_JS_PBL_WEVAL
+  code = weval::assume_const_memory(code);
+  stubInfo = weval::assume_const_memory(stubInfo);
+#endif
+
   CacheIRReader reader(code);
 
 #define CACHEOP_CASE(name)                                                   \
@@ -513,20 +518,32 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 #undef OP
   };
 
-#define DISPATCH_CACHEOP()   \
-  cacheop = reader.readOp(); \
+#ifdef ENABLE_JS_PBL_WEVAL
+#  define UPDATE_CACHEOP_WEVAL_CONTEXT() \
+    weval::update_context(reinterpret_cast<uint32_t>(reader.cur()))
+#  define PREDICT_NEXT(name)
+#else
+#  define UPDATE_CACHEOP_WEVAL_CONTEXT()
+#  define PREDICT_NEXT(name)                \
+    if (reader.peekOp() == CacheOp::name) { \
+      reader.readOp();                      \
+      goto cacheop_##name;                  \
+    }
+#endif
+
+#define DISPATCH_CACHEOP()        \
+  UPDATE_CACHEOP_WEVAL_CONTEXT(); \
+  cacheop = reader.readOp();      \
   goto* addresses[long(cacheop)];
 
 #define BOUNDSCHECK(resultId) \
   if (resultId.id() >= ICRegs::kMaxICVals) return ICInterpretOpResult::NextIC;
 
-#define PREDICT_NEXT(name)                \
-  if (reader.peekOp() == CacheOp::name) { \
-    reader.readOp();                      \
-    goto cacheop_##name;                  \
-  }
-
   CacheOp cacheop;
+
+#ifdef ENABLE_JS_PBL_WEVAL
+  weval::push_context(reinterpret_cast<uint32_t>(reader.cur()));
+#endif
 
   DISPATCH_CACHEOP();
 

@@ -5,10 +5,10 @@
   X add specialization requests at call-points
   X add specialization requests when creating JSScripts (and put the weval state
     in JSScript instead of JitScript)
-  - get Octane passing
+  X get Octane passing
   - === milestone 1: weval of JSOp loop
-  - add pointers on ICStubs for specialized funcs
-  - add weval intrinsics to IC loop
+  X add pointers on ICStubs for specialized funcs
+  X add weval intrinsics to IC loop
   - add CacheIRWriter bodies for common ICs (find a way to collect these: print
     in CacheIRWriter?)
   - === milestone 2: weval'd IC stubs
@@ -17,5 +17,7 @@
     critical path, ensure it's not in PC-specialized code)
   - === milestone 3: opts
 
-- perf regression from 3.3.0 to 3.3.1 (Jake)
-  - from async resume in PBL?
+- PBL
+  - async resume (v2 -- fix perf regression)
+  - constructor-call fastpath (Jamey)
+  - all IC ops (Jamey)

@@ -30,6 +30,7 @@ UNIFIED_SOURCES += [
     "CacheIR.cpp",
     "CacheIRCompiler.cpp",
     "CacheIRHealth.cpp",
+    "CacheIRPreInit.cpp",
     "CacheIRSpewer.cpp",
     "CodeGenerator.cpp",
     "CompileWrappers.cpp",

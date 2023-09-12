@@ -174,6 +174,8 @@ class JitZone {
   mozilla::Maybe<IonCompilationId>& currentCompilationIdRef() {
     return currentCompilationId_;
   }
+
+  void dumpCacheIRPreInit(GenericPrinter& out);
 };
 
 }  // namespace jit

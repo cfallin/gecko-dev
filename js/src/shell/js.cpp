@@ -113,6 +113,7 @@
 #include "jit/InlinableNatives.h"
 #include "jit/Ion.h"
 #include "jit/JitcodeMap.h"
+#include "jit/JitZone.h"
 #include "jit/shared/CodeGenerator-shared.h"
 #include "js/Array.h"        // JS::NewArrayObject
 #include "js/ArrayBuffer.h"  // JS::{CreateMappedArrayBufferContents,NewMappedArrayBufferWithContents,IsArrayBufferObject,GetArrayBufferLengthAndData}
@@ -658,6 +659,8 @@ bool shell::useFdlibmForSinCosTan = false;
 bool shell::dumpEntrainedVariables = false;
 bool shell::OOM_printAllocationCount = false;
 #endif
+
+const char* shell::cacheIRPreInitDumpPath = nullptr;
 
 UniqueChars shell::processWideModuleLoadPath;
 
@@ -3031,11 +3034,12 @@ static const char* ToSource(JSContext* cx, HandleValue vp, UniqueChars* bytes) {
 static bool AssertEq(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   if (!(args.length() == 2 || (args.length() == 3 && args[2].isString()))) {
-    JS_ReportErrorNumberASCII(cx, my_GetErrorMessage, nullptr,
-                              (args.length() < 2)    ? JSSMSG_NOT_ENOUGH_ARGS
-                              : (args.length() == 3) ? JSSMSG_INVALID_ARGS
-                                                     : JSSMSG_TOO_MANY_ARGS,
-                              "assertEq");
+    JS_ReportErrorNumberASCII(
+        cx, my_GetErrorMessage, nullptr,
+        (args.length() < 2)
+            ? JSSMSG_NOT_ENOUGH_ARGS
+            : (args.length() == 3) ? JSSMSG_INVALID_ARGS : JSSMSG_TOO_MANY_ARGS,
+        "assertEq");
     return false;
   }
 
@@ -11289,6 +11293,21 @@ Variant<JSAndShellContext, int> js::shell::ShellMain(int argc, char** argv,
   }
 #endif
 
+  if (cacheIRPreInitDumpPath) {
+    FILE* fp = fopen(cacheIRPreInitDumpPath, "w");
+    if (!fp) {
+      printf("Could not dump CacheIR preinit code to %s.\n",
+             cacheIRPreInitDumpPath);
+    } else {
+      Fprinter printer(fp);
+      JSAutoRealm ar(cx, lastGlobal);
+      if (cx->zone()->jitZone()) {
+        cx->zone()->jitZone()->dumpCacheIRPreInit(printer);
+      }
+      printer.finish();
+    }
+  }
+
   if (retainContext) {
     shutdownEngine.release();
     destroyCx.release();
@@ -11795,7 +11814,9 @@ bool InitOptionParser(OptionParser& op) {
       !op.addStringOption('\0', "telemetry-dir", "[directory]",
                           "Output telemetry results in a directory") ||
       !op.addBoolOption('\0', "use-fdlibm-for-sin-cos-tan",
-                        "Use fdlibm for Math.sin, Math.cos, and Math.tan")) {
+                        "Use fdlibm for Math.sin, Math.cos, and Math.tan") ||
+      !op.addStringOption('\0', "dump-cacheir-preinit", "[filename]",
+                          "File to dump CacheIR preinit code to")) {
     return false;
   }
 
@@ -12611,6 +12632,10 @@ bool SetContextJITOptions(JSContext* cx, const OptionParser& op) {
   }
 #  endif
 #endif
+
+  if (const char* path = op.getStringOption("dump-cacheir-preinit")) {
+    cacheIRPreInitDumpPath = path;
+  }
 
   return true;
 }

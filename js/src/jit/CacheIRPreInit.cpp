@@ -170,8 +170,8 @@ void js::jit::DumpCacheIRPreInit(GenericPrinter& out,
 
 void js::jit::JitZone::dumpCacheIRPreInit(GenericPrinter& out) {
   for (auto it = baselineCacheIRStubCodes_.iter(); !it.done(); it.next()) {
-    out.printf("_({\n");
     const CacheIRStubInfo* stubInfo = it.get().key().stubInfo.get();
+    out.printf("_(CacheKind::%s, {\n", CacheKindNames[int(stubInfo->kind())]);
     DumpCacheIRPreInit(out, stubInfo);
     out.printf("});\n");
   }

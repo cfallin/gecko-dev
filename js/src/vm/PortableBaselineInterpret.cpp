@@ -498,13 +498,6 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ICRegs& icregs, Stack& stack, StackVal* sp, ICCacheIRStub* cstub,
     const CacheIRStubInfo* stubInfo, const uint8_t* code, jsbytecode* pc) {
-#ifdef ENABLE_JS_PBL_WEVAL
-  code = weval::assume_const_memory(code);
-  stubInfo = weval::assume_const_memory(stubInfo);
-#endif
-
-  CacheIRReader reader(code);
-
 #define CACHEOP_CASE(name)                                                   \
   cacheop_##name                                                             \
       : TRACE_PRINTF("cacheop (frame %p pc %p stub %p): " #name "\n", frame, \
@@ -519,7 +512,8 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   };
 
 #ifdef ENABLE_JS_PBL_WEVAL
-#  define UPDATE_CACHEOP_WEVAL_CONTEXT() \
+#  define UPDATE_CACHEOP_WEVAL_CONTEXT()                                      \
+    weval_assert_const32(reinterpret_cast<uint32_t>(reader.cur()), __LINE__); \
     weval::update_context(reinterpret_cast<uint32_t>(reader.cur()))
 #  define PREDICT_NEXT(name)
 #else
@@ -531,10 +525,18 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     }
 #endif
 
+#ifdef ENABLE_JS_PBL_WEVAL
+#  define GOTO_CACHEOP(op)                        \
+    weval_assert_const32(uint32_t(op), __LINE__); \
+    goto* addresses_table[op];
+#else
+#  define GOTO_CACHEOP(op) goto* addresses[op];
+#endif
+
 #define DISPATCH_CACHEOP()        \
   UPDATE_CACHEOP_WEVAL_CONTEXT(); \
   cacheop = reader.readOp();      \
-  goto* addresses[long(cacheop)];
+  GOTO_CACHEOP(long(cacheop));
 
 #define BOUNDSCHECK(resultId) \
   if (resultId.id() >= ICRegs::kMaxICVals) return ICInterpretOpResult::NextIC;
@@ -542,7 +544,15 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CacheOp cacheop;
 
 #ifdef ENABLE_JS_PBL_WEVAL
-  weval::push_context(reinterpret_cast<uint32_t>(reader.cur()));
+  code = weval::assume_const_memory(code);
+  stubInfo = weval::assume_const_memory(stubInfo);
+  auto* addresses_table = weval::assume_const_memory_transitive(addresses);
+#endif
+
+  CacheIRReader reader(code);
+
+#ifdef ENABLE_JS_PBL_WEVAL
+  weval::push_context(reinterpret_cast<uint32_t>(code));
 #endif
 
   DISPATCH_CACHEOP();
@@ -2106,7 +2116,6 @@ static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
 #ifdef ENABLE_JS_PBL_WEVAL
 #  define INVOKE_WEVALED_OR_GENERIC_IC(result, generic, args)     \
     auto func = reinterpret_cast<ICFunc>(stubInfo->weval().func); \
-    if (func) printf("invoking IC func: %d\n", int(func));        \
     auto result = func ? func args : generic args
 #else
 #  define INVOKE_WEVALED_OR_GENERIC_IC(result, generic, args) \

@@ -5575,34 +5575,3 @@ bool js::PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
   ssize_t needed = numActualArgs + state.script()->nslots() + margin;
   return (top - base) >= needed;
 }
-
-#ifdef ENABLE_JS_PBL_WEVAL
-void js::PreloadCommonICs(JSContext* cx) {
-  if (!IsPortableBaselineInterpreterEnabled()) {
-    return;
-  }
-  if (!cx->zone() || !cx->zone()->jitZone()) {
-    return;
-  }
-  JitZone* jitZone = cx->zone()->jitZone();
-
-#  define _(kind, body)                                                        \
-    {                                                                          \
-      CacheIRWriter writer(cx);                                                \
-      body;                                                                    \
-      CacheIRStubKey::Lookup lookup(kind, ICStubEngine::Baseline,              \
-                                    writer.codeStart(), writer.codeLength());  \
-      CacheIRStubInfo* stubInfo = nullptr;                                     \
-      jitZone->getBaselineCacheIRStubCode(lookup, &stubInfo);                  \
-      if (!stubInfo) {                                                         \
-        stubInfo = CacheIRStubInfo::New(kind, ICStubEngine::Baseline, true, 0, \
-                                        writer);                               \
-        EnqueuePortableBaselineICSpecialization(stubInfo);                     \
-        CacheIRStubKey key(stubInfo);                                          \
-        (void)jitZone->putBaselineCacheIRStubCode(lookup, key, nullptr);       \
-      }                                                                        \
-    }
-#  include "vm/PortableBaselineICsCollected.h"
-#  undef _
-}
-#endif

@@ -482,6 +482,7 @@ SOURCES += [
 
 if CONFIG["ENABLE_PORTABLE_BASELINE_INTERP"]:
     SOURCES += [
+        "vm/PortableBaselineICsCollected.cpp",
         "vm/PortableBaselineInterpret.cpp",
     ]
 

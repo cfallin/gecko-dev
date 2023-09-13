@@ -2106,6 +2106,7 @@ static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
 #ifdef ENABLE_JS_PBL_WEVAL
 #  define INVOKE_WEVALED_OR_GENERIC_IC(result, generic, args)     \
     auto func = reinterpret_cast<ICFunc>(stubInfo->weval().func); \
+    if (func) printf("invoking IC func: %d\n", int(func));        \
     auto result = func ? func args : generic args
 #else
 #  define INVOKE_WEVALED_OR_GENERIC_IC(result, generic, args) \

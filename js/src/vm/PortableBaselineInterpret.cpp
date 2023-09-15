@@ -542,11 +542,13 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   if (resultId.id() >= ICRegs::kMaxICVals) return ICInterpretOpResult::NextIC;
 
   CacheOp cacheop;
+  uint64_t* regs = &icregs.icVals[0];
 
 #ifdef ENABLE_JS_PBL_WEVAL
   code = weval::assume_const_memory(code);
   stubInfo = weval::assume_const_memory(stubInfo);
   auto* addresses_table = weval::assume_const_memory_transitive(addresses);
+  regs = weval::make_symbolic_ptr(&icregs.icVals[0]);
 #endif
 
   CacheIRReader reader(code);
@@ -564,9 +566,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(GuardToInt32) {
     ValOperandId inputId = reader.valOperandId();
-    Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
+    Value v = Value::fromRawBits(regs[inputId.id()]);
     TRACE_PRINTF("GuardToInt32 (%d): icVal %" PRIx64 "\n", inputId.id(),
-                 icregs.icVals[inputId.id()]);
+                 regs[inputId.id()]);
     if (!v.isInt32()) {
       return ICInterpretOpResult::NextIC;
     }
@@ -580,13 +582,12 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(GuardToObject) {
     ValOperandId inputId = reader.valOperandId();
-    Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
-    TRACE_PRINTF("GuardToObject: icVal %" PRIx64 "\n",
-                 icregs.icVals[inputId.id()]);
+    Value v = Value::fromRawBits(regs[inputId.id()]);
+    TRACE_PRINTF("GuardToObject: icVal %" PRIx64 "\n", regs[inputId.id()]);
     if (!v.isObject()) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icVals[inputId.id()] = reinterpret_cast<uint64_t>(&v.toObject());
+    regs[inputId.id()] = reinterpret_cast<uint64_t>(&v.toObject());
     PREDICT_NEXT(GuardShape);
     PREDICT_NEXT(GuardSpecificFunction);
     DISPATCH_CACHEOP();
@@ -594,49 +595,49 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(GuardToString) {
     ValOperandId inputId = reader.valOperandId();
-    Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
+    Value v = Value::fromRawBits(regs[inputId.id()]);
     if (!v.isString()) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icVals[inputId.id()] = reinterpret_cast<uint64_t>(v.toString());
+    regs[inputId.id()] = reinterpret_cast<uint64_t>(v.toString());
     PREDICT_NEXT(GuardToString);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(GuardToSymbol) {
     ValOperandId inputId = reader.valOperandId();
-    Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
+    Value v = Value::fromRawBits(regs[inputId.id()]);
     if (!v.isSymbol()) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icVals[inputId.id()] = reinterpret_cast<uint64_t>(v.toSymbol());
+    regs[inputId.id()] = reinterpret_cast<uint64_t>(v.toSymbol());
     PREDICT_NEXT(GuardSpecificSymbol);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(GuardToBigInt) {
     ValOperandId inputId = reader.valOperandId();
-    Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
+    Value v = Value::fromRawBits(regs[inputId.id()]);
     if (!v.isBigInt()) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icVals[inputId.id()] = reinterpret_cast<uint64_t>(v.toBigInt());
+    regs[inputId.id()] = reinterpret_cast<uint64_t>(v.toBigInt());
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(GuardToBoolean) {
     ValOperandId inputId = reader.valOperandId();
-    Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
+    Value v = Value::fromRawBits(regs[inputId.id()]);
     if (!v.isBoolean()) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icVals[inputId.id()] = v.toBoolean() ? 1 : 0;
+    regs[inputId.id()] = v.toBoolean() ? 1 : 0;
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(GuardIsNullOrUndefined) {
     ObjOperandId inputId = reader.objOperandId();
-    Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
+    Value v = Value::fromRawBits(regs[inputId.id()]);
     if (!v.isNullOrUndefined()) {
       return ICInterpretOpResult::NextIC;
     }
@@ -645,7 +646,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(GuardIsNull) {
     ObjOperandId inputId = reader.objOperandId();
-    Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
+    Value v = Value::fromRawBits(regs[inputId.id()]);
     if (!v.isNull()) {
       return ICInterpretOpResult::NextIC;
     }
@@ -654,7 +655,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(GuardIsUndefined) {
     ObjOperandId inputId = reader.objOperandId();
-    Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
+    Value v = Value::fromRawBits(regs[inputId.id()]);
     if (!v.isUndefined()) {
       return ICInterpretOpResult::NextIC;
     }
@@ -664,7 +665,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(GuardNonDoubleType) {
     ValOperandId inputId = reader.valOperandId();
     ValueType type = reader.valueType();
-    Value val = Value::fromRawBits(icregs.icVals[inputId.id()]);
+    Value val = Value::fromRawBits(regs[inputId.id()]);
     switch (type) {
       case ValueType::String:
         if (!val.isString()) {
@@ -710,7 +711,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(GuardShape) {
     ObjOperandId objId = reader.objOperandId();
     uint32_t shapeOffset = reader.stubOffset();
-    JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
+    JSObject* obj = reinterpret_cast<JSObject*>(regs[objId.id()]);
     uintptr_t expectedShape = stubInfo->getStubRawWord(cstub, shapeOffset);
     if (reinterpret_cast<uintptr_t>(obj->shape()) != expectedShape) {
       return ICInterpretOpResult::NextIC;
@@ -721,7 +722,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(GuardProto) {
     ObjOperandId objId = reader.objOperandId();
     uint32_t protoOffset = reader.stubOffset();
-    JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
+    JSObject* obj = reinterpret_cast<JSObject*>(regs[objId.id()]);
     uintptr_t expectedProto = stubInfo->getStubRawWord(cstub, protoOffset);
     if (reinterpret_cast<uintptr_t>(obj->staticPrototype()) != expectedProto) {
       return ICInterpretOpResult::NextIC;
@@ -734,10 +735,8 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     ObjOperandId objId = reader.objOperandId();
     ObjOperandId resultId = reader.objOperandId();
     BOUNDSCHECK(resultId);
-    NativeObject* nobj =
-        reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
-    icregs.icVals[resultId.id()] =
-        reinterpret_cast<uintptr_t>(nobj->staticPrototype());
+    NativeObject* nobj = reinterpret_cast<NativeObject*>(regs[objId.id()]);
+    regs[resultId.id()] = reinterpret_cast<uintptr_t>(nobj->staticPrototype());
     DISPATCH_CACHEOP();
   }
 
@@ -747,7 +746,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     uint32_t nargsAndFlagsOffset = reader.stubOffset();
     (void)nargsAndFlagsOffset;  // Unused.
     uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
-    if (expected != icregs.icVals[funId.id()]) {
+    if (expected != regs[funId.id()]) {
       return ICInterpretOpResult::NextIC;
     }
     PREDICT_NEXT(LoadArgumentFixedSlot);
@@ -758,7 +757,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     ObjOperandId funId = reader.objOperandId();
     uint32_t expectedOffset = reader.stubOffset();
     uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
-    if (expected != icregs.icVals[funId.id()]) {
+    if (expected != regs[funId.id()]) {
       return ICInterpretOpResult::NextIC;
     }
     DISPATCH_CACHEOP();
@@ -768,7 +767,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     StringOperandId strId = reader.stringOperandId();
     uint32_t expectedOffset = reader.stubOffset();
     uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
-    if (expected != icregs.icVals[strId.id()]) {
+    if (expected != regs[strId.id()]) {
       return ICInterpretOpResult::NextIC;
     }
     DISPATCH_CACHEOP();
@@ -778,7 +777,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     SymbolOperandId symId = reader.symbolOperandId();
     uint32_t expectedOffset = reader.stubOffset();
     uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
-    if (expected != icregs.icVals[symId.id()]) {
+    if (expected != regs[symId.id()]) {
       return ICInterpretOpResult::NextIC;
     }
     DISPATCH_CACHEOP();
@@ -788,7 +787,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     Int32OperandId int32Id = reader.int32OperandId();
     uint32_t expectedOffset = reader.stubOffset();
     uint32_t expected = stubInfo->getStubRawInt32(cstub, expectedOffset);
-    if (expected != uint32_t(icregs.icVals[int32Id.id()])) {
+    if (expected != uint32_t(regs[int32Id.id()])) {
       return ICInterpretOpResult::NextIC;
     }
     DISPATCH_CACHEOP();
@@ -797,7 +796,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(GuardClass) {
     ObjOperandId objId = reader.objOperandId();
     GuardClassKind kind = reader.guardClassKind();
-    JSObject* object = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
+    JSObject* object = reinterpret_cast<JSObject*>(regs[objId.id()]);
     switch (kind) {
       case GuardClassKind::Array:
         if (object->getClass() != &ArrayObject::class_) {
@@ -869,11 +868,10 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     uint32_t offsetOffset = reader.stubOffset();
     ValOperandId valId = reader.valOperandId();
     uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
-    NativeObject* nobj =
-        reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
+    NativeObject* nobj = reinterpret_cast<NativeObject*>(regs[objId.id()]);
     GCPtr<Value>* slot = reinterpret_cast<GCPtr<Value>*>(
         reinterpret_cast<uintptr_t>(nobj) + offset);
-    Value val = Value::fromRawBits(icregs.icVals[valId.id()]);
+    Value val = Value::fromRawBits(regs[valId.id()]);
     slot->set(val);
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
@@ -884,10 +882,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     uint32_t offsetOffset = reader.stubOffset();
     uint32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
     ValOperandId valId = reader.valOperandId();
-    NativeObject* nobj =
-        reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
+    NativeObject* nobj = reinterpret_cast<NativeObject*>(regs[objId.id()]);
     HeapSlot* slots = nobj->getSlotsUnchecked();
-    Value val = Value::fromRawBits(icregs.icVals[valId.id()]);
+    Value val = Value::fromRawBits(regs[valId.id()]);
     size_t dynSlot = offset / sizeof(Value);
     size_t slot = dynSlot + nobj->numFixedSlots();
     slots[dynSlot].set(nobj, HeapSlot::Slot, slot, val);
@@ -900,7 +897,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     uint32_t objOffset = reader.stubOffset();
     intptr_t obj = stubInfo->getStubRawWord(cstub, objOffset);
     BOUNDSCHECK(objId);
-    icregs.icVals[objId.id()] = obj;
+    regs[objId.id()] = obj;
     PREDICT_NEXT(GuardShape);
     DISPATCH_CACHEOP();
   }
@@ -912,14 +909,14 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     ObjOperandId receiverObjId = reader.objOperandId();
     (void)receiverObjId;
     BOUNDSCHECK(objId);
-    icregs.icVals[objId.id()] = obj;
+    regs[objId.id()] = obj;
     PREDICT_NEXT(GuardShape);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadOperandResult) {
     ValOperandId valId = reader.valOperandId();
-    icregs.icResult = icregs.icVals[valId.id()];
+    icregs.icResult = regs[valId.id()];
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -934,8 +931,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(LoadObjectResult) {
     ObjOperandId objId = reader.objOperandId();
     icregs.icResult =
-        ObjectValue(*reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]))
-            .asRawBits();
+        ObjectValue(*reinterpret_cast<JSObject*>(regs[objId.id()])).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -943,7 +939,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(LoadStringResult) {
     StringOperandId stringId = reader.stringOperandId();
     icregs.icResult =
-        StringValue(reinterpret_cast<JSString*>(icregs.icVals[stringId.id()]))
+        StringValue(reinterpret_cast<JSString*>(regs[stringId.id()]))
             .asRawBits();
     DISPATCH_CACHEOP();
   }
@@ -962,14 +958,14 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     Int32OperandId resultId = reader.int32OperandId();
     uint32_t value = stubInfo->getStubRawInt32(cstub, valueOffset);
     BOUNDSCHECK(resultId);
-    icregs.icVals[resultId.id()] = value;
+    regs[resultId.id()] = value;
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadSymbolResult) {
     SymbolOperandId symbolId = reader.symbolOperandId();
     icregs.icResult =
-        SymbolValue(reinterpret_cast<JS::Symbol*>(icregs.icVals[symbolId.id()]))
+        SymbolValue(reinterpret_cast<JS::Symbol*>(regs[symbolId.id()]))
             .asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
@@ -977,7 +973,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(LoadInt32Result) {
     Int32OperandId intId = reader.int32OperandId();
-    icregs.icResult = Int32Value(icregs.icVals[intId.id()]).asRawBits();
+    icregs.icResult = Int32Value(regs[intId.id()]).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -985,7 +981,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(LoadBigIntResult) {
     BigIntOperandId bigintId = reader.bigIntOperandId();
     icregs.icResult =
-        BigIntValue(reinterpret_cast<JS::BigInt*>(icregs.icVals[bigintId.id()]))
+        BigIntValue(reinterpret_cast<JS::BigInt*>(regs[bigintId.id()]))
             .asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
@@ -993,7 +989,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(LoadDoubleResult) {
     NumberOperandId numId = reader.numberOperandId();
-    Value val = Value::fromRawBits(icregs.icVals[numId.id()]);
+    Value val = Value::fromRawBits(regs[numId.id()]);
     if (val.isInt32()) {
       val = DoubleValue(val.toInt32());
     }
@@ -1012,8 +1008,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     ObjOperandId objId = reader.objOperandId();
     uint32_t offsetOffset = reader.stubOffset();
     uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
-    NativeObject* nobj =
-        reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
+    NativeObject* nobj = reinterpret_cast<NativeObject*>(regs[objId.id()]);
     Value* slot =
         reinterpret_cast<Value*>(reinterpret_cast<uintptr_t>(nobj) + offset);
     TRACE_PRINTF(
@@ -1029,8 +1024,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     ObjOperandId objId = reader.objOperandId();
     uint32_t offsetOffset = reader.stubOffset();
     uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
-    NativeObject* nobj =
-        reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
+    NativeObject* nobj = reinterpret_cast<NativeObject*>(regs[objId.id()]);
     HeapSlot* slots = nobj->getSlotsUnchecked();
     icregs.icResult = slots[offset / sizeof(Value)].get().asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -1042,11 +1036,10 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     ObjOperandId expectedId = reader.objOperandId();
     uint32_t offsetOffset = reader.stubOffset();
     uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
-    NativeObject* nobj =
-        reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
+    NativeObject* nobj = reinterpret_cast<NativeObject*>(regs[objId.id()]);
     HeapSlot* slots = nobj->getSlotsUnchecked();
     uintptr_t actual = slots[offset / sizeof(Value)].get().asRawBits();
-    uintptr_t expected = icregs.icVals[expectedId.id()];
+    uintptr_t expected = regs[expectedId.id()];
     if (actual != expected) {
       return ICInterpretOpResult::NextIC;
     }
@@ -1058,9 +1051,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     BOUNDSCHECK(resultId);
     Int32OperandId argcId = reader.int32OperandId();
     uint8_t slotIndex = reader.readByte();
-    int32_t argc = int32_t(icregs.icVals[argcId.id()]);
+    int32_t argc = int32_t(regs[argcId.id()]);
     Value val = sp[slotIndex + argc].asValue();
-    icregs.icVals[resultId.id()] = val.asRawBits();
+    regs[resultId.id()] = val.asRawBits();
     DISPATCH_CACHEOP();
   }
 
@@ -1071,7 +1064,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     Value val = sp[slotIndex].asValue();
     TRACE_PRINTF(" -> slot %d: val %" PRIx64 "\n", int(slotIndex),
                  val.asRawBits());
-    icregs.icVals[resultId.id()] = val.asRawBits();
+    regs[resultId.id()] = val.asRawBits();
     DISPATCH_CACHEOP();
   }
 
@@ -1079,8 +1072,8 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(Int32##name##Result) {                          \
     Int32OperandId lhsId = reader.int32OperandId();            \
     Int32OperandId rhsId = reader.int32OperandId();            \
-    int64_t lhs = int64_t(int32_t(icregs.icVals[lhsId.id()])); \
-    int64_t rhs = int64_t(int32_t(icregs.icVals[rhsId.id()])); \
+    int64_t lhs = int64_t(int32_t(regs[lhsId.id()]));          \
+    int64_t rhs = int64_t(int32_t(regs[rhsId.id()]));          \
     extra_check;                                               \
     int64_t result = lhs op rhs;                               \
     if (result < INT32_MIN || result > INT32_MAX) {            \
@@ -1123,8 +1116,8 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(Int32PowResult) {
     Int32OperandId lhsId = reader.int32OperandId();
     Int32OperandId rhsId = reader.int32OperandId();
-    int64_t lhs = int64_t(int32_t(icregs.icVals[lhsId.id()]));
-    int64_t rhs = int64_t(int32_t(icregs.icVals[rhsId.id()]));
+    int64_t lhs = int64_t(int32_t(regs[lhsId.id()]));
+    int64_t rhs = int64_t(int32_t(regs[rhsId.id()]));
     int64_t result;
 
     if (lhs == 1) {
@@ -1159,7 +1152,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(Int32IncResult) {
     Int32OperandId intId = reader.int32OperandId();
-    int64_t value = int64_t(int32_t(icregs.icVals[intId.id()]));
+    int64_t value = int64_t(int32_t(regs[intId.id()]));
     value++;
     if (value > INT32_MAX) {
       return ICInterpretOpResult::NextIC;
@@ -1173,8 +1166,8 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     JSOp op = reader.jsop();
     Int32OperandId lhsId = reader.int32OperandId();
     Int32OperandId rhsId = reader.int32OperandId();
-    int64_t lhs = int64_t(int32_t(icregs.icVals[lhsId.id()]));
-    int64_t rhs = int64_t(int32_t(icregs.icVals[rhsId.id()]));
+    int64_t lhs = int64_t(int32_t(regs[lhsId.id()]));
+    int64_t rhs = int64_t(int32_t(regs[rhsId.id()]));
     TRACE_PRINTF("lhs (%d) = %" PRIi64 " rhs (%d) = %" PRIi64 "\n", lhsId.id(),
                  lhs, rhsId.id(), rhs);
     bool result;
@@ -1213,16 +1206,16 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     Int32OperandId rhsId = reader.int32OperandId();
     Int32OperandId resultId = reader.int32OperandId();
     BOUNDSCHECK(resultId);
-    int32_t lhs = int32_t(icregs.icVals[lhsId.id()]);
-    int32_t rhs = int32_t(icregs.icVals[rhsId.id()]);
+    int32_t lhs = int32_t(regs[lhsId.id()]);
+    int32_t rhs = int32_t(regs[rhsId.id()]);
     int32_t result = ((lhs > rhs) ^ isMax) ? rhs : lhs;
-    icregs.icVals[resultId.id()] = result;
+    regs[resultId.id()] = result;
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(IsObjectResult) {
     ValOperandId valId = reader.valOperandId();
-    Value val = Value::fromRawBits(icregs.icVals[valId.id()]);
+    Value val = Value::fromRawBits(regs[valId.id()]);
     icregs.icResult = BooleanValue(val.isObject()).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
@@ -1235,9 +1228,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     {
       PUSH_IC_FRAME();
       ReservedRooted<JSString*> lhs(
-          &state.str0, reinterpret_cast<JSString*>(icregs.icVals[lhsId.id()]));
+          &state.str0, reinterpret_cast<JSString*>(regs[lhsId.id()]));
       ReservedRooted<JSString*> rhs(
-          &state.str1, reinterpret_cast<JSString*>(icregs.icVals[rhsId.id()]));
+          &state.str1, reinterpret_cast<JSString*>(regs[rhsId.id()]));
       bool result;
       switch (op) {
         case JSOp::Eq:
@@ -1289,7 +1282,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     JSOp op = reader.jsop();
     bool isUndefined = reader.readBool();
     ValOperandId inputId = reader.valOperandId();
-    Value val = Value::fromRawBits(icregs.icVals[inputId.id()]);
+    Value val = Value::fromRawBits(regs[inputId.id()]);
     if (val.isObject() && val.toObject().getClass()->isProxyObject()) {
       return ICInterpretOpResult::NextIC;
     }
@@ -1322,7 +1315,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(LoadObjectTruthyResult) {
     ObjOperandId objId = reader.objOperandId();
-    JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
+    JSObject* obj = reinterpret_cast<JSObject*>(regs[objId.id()]);
     const JSClass* cls = obj->getClass();
     if (cls->isProxyObject()) {
       return ICInterpretOpResult::NextIC;
@@ -1336,14 +1329,14 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     ValOperandId valId = reader.valOperandId();
     Int32OperandId resultId = reader.int32OperandId();
     BOUNDSCHECK(resultId);
-    Value val = Value::fromRawBits(icregs.icVals[valId.id()]);
+    Value val = Value::fromRawBits(regs[valId.id()]);
     if (val.isInt32()) {
-      icregs.icVals[resultId.id()] = val.toInt32();
+      regs[resultId.id()] = val.toInt32();
       DISPATCH_CACHEOP();
     } else if (val.isDouble()) {
       double doubleVal = val.toDouble();
       if (doubleVal >= double(INT32_MIN) && doubleVal <= double(INT32_MAX)) {
-        icregs.icVals[resultId.id()] = int32_t(doubleVal);
+        regs[resultId.id()] = int32_t(doubleVal);
         DISPATCH_CACHEOP();
       }
     }
@@ -1364,7 +1357,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(GuardFunctionScript) {
     ObjOperandId funId = reader.objOperandId();
-    JSFunction* fun = reinterpret_cast<JSFunction*>(icregs.icVals[funId.id()]);
+    JSFunction* fun = reinterpret_cast<JSFunction*>(regs[funId.id()]);
     uint32_t expectedOffset = reader.stubOffset();
     BaseScript* expected = reinterpret_cast<BaseScript*>(
         stubInfo->getStubRawWord(cstub, expectedOffset));
@@ -1385,10 +1378,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     TRACE_PRINTF("CallScriptedFunction / CallNativeFunction (native: %d)\n",
                  isNative);
     ObjOperandId calleeId = reader.objOperandId();
-    JSFunction* callee =
-        reinterpret_cast<JSFunction*>(icregs.icVals[calleeId.id()]);
+    JSFunction* callee = reinterpret_cast<JSFunction*>(regs[calleeId.id()]);
     Int32OperandId argcId = reader.int32OperandId();
-    uint32_t argc = uint32_t(icregs.icVals[argcId.id()]);
+    uint32_t argc = uint32_t(regs[argcId.id()]);
     CallFlags flags = reader.callFlags();
     uint32_t argcFixed = reader.uint32Immediate();
     (void)argcFixed;
@@ -1519,11 +1511,11 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     Int32OperandId inputId = reader.int32OperandId();
     StringOperandId resultId = reader.stringOperandId();
     BOUNDSCHECK(resultId);
-    int32_t input = int32_t(icregs.icVals[inputId.id()]);
+    int32_t input = int32_t(regs[inputId.id()]);
     JSLinearString* str =
         Int32ToStringPure(frameMgr.cxForLocalUseOnly(), input);
     if (str) {
-      icregs.icVals[resultId.id()] = reinterpret_cast<uintptr_t>(str);
+      regs[resultId.id()] = reinterpret_cast<uintptr_t>(str);
     } else {
       return ICInterpretOpResult::NextIC;
     }
@@ -1535,10 +1527,10 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     StringOperandId rhsId = reader.stringOperandId();
     // We don't push a frame and do a CanGC invocation here; we do a
     // pure (NoGC) invocation only, because it's cheaper.
-    FakeRooted<JSString*> lhs(
-        nullptr, reinterpret_cast<JSString*>(icregs.icVals[lhsId.id()]));
-    FakeRooted<JSString*> rhs(
-        nullptr, reinterpret_cast<JSString*>(icregs.icVals[rhsId.id()]));
+    FakeRooted<JSString*> lhs(nullptr,
+                              reinterpret_cast<JSString*>(regs[lhsId.id()]));
+    FakeRooted<JSString*> rhs(nullptr,
+                              reinterpret_cast<JSString*>(regs[rhsId.id()]));
     JSString* result =
         ConcatStrings<NoGC>(frameMgr.cxForLocalUseOnly(), lhs, rhs);
     if (result) {
@@ -1554,21 +1546,19 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     ObjOperandId objId = reader.objOperandId();
     Int32OperandId resultId = reader.int32OperandId();
     BOUNDSCHECK(resultId);
-    NativeObject* nobj =
-        reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
+    NativeObject* nobj = reinterpret_cast<NativeObject*>(regs[objId.id()]);
     ObjectElements* elems = nobj->getElementsHeader();
     uint32_t length = elems->getLength();
     if (length > uint32_t(INT32_MAX)) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icVals[resultId.id()] = length;
+    regs[resultId.id()] = length;
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadInt32ArrayLengthResult) {
     ObjOperandId objId = reader.objOperandId();
-    NativeObject* nobj =
-        reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
+    NativeObject* nobj = reinterpret_cast<NativeObject*>(regs[objId.id()]);
     ObjectElements* elems = nobj->getElementsHeader();
     uint32_t length = elems->getLength();
     if (length > uint32_t(INT32_MAX)) {
@@ -1581,7 +1571,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(LoadStringLengthResult) {
     StringOperandId strId = reader.stringOperandId();
-    JSString* str = reinterpret_cast<JSString*>(icregs.icVals[strId.id()]);
+    JSString* str = reinterpret_cast<JSString*>(regs[strId.id()]);
     size_t length = str->length();
     if (length > size_t(INT32_MAX)) {
       return ICInterpretOpResult::NextIC;
@@ -1596,9 +1586,8 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     Int32OperandId indexId = reader.int32OperandId();
     bool handleOOB = reader.readBool();
 
-    JSString* str =
-        reinterpret_cast<JSLinearString*>(icregs.icVals[strId.id()]);
-    int32_t index = int32_t(icregs.icVals[indexId.id()]);
+    JSString* str = reinterpret_cast<JSLinearString*>(regs[strId.id()]);
+    int32_t index = int32_t(regs[indexId.id()]);
     JSString* result = nullptr;
     if (index < 0 || size_t(index) >= str->length()) {
       if (handleOOB) {
@@ -1633,9 +1622,8 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     Int32OperandId indexId = reader.int32OperandId();
     bool handleOOB = reader.readBool();
 
-    JSString* str =
-        reinterpret_cast<JSLinearString*>(icregs.icVals[strId.id()]);
-    int32_t index = int32_t(icregs.icVals[indexId.id()]);
+    JSString* str = reinterpret_cast<JSLinearString*>(regs[strId.id()]);
+    int32_t index = int32_t(regs[indexId.id()]);
     Value result;
     if (index < 0 || size_t(index) >= str->length()) {
       if (handleOOB) {
@@ -1661,19 +1649,18 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     Int32OperandId indexId = reader.int32OperandId();
     StringOperandId resultId = reader.stringOperandId();
     BOUNDSCHECK(resultId);
-    JSString* str =
-        reinterpret_cast<JSLinearString*>(icregs.icVals[strId.id()]);
+    JSString* str = reinterpret_cast<JSLinearString*>(regs[strId.id()]);
     (void)indexId;
 
     if (!str->isRope()) {
-      icregs.icVals[resultId.id()] = reinterpret_cast<uintptr_t>(str);
+      regs[resultId.id()] = reinterpret_cast<uintptr_t>(str);
     } else {
       PUSH_IC_FRAME();
       JSLinearString* result = LinearizeForCharAccess(cx, str);
       if (!result) {
         return ICInterpretOpResult::Error;
       }
-      icregs.icVals[resultId.id()] = reinterpret_cast<uintptr_t>(result);
+      regs[resultId.id()] = reinterpret_cast<uintptr_t>(result);
     }
     PREDICT_NEXT(LoadStringCharResult);
     DISPATCH_CACHEOP();
@@ -1681,8 +1668,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(LoadStringTruthyResult) {
     StringOperandId strId = reader.stringOperandId();
-    JSString* str =
-        reinterpret_cast<JSLinearString*>(icregs.icVals[strId.id()]);
+    JSString* str = reinterpret_cast<JSLinearString*>(regs[strId.id()]);
     icregs.icResult = BooleanValue(str->length() > 0).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
@@ -1690,7 +1676,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(LoadInt32TruthyResult) {
     ValOperandId valId = reader.valOperandId();
-    int32_t val = int32_t(icregs.icVals[valId.id()]);
+    int32_t val = int32_t(regs[valId.id()]);
     icregs.icResult = BooleanValue(val != 0).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
@@ -1699,10 +1685,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(LoadDenseElementResult) {
     ObjOperandId objId = reader.objOperandId();
     Int32OperandId indexId = reader.int32OperandId();
-    NativeObject* nobj =
-        reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
+    NativeObject* nobj = reinterpret_cast<NativeObject*>(regs[objId.id()]);
     ObjectElements* elems = nobj->getElementsHeader();
-    int32_t index = int32_t(icregs.icVals[indexId.id()]);
+    int32_t index = int32_t(regs[indexId.id()]);
     if (index < 0 || uint32_t(index) >= elems->getInitializedLength()) {
       return ICInterpretOpResult::NextIC;
     }
@@ -1720,10 +1705,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     ObjOperandId objId = reader.objOperandId();
     Int32OperandId indexId = reader.int32OperandId();
     ValOperandId valId = reader.valOperandId();
-    NativeObject* nobj =
-        reinterpret_cast<NativeObject*>(icregs.icVals[objId.id()]);
+    NativeObject* nobj = reinterpret_cast<NativeObject*>(regs[objId.id()]);
     ObjectElements* elems = nobj->getElementsHeader();
-    int32_t index = int32_t(icregs.icVals[indexId.id()]);
+    int32_t index = int32_t(regs[indexId.id()]);
     if (index < 0 || uint32_t(index) >= elems->getInitializedLength()) {
       return ICInterpretOpResult::NextIC;
     }
@@ -1731,7 +1715,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     if (slot->get().isMagic()) {
       return ICInterpretOpResult::NextIC;
     }
-    Value val = Value::fromRawBits(icregs.icVals[valId.id()]);
+    Value val = Value::fromRawBits(regs[valId.id()]);
     slot->set(nobj, HeapSlot::Element, index + elems->numShiftedElements(),
               val);
     PREDICT_NEXT(ReturnFromIC);

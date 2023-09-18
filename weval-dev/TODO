@@ -12,7 +12,7 @@
   X add CacheIRWriter bodies for common ICs (find a way to collect these: print
     in CacheIRWriter?)
   - === milestone 2: weval'd IC stubs
-  - add stack-renaming and renaming for icregs
+  X add stack-renaming and renaming for icregs
   - ensure that IC invocation code is minimized (put error-case switch off the
     critical path, ensure it's not in PC-specialized code)
   - No hybrid ICs in specialized bodies? (Collect common ICs for this too)

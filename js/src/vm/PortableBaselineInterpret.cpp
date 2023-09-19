@@ -2051,8 +2051,7 @@ static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
       (spec == PBISpecialization::Specialized)                                \
           ? IC##kind##Outlined(frame, frameMgr, state, icregs, stack, sp, pc) \
           : IC##kind(frame, frameMgr, state, icregs, stack, sp, pc);          \
-  if (icResult != PBIResult::Ok) {                                            \
-    WEVAL_POP_CONTEXT();                                                      \
+  if (MOZ_UNLIKELY(icResult != PBIResult::Ok)) {                              \
     goto ic_fail;                                                             \
   }                                                                           \
   NEXT_IC();
@@ -5323,6 +5322,7 @@ static PBIResult PortableBaselineInterpret(
   }
 
 ic_fail:
+  WEVAL_POP_CONTEXT();
   switch (icResult) {
     case PBIResult::Ok:
       MOZ_CRASH("Unreachable: should not reach ic_fail with PBIResult::Ok");

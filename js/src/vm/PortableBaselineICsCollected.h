@@ -36,6 +36,17 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(3);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::StrictEq);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
@@ -76,57 +87,88 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(5));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Compare, {
-  writer.writeOp(CacheOp::GuardIsUndefined);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::CompareNullUndefinedResult);
-  writer.writeJSOpImm(JSOp::Eq);
-  writer.writeBoolImm(true);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
 _(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
+  writer.writeByteImm(2);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::GuardSpecificFunction);
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::JSObject);
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(0));
   writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOp(CacheOp::MathFunctionNumberResult);
   writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(3);
-  writer.writeUInt32Imm(2);
+  writer.writeByteImm(2);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::BinaryArith, {
-  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
+_(CacheKind::In, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::LoadInt32Constant);
-  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
   writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardBooleanToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardBooleanToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::Eq);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::TruncateDoubleToUInt32);
+  writer.writeOp(CacheOp::CompareDoubleResult);
+  writer.writeJSOpImm(JSOp::Ge);
+  writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::Int32BitAndResult);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(2);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(5);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -164,6 +206,53 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(2);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::GetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadInt32ArrayLengthResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32BitOrResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::SetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::AddAndStoreFixedSlot);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::SetElem, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
@@ -189,14 +278,18 @@ _(CacheKind::SetElem, {
 _(CacheKind::BinaryArith, {
   writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::TruncateDoubleToUInt32);
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::DoubleMulResult);
   writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::Int32BitOrResult);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::ToBool, {
+  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::BinaryArith, {
@@ -219,6 +312,68 @@ _(CacheKind::BindName, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::LoadObjectResult);
   writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::SetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::AllocateAndStoreDynamicSlot);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardAnyClass);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::LoadObjectResult);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::LoadValueTag);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadValueTag);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardTagNotEqual);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetProp, {
@@ -259,6 +414,28 @@ _(CacheKind::In, {
   writer.writeBoolImm(true);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::SetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardToInt32ModUint32);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32ToIntPtr);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(4));
+  writer.writeOp(CacheOp::StoreTypedArrayElement);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(0);
+  writer.writeOperandId(OperandId(4));
+  writer.writeOperandId(OperandId(3));
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
@@ -279,6 +456,15 @@ _(CacheKind::Call, {
   writer.writeByteImm(33);
   writer.writeUInt32Imm(0);
   writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(5);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -326,6 +512,29 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::TypeOf, {
+  writer.writeOp(CacheOp::GuardNonDoubleType);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::LoadConstantStringResult);
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::UnaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::Int32IncResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::ToBool, {
+  writer.writeOp(CacheOp::GuardNonDoubleType);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(2);
+  writer.writeOp(CacheOp::LoadOperandResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::GetElem, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
@@ -338,6 +547,136 @@ _(CacheKind::GetElem, {
   writer.writeOp(CacheOp::LoadArgumentsObjectArgResult);
   writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::In, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(3));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOperandId(OperandId(3));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardArrayIsPacked);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallNativeFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(5);
+  writer.writeUInt32Imm(5);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(3);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(3));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::NewTypedArrayFromLengthResult);
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::TruncateDoubleToUInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32BitAndResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32URightShiftResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::UnaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::DoubleIncResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(9);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -368,80 +707,7 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOperandId(OperandId(0));
   writer.writeByteImm(3);
-  writer.writeUInt32Imm(2);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::In, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadBooleanResult);
-  writer.writeBoolImm(false);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::BinaryArith, {
-  writer.writeOp(CacheOp::GuardIsNumber);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::TruncateDoubleToUInt32);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardToInt32);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::Int32BitAndResult);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::HasOwn, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadBooleanResult);
-  writer.writeBoolImm(true);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::SetProp, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::AddAndStoreDynamicSlot);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::GetProp, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardClass);
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(6);
-  writer.writeOp(CacheOp::LoadArgumentsObjectLengthResult);
-  writer.writeOperandId(OperandId(0));
+  writer.writeUInt32Imm(4);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::In, {
@@ -549,31 +815,66 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
+  writer.writeByteImm(2);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardClass);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(9);
-  writer.writeOp(CacheOp::LoadBoundFunctionNumArgs);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardSpecificInt32);
-  writer.writeOperandId(OperandId(2));
-  writer.writeInt32Imm(0);
-  writer.writeOp(CacheOp::LoadBoundFunctionTarget);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(3));
+  writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::JSObject);
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallBoundScriptedFunction);
-  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadObject);
   writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::GuardDynamicSlotIsSpecificObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::MetaScriptedThisShape);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(65);
-  writer.writeUInt32Imm(0);
+  writer.writeByteImm(97);
+  writer.writeUInt32Imm(4);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(4);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::In, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardToSymbol);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardSpecificSymbol);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -601,11 +902,33 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::SetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardToInt32ModUint32);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32ToIntPtr);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(4));
+  writer.writeOp(CacheOp::StoreTypedArrayElement);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(2);
+  writer.writeOperandId(OperandId(4));
+  writer.writeOperandId(OperandId(3));
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(2);
+  writer.writeByteImm(1);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::GuardClass);
@@ -615,28 +938,11 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::BaseScript);
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadObject);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::GuardDynamicSlotIsSpecificObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::MetaScriptedThisShape);
-  writer.addStubField(0, StubField::Type::Shape);
   writer.writeOp(CacheOp::CallScriptedFunction);
   writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(97);
-  writer.writeUInt32Imm(1);
+  writer.writeByteImm(65);
+  writer.writeUInt32Imm(2);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetProp, {
@@ -677,6 +983,17 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::MathAbsNumberResult);
   writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(6);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(11);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -722,6 +1039,19 @@ _(CacheKind::Compare, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::CallNumberToString);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CallStringConcatResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::UnaryArith, {
   writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(0));
@@ -730,6 +1060,15 @@ _(CacheKind::UnaryArith, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::Int32NotResult);
   writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(2);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::BinaryArith, {
@@ -748,22 +1087,13 @@ _(CacheKind::BinaryArith, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsUndefined);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOp(CacheOp::GuardIsUndefined);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(65);
-  writer.writeUInt32Imm(0);
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(true);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetProp, {
@@ -786,6 +1116,44 @@ _(CacheKind::GetProp, {
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(3));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardArrayIsPacked);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(5);
+  writer.writeUInt32Imm(5);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
   writer.writeByteImm(0);
@@ -796,16 +1164,31 @@ _(CacheKind::Call, {
   writer.addStubField(0, StubField::Type::RawPointer);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(1);
+_(CacheKind::In, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::LoadFixedSlotTypedResult);
+  writer.writeOp(CacheOp::GuardToInt32Index);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeByteImm(6);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadDenseElementExistsResult);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CallNumberToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::CallStringConcatResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -827,6 +1210,17 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(0);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(8);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::BinaryArith, {
   writer.writeOp(CacheOp::GuardBooleanToInt32);
   writer.writeOperandId(OperandId(0));
@@ -839,48 +1233,101 @@ _(CacheKind::BinaryArith, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(8);
+  writer.writeOp(CacheOp::GuardFunctionHasJitEntry);
+  writer.writeOperandId(OperandId(1));
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::GuardNotClassConstructor);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeUInt32Imm(1);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Compare, {
   writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardStringToNumber);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardIsNumber);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::CompareDoubleResult);
-  writer.writeJSOpImm(JSOp::Eq);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(0);
   writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GetFirstDollarIndexResult);
+  writer.writeOp(CacheOp::CompareStringResult);
+  writer.writeJSOpImm(JSOp::StrictNe);
+  writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNull);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNull);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(true);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::TypeOf, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadConstantStringResult);
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadInt32Constant);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::TruncateDoubleToUInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::Int32BitAndResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(2);
+  writer.writeByteImm(0);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOp(CacheOp::IsTypedArrayResult);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardIsNumber);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::MathFunctionNumberResult);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(2);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareObjectResult);
+  writer.writeJSOpImm(JSOp::StrictNe);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::UnaryArith, {
+  writer.writeOp(CacheOp::GuardIsUndefined);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadDoubleConstant);
+  writer.addStubField(0, StubField::Type::Double);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadDoubleResult);
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -933,6 +1380,34 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOperandId(OperandId(3));
   writer.writeOperandId(OperandId(4));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadDynamicSlotResult);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadFixedSlotTypedResult);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeByteImm(6);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -1001,54 +1476,45 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallNativeFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(3);
-  writer.writeUInt32Imm(1);
-  writer.writeBoolImm(false);
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(7);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetElem, {
+_(CacheKind::GetProp, {
   writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(5);
+  writer.writeOp(CacheOp::LoadArgumentsObjectLengthResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOp(CacheOp::CompareStringResult);
+  writer.writeJSOpImm(JSOp::Le);
+  writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareStringResult);
+  writer.writeJSOpImm(JSOp::StrictEq);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadUndefinedResult);
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -1091,6 +1557,36 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(0);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32ToIntPtr);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadTypedArrayElementResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(3);
+  writer.writeBoolImm(false);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(1);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(5);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
@@ -1120,24 +1616,6 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(0));
   writer.writeByteImm(3);
   writer.writeUInt32Imm(1);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(65);
-  writer.writeUInt32Imm(2);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetElem, {
@@ -1191,6 +1669,23 @@ _(CacheKind::GetProp, {
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::SetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::StoreDynamicSlot);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
@@ -1208,6 +1703,25 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::MathCeilToInt32Result);
   writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32ToIntPtr);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadTypedArrayElementResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(6);
+  writer.writeBoolImm(false);
+  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::In, {
@@ -1289,13 +1803,33 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(0);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetProp, {
+_(CacheKind::SetElem, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::MegamorphicStoreSlot);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Id);
+  writer.writeOp(CacheOp::GuardToInt32Index);
   writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(5));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(5));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::StoreDenseElementHole);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOperandId(OperandId(2));
   writer.writeBoolImm(true);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
@@ -1318,6 +1852,26 @@ _(CacheKind::GetProp, {
   writer.writeOp(CacheOp::LoadUndefinedResult);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::GetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(6);
+  writer.writeOp(CacheOp::LoadArgumentsObjectLengthResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadInt32Result);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
@@ -1329,42 +1883,11 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::JSObject);
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(3));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardClass);
-  writer.writeOperandId(OperandId(3));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardArrayIsPacked);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallNativeFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(5);
+  writer.writeByteImm(65);
   writer.writeUInt32Imm(5);
-  writer.writeBoolImm(false);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToInt32);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::LoadInt32Result);
-  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetElem, {
@@ -1387,34 +1910,6 @@ _(CacheKind::GetElem, {
   writer.writeOp(CacheOp::LoadDynamicSlotResult);
   writer.writeOperandId(OperandId(2));
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::GetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadUndefinedResult);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetElem, {
@@ -1449,22 +1944,49 @@ _(CacheKind::SetElem, {
   writer.addStubField(0, StubField::Type::Shape);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
+_(CacheKind::HasOwn, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(65);
-  writer.writeUInt32Imm(1);
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(true);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::SetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32Index);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(5));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(5));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::StoreDenseElementHole);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOperandId(OperandId(2));
+  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -1529,6 +2051,22 @@ _(CacheKind::Call, {
   writer.addStubField(0, StubField::Type::RawPointer);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::GetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadObject);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadArrayBufferViewLengthInt32Result);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
@@ -1556,6 +2094,17 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(4));
   writer.writeOp(CacheOp::LoadInt32Result);
   writer.writeOperandId(OperandId(4));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(9);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(14);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -1592,19 +2141,6 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(0);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Compare, {
-  writer.writeOp(CacheOp::GuardBooleanToInt32);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardBooleanToInt32);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::CompareInt32Result);
-  writer.writeJSOpImm(JSOp::Ne);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
@@ -1634,6 +2170,34 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(5));
   writer.writeOperandId(OperandId(4));
   writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(3);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(3));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardSpecificInt32);
+  writer.writeOperandId(OperandId(3));
+  writer.writeInt32Imm(10);
+  writer.writeOp(CacheOp::NumberParseIntResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetProp, {
@@ -1710,23 +2274,12 @@ _(CacheKind::GetProp, {
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
+_(CacheKind::TypeOf, {
+  writer.writeOp(CacheOp::GuardNonDoubleType);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallNativeFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(65);
-  writer.writeUInt32Imm(5);
-  writer.writeBoolImm(true);
+  writer.writeByteImm(3);
+  writer.writeOp(CacheOp::LoadConstantStringResult);
+  writer.addStubField(0, StubField::Type::String);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -1748,6 +2301,15 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNull);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareNullUndefinedResult);
+  writer.writeJSOpImm(JSOp::StrictEq);
+  writer.writeBoolImm(false);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::GetProp, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
@@ -1762,6 +2324,33 @@ _(CacheKind::GetProp, {
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::Shape);
   writer.writeOp(CacheOp::LoadUndefinedResult);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareDoubleResult);
+  writer.writeJSOpImm(JSOp::StrictNe);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadFixedSlotResult);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetProp, {
@@ -1805,33 +2394,23 @@ _(CacheKind::Call, {
   writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+_(CacheKind::BindName, {
+  writer.writeOp(CacheOp::LoadEnclosingEnvironment);
+  writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadObjectResult);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(0);
+  writer.writeUInt32Imm(0);
   writer.writeByteImm(3);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(3));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToInt32);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::NewArrayFromLengthResult);
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetElem, {
@@ -1871,17 +2450,52 @@ _(CacheKind::SetProp, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::BinaryArith, {
-  writer.writeOp(CacheOp::GuardToInt32);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardIsNumber);
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::TruncateDoubleToUInt32);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::Int32BitAndResult);
   writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(3));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::ObjectToStringResult);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(65);
+  writer.writeUInt32Imm(0);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::BinaryArith, {
@@ -1895,27 +2509,30 @@ _(CacheKind::BinaryArith, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetProp, {
-  writer.writeOp(CacheOp::GuardToObject);
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardMultipleShapes);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOp(CacheOp::TruncateDoubleToUInt32);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
   writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::Int32BitAndResult);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadUndefinedResult);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardBooleanToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardBooleanToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::Ne);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetElem, {
@@ -1942,45 +2559,32 @@ _(CacheKind::GetElem, {
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetProp, {
+_(CacheKind::GetElem, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(5));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(5));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::AddAndStoreFixedSlot);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
   writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadUndefinedResult);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -2021,6 +2625,24 @@ _(CacheKind::Call, {
   writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::UnaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadInt32Result);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(4);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(8);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
@@ -2029,6 +2651,27 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ArrayBufferViewByteOffsetInt32Result);
   writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::DoubleSubResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(15);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(17);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetProp, {
@@ -2049,6 +2692,19 @@ _(CacheKind::GetProp, {
   writer.writeOp(CacheOp::LoadDynamicSlotResult);
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsUndefined);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadDoubleConstant);
+  writer.addStubField(0, StubField::Type::Double);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::DoubleAddResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -2152,47 +2808,32 @@ _(CacheKind::Call, {
   writer.addStubField(0, StubField::Type::JSObject);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
+_(CacheKind::UnaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToInt32Index);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOp(CacheOp::LoadDoubleResult);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardIndexIsNotDenseElement);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::ToBool, {
+  writer.writeOp(CacheOp::GuardNonDoubleType);
   writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardIsExtensible);
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::LoadInt32TruthyResult);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardInt32IsNonNegative);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardProto);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::CallInt32ToString);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(5));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(5));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::GuardIndexIsValidUpdateOrAdd);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::CallAddOrUpdateSparseElementHelper);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(3));
   writer.writeOperandId(OperandId(2));
-  writer.writeBoolImm(true);
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CallStringConcatResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -2288,15 +2929,52 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(5);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+_(CacheKind::SetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::AddAndStoreDynamicSlot);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(1);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::TruncateDoubleToUInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32BitOrResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(2);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOp(CacheOp::GuardClass);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeByteImm(8);
+  writer.writeOp(CacheOp::GuardFunctionScript);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::BaseScript);
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(2));
@@ -2306,17 +2984,31 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(2));
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadInt32Constant);
-  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadObject);
   writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::LoadInt32ArrayLength);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(4));
-  writer.writeOp(CacheOp::PackedArraySliceResult);
   writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::GuardDynamicSlotIsSpecificObject);
   writer.writeOperandId(OperandId(2));
   writer.writeOperandId(OperandId(3));
-  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::MetaScriptedThisShape);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(97);
+  writer.writeUInt32Imm(1);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareDoubleResult);
+  writer.writeJSOpImm(JSOp::StrictEq);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Compare, {
@@ -2327,7 +3019,7 @@ _(CacheKind::Compare, {
   writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::CompareInt32Result);
-  writer.writeJSOpImm(JSOp::Eq);
+  writer.writeJSOpImm(JSOp::StrictNe);
   writer.writeOperandId(OperandId(2));
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
@@ -2351,11 +3043,32 @@ _(CacheKind::Call, {
   writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::ToPropertyKey, {
-  writer.writeOp(CacheOp::GuardToInt32);
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::LoadInt32Result);
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(2));
   writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(3);
+  writer.writeUInt32Imm(4);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetElem, {
@@ -2380,34 +3093,37 @@ _(CacheKind::GetElem, {
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetElem, {
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(8);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(11);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::GetElem, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToInt32Index);
+  writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::String);
   writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(0));
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(5));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(5));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::StoreDenseElementHole);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::LoadObject);
   writer.writeOperandId(OperandId(2));
-  writer.writeBoolImm(false);
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadFixedSlotResult);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Compare, {
@@ -2421,34 +3137,56 @@ _(CacheKind::Compare, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetProp, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(5);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(11);
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::StoreDynamicSlot);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(12);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(14);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOp(CacheOp::CallStringConcatResult);
+  writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(16);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(17);
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::AddAndStoreDynamicSlot);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNull);
   writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardIsNull);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -2532,58 +3270,78 @@ _(CacheKind::Compare, {
   writer.writeBoolImm(true);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToInt32Index);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadDenseElementResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(3);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::GuardSpecificFunction);
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::JSObject);
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallNativeFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(65);
-  writer.writeUInt32Imm(4);
-  writer.writeBoolImm(true);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(3));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::DoublePowResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetProp, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::AllocateAndStoreDynamicSlot);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(2);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
   writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadObject);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::GuardDynamicSlotIsSpecificObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::MetaScriptedThisShape);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(97);
+  writer.writeUInt32Imm(3);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetElem, {
@@ -2601,19 +3359,23 @@ _(CacheKind::SetElem, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetProp, {
-  writer.writeOp(CacheOp::GuardNonDoubleType);
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(6);
-  writer.writeOp(CacheOp::LoadObject);
+  writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOp(CacheOp::DoubleAddResult);
+  writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadDynamicSlotResult);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsUndefined);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::CompareNullUndefinedResult);
+  writer.writeJSOpImm(JSOp::Eq);
+  writer.writeBoolImm(true);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -2656,6 +3418,19 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(5));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardStringToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32SubResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Compare, {
   writer.writeOp(CacheOp::GuardIsNull);
   writer.writeOperandId(OperandId(1));
@@ -2665,21 +3440,15 @@ _(CacheKind::Compare, {
   writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(16);
+  writer.writeUInt32Imm(14);
+  writer.writeByteImm(17);
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::StoreDynamicSlot);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetProp, {
@@ -2694,45 +3463,51 @@ _(CacheKind::SetProp, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadFixedSlotResult);
-  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadInt32Constant);
   writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32BitOrResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallNativeFunction);
-  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::Eq);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(65);
-  writer.writeUInt32Imm(2);
-  writer.writeBoolImm(true);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32Index);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadStringCharResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::Ne);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::BinaryArith, {
@@ -2804,6 +3579,27 @@ _(CacheKind::GetElem, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::TypeOf, {
+  writer.writeOp(CacheOp::GuardNonDoubleType);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(6);
+  writer.writeOp(CacheOp::LoadConstantStringResult);
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardBooleanToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardBooleanToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::StrictEq);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
@@ -2829,6 +3625,13 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::ToBool, {
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadStringTruthyResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
@@ -2837,41 +3640,6 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::RegExpPrototypeOptimizableResult);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(2);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadObject);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::GuardDynamicSlotIsSpecificObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::MetaScriptedThisShape);
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(97);
-  writer.writeUInt32Imm(3);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -2888,6 +3656,17 @@ _(CacheKind::GetIterator, {
   writer.writeOp(CacheOp::ObjectToIteratorResult);
   writer.writeOperandId(OperandId(0));
   writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(14);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(17);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -2909,6 +3688,15 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(10);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::GetProp, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
@@ -2917,15 +3705,37 @@ _(CacheKind::GetProp, {
   writer.addStubField(0, StubField::Type::Id);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Compare, {
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToString);
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::CompareStringResult);
-  writer.writeJSOpImm(JSOp::Eq);
   writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(8);
+  writer.writeOp(CacheOp::GuardFunctionHasJitEntry);
+  writer.writeOperandId(OperandId(1));
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::GuardNotClassConstructor);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeUInt32Imm(3);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(13);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(17);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetElem, {
@@ -3076,6 +3886,15 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::GetProp, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
@@ -3097,6 +3916,15 @@ _(CacheKind::GetProp, {
   writer.writeOperandId(OperandId(2));
   writer.addStubField(0, StubField::Type::Shape);
   writer.writeOp(CacheOp::LoadUndefinedResult);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsUndefined);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareNullUndefinedResult);
+  writer.writeJSOpImm(JSOp::StrictNe);
+  writer.writeBoolImm(true);
+  writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetProp, {
@@ -3126,12 +3954,25 @@ _(CacheKind::SetProp, {
   writer.addStubField(0, StubField::Type::Shape);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::BindName, {
-  writer.writeOp(CacheOp::LoadEnclosingEnvironment);
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::LoadValueTag);
   writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadValueTag);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::LoadObjectResult);
-  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardTagNotEqual);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(true);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::ToBool, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadDoubleTruthyResult);
+  writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -3156,6 +3997,13 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(4);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::ToBool, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadObjectTruthyResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::BinaryArith, {
   writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
@@ -3167,6 +4015,15 @@ _(CacheKind::BinaryArith, {
   writer.writeOp(CacheOp::Int32BitXorResult);
   writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNull);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareNullUndefinedResult);
+  writer.writeJSOpImm(JSOp::StrictNe);
+  writer.writeBoolImm(false);
+  writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetProp, {
@@ -3231,6 +4088,34 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(3);
+  writer.writeUInt32Imm(2);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
   writer.writeByteImm(1);
@@ -3257,9 +4142,53 @@ _(CacheKind::Compare, {
   writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetIntrinsic, {
-  writer.writeOp(CacheOp::LoadValueResult);
-  writer.addStubField(0, StubField::Type::Value);
+_(CacheKind::TypeOf, {
+  writer.writeOp(CacheOp::GuardNonDoubleType);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(4);
+  writer.writeOp(CacheOp::LoadConstantStringResult);
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::SetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(5));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(5));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::AddAndStoreFixedSlot);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -3297,6 +4226,20 @@ _(CacheKind::SetElem, {
   writer.writeOperandId(OperandId(0));
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardStringToNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareDoubleResult);
+  writer.writeJSOpImm(JSOp::Eq);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -3349,16 +4292,47 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(3);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::BinaryArith, {
-  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::LoadInt32Constant);
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardStringToIndex);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadDenseElementHoleResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::SetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::AddAndStoreDynamicSlot);
+  writer.writeOperandId(OperandId(0));
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardToInt32);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::Int32BitAndResult);
-  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::DoubleDivResult);
+  writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
@@ -3372,34 +4346,30 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::In, {
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(1);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardToInt32Index);
-  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadObject);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::GuardNoDenseElements);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::LoadObject);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::GuardNoDenseElements);
-  writer.writeOperandId(OperandId(4));
-  writer.writeOp(CacheOp::LoadDenseElementHoleExistsResult);
-  writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadConstantString);
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::ArrayJoinResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetElem, {
@@ -3494,18 +4464,66 @@ _(CacheKind::GetElem, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::In, {
+_(CacheKind::SetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32Index);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardIndexIsNotDenseElement);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardIsExtensible);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardInt32IsNonNegative);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardProto);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(5));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(5));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardIndexIsValidUpdateOrAdd);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::CallAddOrUpdateSparseElementHelper);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOperandId(OperandId(2));
+  writer.writeBoolImm(true);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardToInt32Index);
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallNativeFunction);
+  writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadDenseElementExistsResult);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(65);
+  writer.writeUInt32Imm(4);
+  writer.writeBoolImm(true);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -3531,6 +4549,28 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
   writer.writeByteImm(2);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardSpecificObject);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::ObjectCreateResult);
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(2);
   writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
@@ -3545,32 +4585,6 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::StringReplaceStringResult);
   writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardClass);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::LoadConstantString);
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::ArrayJoinResult);
   writer.writeOperandId(OperandId(2));
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
@@ -3606,24 +4620,54 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(3);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::BinaryArith, {
-  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
+_(CacheKind::GetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::LoadInt32Constant);
+  writer.writeOp(CacheOp::GuardMultipleShapes);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::LoadDynamicSlotResult);
+  writer.writeOperandId(OperandId(0));
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
   writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::Int32BitOrResult);
-  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::Int32ToIntPtr);
   writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadTypedArrayElementResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(0);
+  writer.writeBoolImm(false);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::UnaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::Int32NotResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::UnaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::Int32DecResult);
+  writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(2);
+  writer.writeByteImm(1);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::GuardSpecificFunction);
@@ -3638,31 +4682,17 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(2));
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadObject);
+  writer.writeOp(CacheOp::LoadInt32Constant);
+  writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::LoadInt32ArrayLength);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(4));
+  writer.writeOp(CacheOp::PackedArraySliceResult);
   writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::GuardDynamicSlotIsSpecificObject);
   writer.writeOperandId(OperandId(2));
   writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::MetaScriptedThisShape);
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(97);
-  writer.writeUInt32Imm(4);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Compare, {
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::CompareStringResult);
-  writer.writeJSOpImm(JSOp::Le);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(4));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetElem, {
@@ -3696,42 +4726,15 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(3);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::HasOwn, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::MegamorphicHasPropResult);
-  writer.writeOperandId(OperandId(1));
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
-  writer.writeBoolImm(true);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::In, {
-  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::StrictNe);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadBooleanResult);
-  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetProp, {
@@ -3739,13 +4742,6 @@ _(CacheKind::SetProp, {
   writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
   writer.addStubField(0, StubField::Type::Shape);
   writer.writeOp(CacheOp::AddAndStoreDynamicSlot);
   writer.writeOperandId(OperandId(0));
@@ -3800,10 +4796,22 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::GetName, {
+  writer.writeOp(CacheOp::GuardGlobalGeneration);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::LoadObject);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::LoadFixedSlotResult);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(3);
+  writer.writeByteImm(2);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::GuardSpecificFunction);
@@ -3813,16 +4821,18 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(2));
   writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(3));
   writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardIsNumber);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOp(CacheOp::GuardToInt32Index);
   writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::DoublePowResult);
+  writer.writeOperandId(OperandId(4));
+  writer.writeOp(CacheOp::LoadStringCharCodeResult);
   writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(3));
+  writer.writeOperandId(OperandId(4));
+  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -3837,31 +4847,13 @@ _(CacheKind::Call, {
   writer.writeByteImm(1);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetProp, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(8);
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::AddAndStoreFixedSlot);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -3899,26 +4891,41 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(4));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOp(CacheOp::CallInt32ToString);
   writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(8);
-  writer.writeOp(CacheOp::GuardFunctionHasJitEntry);
-  writer.writeOperandId(OperandId(1));
-  writer.writeBoolImm(false);
-  writer.writeOp(CacheOp::GuardNotClassConstructor);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::CallStringConcatResult);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeUInt32Imm(1);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardStringToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::Int32DivResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::Le);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -3941,34 +4948,21 @@ _(CacheKind::Call, {
   writer.writeByteImm(4);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetProp, {
-  writer.writeOp(CacheOp::GuardToObject);
+_(CacheKind::UnaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOp(CacheOp::DoubleNegationResult);
   writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::GuardFunctionIsNonBuiltinCtor);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::AllocateAndStoreDynamicSlot);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::Int32SubResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetElem, {
@@ -3991,6 +4985,17 @@ _(CacheKind::GetElem, {
   writer.writeOp(CacheOp::LoadDynamicSlotResult);
   writer.writeOperandId(OperandId(2));
   writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(7);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(11);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -4034,20 +5039,32 @@ _(CacheKind::Call, {
   writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(0);
   writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOp(CacheOp::GetFirstDollarIndexResult);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadDynamicSlotResult);
-  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
   writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(65);
+  writer.writeUInt32Imm(1);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetProp, {
@@ -4057,26 +5074,14 @@ _(CacheKind::GetProp, {
   writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::In, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardToSymbol);
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardSpecificSymbol);
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32LeftShiftResult);
   writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadBooleanResult);
-  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -4099,32 +5104,11 @@ _(CacheKind::Call, {
   writer.writeByteImm(6);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
+_(CacheKind::ToPropertyKey, {
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadInt32Result);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(3);
-  writer.writeUInt32Imm(4);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -4156,26 +5140,45 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(4));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::GuardToInt32ModUint32);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::Int32ToIntPtr);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(4));
-  writer.writeOp(CacheOp::StoreTypedArrayElement);
+  writer.writeOp(CacheOp::Int32DivResult);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(2);
-  writer.writeOperandId(OperandId(4));
-  writer.writeOperandId(OperandId(3));
-  writer.writeBoolImm(false);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadInt32Constant);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32BitAndResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::UnaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::Int32NegationResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareDoubleResult);
+  writer.writeJSOpImm(JSOp::Eq);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -4185,49 +5188,28 @@ _(CacheKind::Call, {
   writer.writeByteImm(1);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOp(CacheOp::GuardClass);
   writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(9);
+  writer.writeOp(CacheOp::LoadBoundFunctionNumArgs);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardSpecificInt32);
+  writer.writeOperandId(OperandId(2));
+  writer.writeInt32Imm(0);
+  writer.writeOp(CacheOp::LoadBoundFunctionTarget);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(3));
   writer.addStubField(0, StubField::Type::JSObject);
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::CallBoundScriptedFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(3));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(3));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::ObjectToStringResult);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(2);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardSpecificObject);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::ObjectCreateResult);
-  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeByteImm(65);
+  writer.writeUInt32Imm(0);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Compare, {
@@ -4237,6 +5219,16 @@ _(CacheKind::Compare, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::CompareStringResult);
   writer.writeJSOpImm(JSOp::Ge);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32BitAndResult);
   writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
@@ -4283,6 +5275,17 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadFixedSlotResult);
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareObjectResult);
+  writer.writeJSOpImm(JSOp::StrictEq);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -4354,38 +5357,45 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(4));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
+_(CacheKind::In, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardToInt32Index);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(65);
-  writer.writeUInt32Imm(5);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadObject);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardNoDenseElements);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::LoadObject);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(4));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardNoDenseElements);
+  writer.writeOperandId(OperandId(4));
+  writer.writeOp(CacheOp::LoadDenseElementHoleExistsResult);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(3);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(8);
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadFixedSlotResult);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetProp, {
@@ -4434,46 +5444,13 @@ _(CacheKind::SetElem, {
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsUndefined);
   writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareNullUndefinedResult);
+  writer.writeJSOpImm(JSOp::StrictEq);
+  writer.writeBoolImm(true);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(3));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardClass);
-  writer.writeOperandId(OperandId(3));
-  writer.writeByteImm(5);
-  writer.writeOp(CacheOp::GuardArgumentsObjectFlags);
-  writer.writeOperandId(OperandId(3));
-  writer.writeByteImm(20);
-  writer.writeOp(CacheOp::GuardClass);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(8);
-  writer.writeOp(CacheOp::GuardFunctionScript);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::BaseScript);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(4);
-  writer.writeUInt32Imm(5);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -4513,6 +5490,26 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(0));
   writer.writeByteImm(4);
   writer.writeUInt32Imm(5);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(3);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareDoubleResult);
+  writer.writeJSOpImm(JSOp::Gt);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetElem, {
@@ -4569,16 +5566,23 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(3);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::Ge);
+  writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardAnyClass);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::RawPointer);
-  writer.writeOp(CacheOp::LoadObjectResult);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsUndefined);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::CompareNullUndefinedResult);
+  writer.writeJSOpImm(JSOp::StrictEq);
+  writer.writeBoolImm(true);
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
@@ -4600,6 +5604,37 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::MathFunctionNumberResult);
   writer.writeOperandId(OperandId(2));
   writer.writeByteImm(0);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(8);
+  writer.writeOp(CacheOp::GuardFunctionScript);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::BaseScript);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(3);
+  writer.writeUInt32Imm(2);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetProp, {
@@ -4655,16 +5690,6 @@ _(CacheKind::Call, {
   writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetProp, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardClass);
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(5);
-  writer.writeOp(CacheOp::LoadArgumentsObjectLengthResult);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
@@ -4693,6 +5718,15 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsUndefined);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsUndefined);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadBooleanResult);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::SetElem, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
@@ -4709,6 +5743,17 @@ _(CacheKind::SetElem, {
   writer.writeBoolImm(true);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::Gt);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::SetProp, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
@@ -4719,6 +5764,36 @@ _(CacheKind::SetProp, {
   writer.writeOperandId(OperandId(0));
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::SetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardFunctionIsNonBuiltinCtor);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::AllocateAndStoreDynamicSlot);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -4787,9 +5862,25 @@ _(CacheKind::Compare, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+_(CacheKind::GetProp, {
+  writer.writeOp(CacheOp::GuardNonDoubleType);
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(6);
+  writer.writeOp(CacheOp::LoadObject);
   writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadDynamicSlotResult);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
   writer.writeByteImm(2);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
@@ -4797,27 +5888,12 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::JSObject);
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::IsArrayResult);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::GetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOp(CacheOp::CallNativeFunction);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardStringToIndex);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadDenseElementHoleResult);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(97);
+  writer.writeUInt32Imm(2);
+  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -4888,19 +5964,32 @@ _(CacheKind::SetProp, {
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
   writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
   writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::StringSplitStringResult);
-  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
   writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallNativeFunction);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(3);
+  writer.writeUInt32Imm(1);
+  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -4917,6 +6006,17 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::RegExpInstanceOptimizableResult);
   writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(16);
+  writer.writeUInt32Imm(30);
+  writer.writeByteImm(17);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetProp, {
@@ -4964,32 +6064,45 @@ _(CacheKind::Call, {
   writer.writeUInt32Imm(4);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(3);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(3));
-  writer.writeByteImm(0);
+_(CacheKind::Compare, {
   writer.writeOp(CacheOp::GuardToInt32);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardSpecificInt32);
-  writer.writeOperandId(OperandId(3));
-  writer.writeInt32Imm(10);
-  writer.writeOp(CacheOp::NumberParseIntResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareInt32Result);
+  writer.writeJSOpImm(JSOp::Lt);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(6);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
   writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(3));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadUndefinedResult);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -5011,6 +6124,18 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(0));
   writer.writeByteImm(65);
   writer.writeUInt32Imm(4);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::SetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::StoreDynamicSlot);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -5061,6 +6186,17 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareDoubleResult);
+  writer.writeJSOpImm(JSOp::Le);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::BinaryArith, {
   writer.writeOp(CacheOp::GuardBooleanToInt32);
   writer.writeOperandId(OperandId(0));
@@ -5089,19 +6225,18 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(2);
+  writer.writeByteImm(1);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::GuardSpecificFunction);
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::JSObject);
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallNativeFunction);
+  writer.writeOp(CacheOp::CallScriptedFunction);
   writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(97);
+  writer.writeByteImm(65);
   writer.writeUInt32Imm(2);
-  writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetProp, {
@@ -5119,6 +6254,14 @@ _(CacheKind::GetProp, {
   writer.writeOp(CacheOp::LoadDynamicSlotResult);
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::IsCallableResult);
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Compare, {
@@ -5141,26 +6284,34 @@ _(CacheKind::Compare, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetElem, {
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
   writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::GuardToInt32ModUint32);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::Int32ToIntPtr);
+  writer.writeOp(CacheOp::GuardSpecificFunction);
   writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(4));
-  writer.writeOp(CacheOp::StoreTypedArrayElement);
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallNativeFunction);
+  writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(0);
-  writer.writeOperandId(OperandId(4));
-  writer.writeOperandId(OperandId(3));
-  writer.writeBoolImm(false);
+  writer.writeByteImm(65);
+  writer.writeUInt32Imm(5);
+  writer.writeBoolImm(true);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareDoubleResult);
+  writer.writeJSOpImm(JSOp::Ne);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -5188,10 +6339,29 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32ToIntPtr);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadTypedArrayElementResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(1);
+  writer.writeBoolImm(false);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(4);
+  writer.writeByteImm(3);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::GuardSpecificFunction);
@@ -5200,28 +6370,42 @@ _(CacheKind::Call, {
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(3);
+  writer.writeByteImm(0);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOp(CacheOp::GuardSpecificFunction);
   writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(8);
-  writer.writeOp(CacheOp::BindFunctionResult);
-  writer.writeOperandId(OperandId(2));
-  writer.writeUInt32Imm(3);
   writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(3));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::NewArrayFromLengthResult);
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetName, {
-  writer.writeOp(CacheOp::GuardGlobalGeneration);
-  writer.addStubField(0, StubField::Type::RawInt32);
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
   writer.addStubField(0, StubField::Type::RawPointer);
-  writer.writeOp(CacheOp::LoadObject);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(16);
+  writer.writeUInt32Imm(6);
+  writer.writeByteImm(17);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::LoadFixedSlotResult);
+  writer.writeOp(CacheOp::Int32MulResult);
+  writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetElem, {
@@ -5240,25 +6424,6 @@ _(CacheKind::SetElem, {
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOperandId(OperandId(2));
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::SetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificAtom);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::AllocateAndStoreDynamicSlot);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -5280,12 +6445,13 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::IsCallableResult);
-  writer.writeOperandId(OperandId(1));
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(11);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -5310,6 +6476,30 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(4);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(3);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(8);
+  writer.writeOp(CacheOp::BindFunctionResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeUInt32Imm(3);
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::BinaryArith, {
   writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(0));
@@ -5323,26 +6513,37 @@ _(CacheKind::BinaryArith, {
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(2);
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32AddResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::GetProp, {
   writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardClass);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(8);
-  writer.writeOp(CacheOp::GuardFunctionHasJitEntry);
-  writer.writeOperandId(OperandId(1));
-  writer.writeBoolImm(true);
-  writer.writeOp(CacheOp::GuardFunctionIsConstructor);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(33);
-  writer.writeUInt32Imm(0);
+  writer.writeOp(CacheOp::GuardMultipleShapes);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadProtoObject);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::LoadUndefinedResult);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -5367,6 +6568,24 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeUInt32Imm(1);
   writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CompareStringResult);
+  writer.writeJSOpImm(JSOp::Eq);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::TypeOf, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadTypeOfObjectResult);
+  writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -5421,6 +6640,16 @@ _(CacheKind::GetProp, {
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardIsNumber);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::DoubleModResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::SetProp, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
@@ -5448,6 +6677,16 @@ _(CacheKind::SetProp, {
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOperandId(OperandId(1));
   writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::SetProp, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::MegamorphicStoreSlot);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Id);
+  writer.writeOperandId(OperandId(1));
+  writer.writeBoolImm(true);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -5488,6 +6727,25 @@ _(CacheKind::Call, {
 _(CacheKind::GetElem, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32ToIntPtr);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadTypedArrayElementResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(5);
+  writer.writeBoolImm(false);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::GetElem, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::GuardToString);
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::GuardSpecificAtom);
@@ -5499,37 +6757,85 @@ _(CacheKind::GetElem, {
   writer.writeOp(CacheOp::LoadUndefinedResult);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(1);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(11);
+  writer.writeUInt32Imm(0);
+  writer.writeByteImm(14);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
   writer.writeByteImm(1);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOp(CacheOp::GuardSpecificFunction);
   writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(8);
-  writer.writeOp(CacheOp::GuardFunctionScript);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::BaseScript);
+  writer.addStubField(0, StubField::Type::JSObject);
   writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(65);
-  writer.writeUInt32Imm(2);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardClass);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::LoadConstantString);
+  writer.addStubField(0, StubField::Type::String);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::ArrayJoinResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetProp, {
+_(CacheKind::GetElem, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(0));
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::CallSetArrayLength);
-  writer.writeOperandId(OperandId(0));
-  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32ToIntPtr);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::LoadTypedArrayElementResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(4);
+  writer.writeBoolImm(false);
+  writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsUndefined);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::LoadDoubleConstant);
+  writer.addStubField(0, StubField::Type::Double);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardIsUndefined);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadDoubleConstant);
+  writer.addStubField(0, StubField::Type::Double);
+  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::DoubleAddResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetName, {
@@ -5556,26 +6862,12 @@ _(CacheKind::GetName, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
+_(CacheKind::TypeOf, {
+  writer.writeOp(CacheOp::GuardNonDoubleType);
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardClass);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(8);
-  writer.writeOp(CacheOp::GuardFunctionHasJitEntry);
-  writer.writeOperandId(OperandId(1));
-  writer.writeBoolImm(false);
-  writer.writeOp(CacheOp::GuardNotClassConstructor);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeUInt32Imm(3);
+  writer.writeByteImm(2);
+  writer.writeOp(CacheOp::LoadConstantStringResult);
+  writer.addStubField(0, StubField::Type::String);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -5620,6 +6912,23 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(2);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::IsArrayResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
@@ -5636,6 +6945,20 @@ _(CacheKind::Call, {
   writer.writeByteImm(97);
   writer.writeUInt32Imm(1);
   writer.writeBoolImm(false);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::GetIntrinsic, {
+  writer.writeOp(CacheOp::LoadValueResult);
+  writer.addStubField(0, StubField::Type::Value);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::HasOwn, {
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::MegamorphicHasPropResult);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeBoolImm(true);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetProp, {
@@ -5730,6 +7053,16 @@ _(CacheKind::SetProp, {
   writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32BitXorResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
@@ -5749,25 +7082,33 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::IsTypedArrayResult);
-  writer.writeOperandId(OperandId(1));
-  writer.writeBoolImm(false);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::GetProp, {
+_(CacheKind::SetElem, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificAtom);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::String);
   writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(0));
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadInt32ArrayLengthResult);
+  writer.writeOp(CacheOp::AllocateAndStoreDynamicSlot);
   writer.writeOperandId(OperandId(0));
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOperandId(OperandId(2));
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32RightShiftResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -5818,6 +7159,25 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.addStubField(0, StubField::Type::JSObject);
+  writer.addStubField(0, StubField::Type::RawInt32);
+  writer.writeOp(CacheOp::CallNativeFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(65);
+  writer.writeUInt32Imm(2);
+  writer.writeBoolImm(true);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::Call, {
   writer.writeOp(CacheOp::LoadArgumentFixedSlot);
   writer.writeOperandId(OperandId(1));
   writer.writeByteImm(0);
@@ -5865,98 +7225,48 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(5));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::SetElem, {
-  writer.writeOp(CacheOp::GuardToObject);
+_(CacheKind::Compare, {
+  writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardToInt32Index);
+  writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOp(CacheOp::CompareDoubleResult);
+  writer.writeJSOpImm(JSOp::Lt);
   writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::JSObject);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(4));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadProtoObject);
-  writer.writeOperandId(OperandId(5));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(5));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::StoreDenseElementHole);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(3));
+  writer.writeOp(CacheOp::GuardIsUndefined);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadDoubleConstant);
+  writer.addStubField(0, StubField::Type::Double);
   writer.writeOperandId(OperandId(2));
-  writer.writeBoolImm(true);
+  writer.writeOp(CacheOp::DoubleMulResult);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::NewObject, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewPlainObjectResult);
+  writer.writeUInt32Imm(16);
+  writer.writeUInt32Imm(62);
+  writer.writeByteImm(17);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Compare, {
   writer.writeOp(CacheOp::GuardIsUndefined);
-  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::CompareNullUndefinedResult);
   writer.writeJSOpImm(JSOp::Eq);
   writer.writeBoolImm(true);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadConstantString);
-  writer.addStubField(0, StubField::Type::String);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::ArrayJoinResult);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeByteImm(3);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(3));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToInt32);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::NewTypedArrayFromLengthResult);
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOperandId(OperandId(3));
+  writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::GetElem, {
@@ -6019,7 +7329,7 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
   writer.writeByteImm(65);
-  writer.writeUInt32Imm(2);
+  writer.writeUInt32Imm(3);
   writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
@@ -6038,35 +7348,39 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(1));
   writer.writeOperandId(OperandId(0));
   writer.writeByteImm(65);
-  writer.writeUInt32Imm(3);
+  writer.writeUInt32Imm(2);
   writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::NewArray, {
+  writer.writeOp(CacheOp::GuardNoAllocationMetadataBuilder);
+  writer.addStubField(0, StubField::Type::RawPointer);
+  writer.writeOp(CacheOp::NewArrayObjectResult);
+  writer.writeUInt32Imm(0);
+  writer.addStubField(0, StubField::Type::Shape);
+  writer.addStubField(0, StubField::Type::AllocSite);
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
   writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
   writer.writeByteImm(2);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
+  writer.writeOp(CacheOp::GuardClass);
   writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToString);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
-  writer.writeOperandId(OperandId(3));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToInt32Index);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOperandId(OperandId(4));
-  writer.writeOp(CacheOp::LoadStringCharCodeResult);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(4));
-  writer.writeBoolImm(false);
+  writer.writeByteImm(8);
+  writer.writeOp(CacheOp::GuardFunctionHasJitEntry);
+  writer.writeOperandId(OperandId(1));
+  writer.writeBoolImm(true);
+  writer.writeOp(CacheOp::GuardFunctionIsConstructor);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::CallScriptedFunction);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(0));
+  writer.writeByteImm(33);
+  writer.writeUInt32Imm(0);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::Call, {
@@ -6126,6 +7440,33 @@ _(CacheKind::Call, {
   writer.writeOperandId(OperandId(3));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
+_(CacheKind::Call, {
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(1));
+  writer.writeByteImm(1);
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::LoadArgumentFixedSlot);
+  writer.writeOperandId(OperandId(2));
+  writer.writeByteImm(0);
+  writer.writeOp(CacheOp::GuardToString);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::StringSplitStringResult);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
+_(CacheKind::BinaryArith, {
+  writer.writeOp(CacheOp::GuardBooleanToInt32);
+  writer.writeOperandId(OperandId(0));
+  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardToInt32);
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::Int32RightShiftResult);
+  writer.writeOperandId(OperandId(2));
+  writer.writeOperandId(OperandId(1));
+  writer.writeOp(CacheOp::ReturnFromIC);
+});
 _(CacheKind::BinaryArith, {
   writer.writeOp(CacheOp::GuardIsNumber);
   writer.writeOperandId(OperandId(0));
@@ -6161,25 +7502,13 @@ _(CacheKind::SetElem, {
   writer.writeBoolImm(false);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetProp, {
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardMultipleShapes);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::LoadDynamicSlotResult);
-  writer.writeOperandId(OperandId(0));
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
 _(CacheKind::BinaryArith, {
-  writer.writeOp(CacheOp::GuardBooleanToInt32);
+  writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(0));
-  writer.writeOperandId(OperandId(2));
   writer.writeOp(CacheOp::GuardToInt32);
   writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::Int32RightShiftResult);
-  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::Int32ModResult);
+  writer.writeOperandId(OperandId(0));
   writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });
@@ -6205,48 +7534,12 @@ _(CacheKind::Call, {
   writer.writeByteImm(0);
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardShape);
+  writer.writeOp(CacheOp::GuardClass);
   writer.writeOperandId(OperandId(3));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::GuardArrayIsPacked);
-  writer.writeOperandId(OperandId(3));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::CallScriptedFunction);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(0));
   writer.writeByteImm(5);
-  writer.writeUInt32Imm(5);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Compare, {
-  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
-  writer.writeOperandId(OperandId(0));
-  writer.writeOp(CacheOp::GuardIsNullOrUndefined);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::LoadBooleanResult);
-  writer.writeBoolImm(false);
-  writer.writeOp(CacheOp::ReturnFromIC);
-});
-_(CacheKind::Call, {
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(1);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(1));
-  writer.writeOp(CacheOp::GuardSpecificFunction);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.addStubField(0, StubField::Type::RawInt32);
-  writer.writeOp(CacheOp::LoadArgumentDynamicSlot);
-  writer.writeOperandId(OperandId(2));
-  writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(0);
-  writer.writeOp(CacheOp::GuardToObject);
-  writer.writeOperandId(OperandId(2));
+  writer.writeOp(CacheOp::GuardArgumentsObjectFlags);
+  writer.writeOperandId(OperandId(3));
+  writer.writeByteImm(20);
   writer.writeOp(CacheOp::GuardClass);
   writer.writeOperandId(OperandId(2));
   writer.writeByteImm(8);
@@ -6257,8 +7550,8 @@ _(CacheKind::Call, {
   writer.writeOp(CacheOp::CallScriptedFunction);
   writer.writeOperandId(OperandId(2));
   writer.writeOperandId(OperandId(0));
-  writer.writeByteImm(3);
-  writer.writeUInt32Imm(4);
+  writer.writeByteImm(4);
+  writer.writeUInt32Imm(5);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
 _(CacheKind::SetProp, {
@@ -6285,19 +7578,15 @@ _(CacheKind::SetProp, {
   writer.addStubField(0, StubField::Type::RawInt32);
   writer.writeOp(CacheOp::ReturnFromIC);
 });
-_(CacheKind::GetProp, {
+_(CacheKind::SetProp, {
   writer.writeOp(CacheOp::GuardToObject);
   writer.writeOperandId(OperandId(0));
   writer.writeOp(CacheOp::GuardShape);
   writer.writeOperandId(OperandId(0));
   writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadObject);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::JSObject);
-  writer.writeOp(CacheOp::GuardShape);
-  writer.writeOperandId(OperandId(1));
-  writer.addStubField(0, StubField::Type::Shape);
-  writer.writeOp(CacheOp::LoadArrayBufferViewLengthInt32Result);
+  writer.writeOp(CacheOp::CallSetArrayLength);
   writer.writeOperandId(OperandId(0));
+  writer.writeBoolImm(false);
+  writer.writeOperandId(OperandId(1));
   writer.writeOp(CacheOp::ReturnFromIC);
 });

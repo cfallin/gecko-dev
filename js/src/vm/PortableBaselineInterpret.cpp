@@ -2762,7 +2762,7 @@ static PBIResult PortableBaselineInterpret(
     }
 
     CASE(Pos) {
-      if (sp[0].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber()) {
         // Nothing!
         NEXT_IC();
         END_OP(Pos);
@@ -2771,7 +2771,7 @@ static PBIResult PortableBaselineInterpret(
       }
     }
     CASE(Neg) {
-      if (sp[0].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32()) {
         int32_t i = sp[0].asValue().toInt32();
         if (i != 0 && i != INT32_MIN) {
           sp[0] = StackVal(Int32Value(-i));
@@ -2779,7 +2779,7 @@ static PBIResult PortableBaselineInterpret(
           END_OP(Neg);
         }
       }
-      if (sp[0].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber()) {
         sp[0] = StackVal(NumberValue(-sp[0].asValue().toNumber()));
         NEXT_IC();
         END_OP(Neg);
@@ -2788,7 +2788,7 @@ static PBIResult PortableBaselineInterpret(
     }
 
     CASE(Inc) {
-      if (sp[0].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32()) {
         int32_t i = sp[0].asValue().toInt32();
         if (i != INT32_MAX) {
           sp[0] = StackVal(Int32Value(i + 1));
@@ -2796,7 +2796,7 @@ static PBIResult PortableBaselineInterpret(
           END_OP(Inc);
         }
       }
-      if (sp[0].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber()) {
         sp[0] = StackVal(NumberValue(sp[0].asValue().toNumber() + 1));
         NEXT_IC();
         END_OP(Inc);
@@ -2804,7 +2804,7 @@ static PBIResult PortableBaselineInterpret(
       goto generic_unary;
     }
     CASE(Dec) {
-      if (sp[0].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32()) {
         int32_t i = sp[0].asValue().toInt32();
         if (i != INT32_MIN) {
           sp[0] = StackVal(Int32Value(i - 1));
@@ -2812,7 +2812,7 @@ static PBIResult PortableBaselineInterpret(
           END_OP(Dec);
         }
       }
-      if (sp[0].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber()) {
         sp[0] = StackVal(NumberValue(sp[0].asValue().toNumber() - 1));
         NEXT_IC();
         END_OP(Dec);
@@ -2821,7 +2821,7 @@ static PBIResult PortableBaselineInterpret(
     }
 
     CASE(BitNot) {
-      if (sp[0].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32()) {
         int32_t i = sp[0].asValue().toInt32();
         sp[0] = StackVal(Int32Value(~i));
         NEXT_IC();
@@ -2831,7 +2831,7 @@ static PBIResult PortableBaselineInterpret(
     }
 
     CASE(ToNumeric) {
-      if (sp[0].asValue().isNumeric()) {
+      if (kHybridICs && sp[0].asValue().isNumeric()) {
         NEXT_IC();
       } else if (kHybridICs) {
         MutableHandleValue val = Stack::handleMut(&sp[0]);
@@ -2959,7 +2959,8 @@ static PBIResult PortableBaselineInterpret(
     }
 
     CASE(Add) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         int64_t lhs = sp[1].asValue().toInt32();
         int64_t rhs = sp[0].asValue().toInt32();
         if (lhs + rhs >= int64_t(INT32_MIN) &&
@@ -2970,7 +2971,8 @@ static PBIResult PortableBaselineInterpret(
           END_OP(Add);
         }
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         POP();
@@ -2996,7 +2998,8 @@ static PBIResult PortableBaselineInterpret(
     }
 
     CASE(Sub) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         int64_t lhs = sp[1].asValue().toInt32();
         int64_t rhs = sp[0].asValue().toInt32();
         if (lhs - rhs >= int64_t(INT32_MIN) &&
@@ -3007,7 +3010,8 @@ static PBIResult PortableBaselineInterpret(
           END_OP(Sub);
         }
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         POP();
@@ -3033,7 +3037,8 @@ static PBIResult PortableBaselineInterpret(
     }
 
     CASE(Mul) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         int64_t lhs = sp[1].asValue().toInt32();
         int64_t rhs = sp[0].asValue().toInt32();
         int64_t product = lhs * rhs;
@@ -3045,7 +3050,8 @@ static PBIResult PortableBaselineInterpret(
           END_OP(Mul);
         }
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         POP();
@@ -3070,7 +3076,8 @@ static PBIResult PortableBaselineInterpret(
       goto generic_binary;
     }
     CASE(Div) {
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         POP();
@@ -3095,7 +3102,8 @@ static PBIResult PortableBaselineInterpret(
       goto generic_binary;
     }
     CASE(Mod) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         int64_t lhs = sp[1].asValue().toInt32();
         int64_t rhs = sp[0].asValue().toInt32();
         if (lhs > 0 && rhs > 0) {
@@ -3106,7 +3114,8 @@ static PBIResult PortableBaselineInterpret(
           END_OP(Mod);
         }
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         POP();
@@ -3131,7 +3140,8 @@ static PBIResult PortableBaselineInterpret(
       goto generic_binary;
     }
     CASE(Pow) {
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         POP();
@@ -3156,7 +3166,8 @@ static PBIResult PortableBaselineInterpret(
       goto generic_binary;
     }
     CASE(BitOr) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         int32_t lhs = sp[1].asValue().toInt32();
         int32_t rhs = sp[0].asValue().toInt32();
         POP();
@@ -3167,7 +3178,8 @@ static PBIResult PortableBaselineInterpret(
       goto generic_binary;
     }
     CASE(BitAnd) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         int32_t lhs = sp[1].asValue().toInt32();
         int32_t rhs = sp[0].asValue().toInt32();
         POP();
@@ -3178,7 +3190,8 @@ static PBIResult PortableBaselineInterpret(
       goto generic_binary;
     }
     CASE(BitXor) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         int32_t lhs = sp[1].asValue().toInt32();
         int32_t rhs = sp[0].asValue().toInt32();
         POP();
@@ -3189,7 +3202,8 @@ static PBIResult PortableBaselineInterpret(
       goto generic_binary;
     }
     CASE(Lsh) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         // Unsigned to avoid undefined behavior on left-shift overflow
         // (see comment in BitLshOperation in Interpreter.cpp).
         uint32_t lhs = uint32_t(sp[1].asValue().toInt32());
@@ -3203,7 +3217,8 @@ static PBIResult PortableBaselineInterpret(
       goto generic_binary;
     }
     CASE(Rsh) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         int32_t lhs = sp[1].asValue().toInt32();
         int32_t rhs = sp[0].asValue().toInt32();
         POP();
@@ -3215,7 +3230,8 @@ static PBIResult PortableBaselineInterpret(
       goto generic_binary;
     }
     CASE(Ursh) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         uint32_t lhs = uint32_t(sp[1].asValue().toInt32());
         int32_t rhs = sp[0].asValue().toInt32();
         POP();
@@ -3252,14 +3268,16 @@ static PBIResult PortableBaselineInterpret(
   }
 
     CASE(Eq) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         bool result = sp[0].asValue().toInt32() == sp[1].asValue().toInt32();
         POP();
         sp[0] = StackVal(BooleanValue(result));
         NEXT_IC();
         END_OP(Eq);
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         bool result = lhs == rhs;
@@ -3268,7 +3286,8 @@ static PBIResult PortableBaselineInterpret(
         NEXT_IC();
         END_OP(Eq);
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         bool result = sp[0].asValue().toNumber() == sp[1].asValue().toNumber();
         POP();
         sp[0] = StackVal(BooleanValue(result));
@@ -3279,14 +3298,16 @@ static PBIResult PortableBaselineInterpret(
     }
 
     CASE(Ne) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         bool result = sp[0].asValue().toInt32() != sp[1].asValue().toInt32();
         POP();
         sp[0] = StackVal(BooleanValue(result));
         NEXT_IC();
         END_OP(Ne);
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         bool result = lhs != rhs;
@@ -3295,7 +3316,8 @@ static PBIResult PortableBaselineInterpret(
         NEXT_IC();
         END_OP(Ne);
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         bool result = sp[0].asValue().toNumber() != sp[1].asValue().toNumber();
         POP();
         sp[0] = StackVal(BooleanValue(result));
@@ -3306,14 +3328,16 @@ static PBIResult PortableBaselineInterpret(
     }
 
     CASE(Lt) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         bool result = sp[1].asValue().toInt32() < sp[0].asValue().toInt32();
         POP();
         sp[0] = StackVal(BooleanValue(result));
         NEXT_IC();
         END_OP(Lt);
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         bool result = lhs < rhs;
@@ -3328,14 +3352,16 @@ static PBIResult PortableBaselineInterpret(
       goto generic_cmp;
     }
     CASE(Le) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         bool result = sp[1].asValue().toInt32() <= sp[0].asValue().toInt32();
         POP();
         sp[0] = StackVal(BooleanValue(result));
         NEXT_IC();
         END_OP(Le);
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         bool result = lhs <= rhs;
@@ -3350,14 +3376,16 @@ static PBIResult PortableBaselineInterpret(
       goto generic_cmp;
     }
     CASE(Gt) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         bool result = sp[1].asValue().toInt32() > sp[0].asValue().toInt32();
         POP();
         sp[0] = StackVal(BooleanValue(result));
         NEXT_IC();
         END_OP(Gt);
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         bool result = lhs > rhs;
@@ -3372,14 +3400,16 @@ static PBIResult PortableBaselineInterpret(
       goto generic_cmp;
     }
     CASE(Ge) {
-      if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+      if (kHybridICs && sp[0].asValue().isInt32() &&
+          sp[1].asValue().isInt32()) {
         bool result = sp[1].asValue().toInt32() >= sp[0].asValue().toInt32();
         POP();
         sp[0] = StackVal(BooleanValue(result));
         NEXT_IC();
         END_OP(Ge);
       }
-      if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
+      if (kHybridICs && sp[0].asValue().isNumber() &&
+          sp[1].asValue().isNumber()) {
         double lhs = sp[1].asValue().toNumber();
         double rhs = sp[0].asValue().toNumber();
         bool result = lhs >= rhs;
@@ -3699,7 +3729,7 @@ static PBIResult PortableBaselineInterpret(
       HandleValue lhs = Stack::handle(&sp[1]);
       HandleValue rhs = Stack::handle(&sp[0]);
       uint32_t index;
-      if (IsDefinitelyIndex(rhs, &index)) {
+      if (kHybridICs && IsDefinitelyIndex(rhs, &index)) {
         if (lhs.isString()) {
           JSString* str = lhs.toString();
           if (index < str->length() && str->isLinear()) {

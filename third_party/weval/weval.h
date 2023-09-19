@@ -92,7 +92,8 @@ const void* weval_assume_const_memory_transitive(const void* p)
 void weval_push_context(uint32_t pc) WEVAL_WASM_IMPORT("push.context");
 void weval_pop_context() WEVAL_WASM_IMPORT("pop.context");
 void weval_update_context(uint32_t pc) WEVAL_WASM_IMPORT("update.context");
-void* weval_make_symbolic_ptr(void* p) WEVAL_WASM_IMPORT("make.symbolic.ptr");
+void* weval_make_symbolic_ptr(void* p, uint32_t elt_size)
+    WEVAL_WASM_IMPORT("make.symbolic.ptr");
 void weval_flush_to_mem() WEVAL_WASM_IMPORT("flush.to.mem");
 void weval_reload_from_mem() WEVAL_WASM_IMPORT("reload.from.mem");
 void weval_trace_line(uint32_t line_number) WEVAL_WASM_IMPORT("trace.line");
@@ -141,7 +142,7 @@ static inline void pop_context() { weval_pop_context(); }
 static inline void update_context(uint32_t pc) { weval_update_context(pc); }
 template <typename T>
 static T* make_symbolic_ptr(T* t) {
-  return (T*)weval_make_symbolic_ptr((void*)t);
+  return (T*)weval_make_symbolic_ptr((void*)t, sizeof(T));
 }
 template <typename T>
 void flush_to_mem() {

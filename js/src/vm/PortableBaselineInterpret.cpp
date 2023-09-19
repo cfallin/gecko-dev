@@ -2106,6 +2106,21 @@ static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
     auto result = generic args
 #endif
 
+static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
+  switch (r) {
+    case ICInterpretOpResult::Error:
+      return PBIResult::Error;
+    case ICInterpretOpResult::Unwind:
+      return PBIResult::Unwind;
+    case ICInterpretOpResult::UnwindError:
+      return PBIResult::UnwindError;
+    case ICInterpretOpResult::UnwindRet:
+      return PBIResult::UnwindRet;
+    default:
+      MOZ_CRASH("ICResultToPBIResult invoked for unknown enum value");
+  }
+}
+
 #define DEFINE_IC_IMPL(kind, arity, fallback_body, ool)                      \
   static PBIResult MOZ_ALWAYS_INLINE IC##kind##ool(                          \
       BaselineFrame* frame, VMFrameManager& frameMgr, State& state,          \
@@ -2136,14 +2151,8 @@ static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
             goto next_stub;                                                  \
           case ICInterpretOpResult::Return:                                  \
             return PBIResult::Ok;                                            \
-          case ICInterpretOpResult::Error:                                   \
-            return PBIResult::Error;                                         \
-          case ICInterpretOpResult::Unwind:                                  \
-            return PBIResult::Unwind;                                        \
-          case ICInterpretOpResult::UnwindError:                             \
-            return PBIResult::UnwindError;                                   \
-          case ICInterpretOpResult::UnwindRet:                               \
-            return PBIResult::UnwindRet;                                     \
+          default:                                                           \
+            return ICResultToPBIResult(result);                              \
         }                                                                    \
       }                                                                      \
     }                                                                        \
@@ -5323,11 +5332,6 @@ static PBIResult PortableBaselineInterpret(
   }
 
 ic_fail:
-  // Pop context both before the `goto` and after. The one before
-  // serves to merge tails when wevaling (otherwise each separate PC
-  // gets its own copy of this switch). The one after serves to force
-  // LLVM not to tail-duplicate this switch.
-  WEVAL_POP_CONTEXT();
   switch (icResult) {
     case PBIResult::Ok:
       MOZ_CRASH("Unreachable: should not reach ic_fail with PBIResult::Ok");

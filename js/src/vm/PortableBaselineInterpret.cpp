@@ -2052,6 +2052,7 @@ static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
           ? IC##kind##Outlined(frame, frameMgr, state, icregs, stack, sp, pc) \
           : IC##kind(frame, frameMgr, state, icregs, stack, sp, pc);          \
   if (MOZ_UNLIKELY(icResult != PBIResult::Ok)) {                              \
+    WEVAL_POP_CONTEXT();                                                      \
     goto ic_fail;                                                             \
   }                                                                           \
   NEXT_IC();
@@ -5322,6 +5323,10 @@ static PBIResult PortableBaselineInterpret(
   }
 
 ic_fail:
+  // Pop context both before the `goto` and after. The one before
+  // serves to merge tails when wevaling (otherwise each separate PC
+  // gets its own copy of this switch). The one after serves to force
+  // LLVM not to tail-duplicate this switch.
   WEVAL_POP_CONTEXT();
   switch (icResult) {
     case PBIResult::Ok:

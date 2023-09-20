@@ -347,6 +347,16 @@ class VMFrame {
   bool success() const { return exitFP != nullptr; }
 };
 
+struct PBLCtx {
+  State& state;
+  Stack& stack;
+  VMFrameManager frameMgr;
+  ICRegs icregs;
+
+  PBLCtx(JSContext* cx, BaselineFrame* frame, State& state_, Stack& stack_)
+      : state(state_), stack(stack_), frameMgr(cx, frame), icregs() {}
+};
+
 static EnvironmentObject& getEnvironmentFromCoordinate(
     BaselineFrame* frame, EnvironmentCoordinate ec) {
   JSObject* env = frame->environmentChain();
@@ -485,7 +495,7 @@ void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
     return PBIResult::Error; \
   }
 
-#define PUSH_EXIT_FRAME_OR_RET(value)                           \
+#define PUSH_EXIT_FRAME_OR_RET(value, frameMgr, stack)          \
   VMFrame cx(frameMgr, stack, sp, pc);                          \
   if (!cx.success()) {                                          \
     return value;                                               \
@@ -493,7 +503,8 @@ void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
   StackVal* sp = cx.spBelowFrame(); /* shadow the definition */ \
   (void)sp;                         /* avoid unused-variable warnings */
 
-#define PUSH_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(ICInterpretOpResult::Error);
+#define PUSH_IC_FRAME() \
+  PUSH_EXIT_FRAME_OR_RET(ICInterpretOpResult::Error, frameMgr, stack);
 
 template <bool Specialized>
 static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
@@ -2056,19 +2067,6 @@ static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
                         stubInfo, code, pc);
 }
 
-#define NEXT_IC() frame->interpreterICEntry()++;
-
-#define INVOKE_IC(kind)                                                       \
-  icResult =                                                                  \
-      (spec == PBISpecialization::Specialized)                                \
-          ? IC##kind##Outlined(frame, frameMgr, state, icregs, stack, sp, pc) \
-          : IC##kind(frame, frameMgr, state, icregs, stack, sp, pc);          \
-  if (MOZ_UNLIKELY(icResult != PBIResult::Ok)) {                              \
-    WEVAL_POP_CONTEXT();                                                      \
-    goto ic_fail;                                                             \
-  }                                                                           \
-  NEXT_IC();
-
 #define SAVE_INPUTS(arity)            \
   do {                                \
     switch (arity) {                  \
@@ -2199,7 +2197,8 @@ static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
   ReservedRooted<JSObject*> state_elem( \
       &state.state_elem, reinterpret_cast<JSObject*>(icregs.icVals[(index)]))
 
-#define PUSH_FALLBACK_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(PBIResult::Error);
+#define PUSH_FALLBACK_IC_FRAME() \
+  PUSH_EXIT_FRAME_OR_RET(PBIResult::Error, frameMgr, stack);
 
 DEFINE_IC(Typeof, 1, {
   IC_LOAD_VAL(value0, 0);
@@ -2439,7 +2438,8 @@ DEFINE_IC(CloseIter, 1, {
   }
 });
 
-#define PUSH_EXIT_FRAME() PUSH_EXIT_FRAME_OR_RET(PBIResult::Error)
+#define PUSH_EXIT_FRAME() \
+  PUSH_EXIT_FRAME_OR_RET(PBIResult::Error, ctx.frameMgr, ctx.stack)
 
 #ifndef __wasi__
 #  define DEBUG_CHECK()                                                   \
@@ -2490,12 +2490,13 @@ DEFINE_IC(CloseIter, 1, {
 #define END_OP(op) ADVANCE_AND_DISPATCH(JSOpLength_##op);
 
 #define IC_SET_ARG_FROM_STACK(index, stack_index) \
-  icregs.icVals[(index)] = sp[(stack_index)].asUInt64();
-#define IC_POP_ARG(index) icregs.icVals[(index)] = (*sp++).asUInt64();
-#define IC_SET_VAL_ARG(index, expr) icregs.icVals[(index)] = (expr).asRawBits();
+  ctx.icregs.icVals[(index)] = sp[(stack_index)].asUInt64();
+#define IC_POP_ARG(index) ctx.icregs.icVals[(index)] = (*sp++).asUInt64();
+#define IC_SET_VAL_ARG(index, expr) \
+  ctx.icregs.icVals[(index)] = (expr).asRawBits();
 #define IC_SET_OBJ_ARG(index, expr) \
-  icregs.icVals[(index)] = reinterpret_cast<uint64_t>(expr);
-#define IC_PUSH_RESULT() PUSH(StackVal(icregs.icResult));
+  ctx.icregs.icVals[(index)] = reinterpret_cast<uint64_t>(expr);
+#define IC_PUSH_RESULT() PUSH(StackVal(ctx.icregs.icResult));
 
 #if !defined(TRACE_INTERP) && !defined(DETERMINISTIC_TRACE)
 #  define PREDICT_NEXT(op)                                                 \
@@ -2519,17 +2520,31 @@ DEFINE_IC(CloseIter, 1, {
     if (!BytecodeIsJumpTarget(JSOp(*main))) COUNT_COVERAGE_PC(main); \
   }
 
-#define ENSURE_GENERIC(restartKind)                                            \
-  if (spec == PBISpecialization::Specialized ||                                \
-      spec == PBISpecialization::TestSpecialized) {                            \
-    return PortableBaselineInterpret<PBISpecialization::GenericRestart>(       \
-        frameMgr.cxForLocalUseOnly(), state, stack, sp, pc, script.get(), isd, \
-        nullptr, ret, frame, entryFrame, restartKind);                         \
+#define ENSURE_GENERIC(restartKind)                                       \
+  if (spec == PBISpecialization::Specialized ||                           \
+      spec == PBISpecialization::TestSpecialized) {                       \
+    return PortableBaselineInterpret<PBISpecialization::GenericRestart>(  \
+        ctx.frameMgr.cxForLocalUseOnly(), ctx.state, ctx.stack, sp, pc,   \
+        script.get(), isd, nullptr, ret, frame, entryFrame, restartKind); \
   }
+
+#define NEXT_IC() frame->interpreterICEntry()++;
+
+#define INVOKE_IC(kind)                                                 \
+  icResult = (spec == PBISpecialization::Specialized)                   \
+                 ? IC##kind##Outlined(frame, ctx.frameMgr, ctx.state,   \
+                                      ctx.icregs, ctx.stack, sp, pc)    \
+                 : IC##kind(frame, ctx.frameMgr, ctx.state, ctx.icregs, \
+                            ctx.stack, sp, pc);                         \
+  if (MOZ_UNLIKELY(icResult != PBIResult::Ok)) {                        \
+    WEVAL_POP_CONTEXT();                                                \
+    goto ic_fail;                                                       \
+  }                                                                     \
+  NEXT_IC();
 
 template <PBISpecialization spec>
 static PBIResult PortableBaselineInterpret(
-    JSContext* cx_, State& state, Stack& stack, StackVal* sp, jsbytecode* pc,
+    JSContext* cx_, State& state_, Stack& stack_, StackVal* sp, jsbytecode* pc,
     JSScript* script_, ImmutableScriptData* isd, JSObject* envChain, Value* ret,
     BaselineFrame* frame, StackVal* entryFrame, PBIRestart restartKind) {
 #define OPCODE_LABEL(op, ...) LABEL(op),
@@ -2542,10 +2557,9 @@ static PBIResult PortableBaselineInterpret(
 #undef OPCODE_LABEL
 #undef TRAILING_LABEL
 
-  ICRegs icregs;
+  PBLCtx ctx(cx_, frame, state_, stack_);
   PBIResult icResult = PBIResult::Ok;
   RootedScript script(cx_, script_);
-  VMFrameManager frameMgr(cx_, frame);
   bool from_unwind = false;
 
 #ifdef ENABLE_JS_PBL_WEVAL
@@ -2558,7 +2572,7 @@ static PBIResult PortableBaselineInterpret(
 
   if (spec != PBISpecialization::GenericRestart) {
     PUSHNATIVE(StackValNative(nullptr));  // Fake return address.
-    frame = stack.pushFrame(sp, cx_, envChain);
+    frame = ctx.stack.pushFrame(sp, cx_, envChain);
     MOZ_ASSERT(frame);  // safety: stack margin.
     sp = reinterpret_cast<StackVal*>(frame);
 
@@ -2566,21 +2580,21 @@ static PBIResult PortableBaselineInterpret(
     // return from this C++ frame.
     entryFrame = sp;
 
-    frameMgr.switchToFrame(frame);
+    ctx.frameMgr.switchToFrame(frame);
 
-    AutoCheckRecursionLimit recursion(frameMgr.cxForLocalUseOnly());
-    if (!recursion.checkDontReport(frameMgr.cxForLocalUseOnly())) {
+    AutoCheckRecursionLimit recursion(ctx.frameMgr.cxForLocalUseOnly());
+    if (!recursion.checkDontReport(ctx.frameMgr.cxForLocalUseOnly())) {
       PUSH_EXIT_FRAME();
-      ReportOverRecursed(frameMgr.cxForLocalUseOnly());
+      ReportOverRecursed(ctx.frameMgr.cxForLocalUseOnly());
       return PBIResult::Error;
     }
 
     // Check max stack depth once, so we don't need to check it
     // otherwise below for ordinary stack-manipulation opcodes (just for
     // exit frames).
-    if (!stack.check(sp, sizeof(StackVal) * script->nslots())) {
+    if (!ctx.stack.check(sp, sizeof(StackVal) * script->nslots())) {
       PUSH_EXIT_FRAME();
-      ReportOverRecursed(frameMgr.cxForLocalUseOnly());
+      ReportOverRecursed(ctx.frameMgr.cxForLocalUseOnly());
       return PBIResult::Error;
     }
 
@@ -2615,7 +2629,9 @@ static PBIResult PortableBaselineInterpret(
       }
 
       if (!script->hasScriptCounts()) {
-        if (frameMgr.cxForLocalUseOnly()->realm()->collectCoverageForDebug()) {
+        if (ctx.frameMgr.cxForLocalUseOnly()
+                ->realm()
+                ->collectCoverageForDebug()) {
           PUSH_EXIT_FRAME();
           if (!script->initScriptCounts(cx)) {
             goto error;
@@ -2625,7 +2641,7 @@ static PBIResult PortableBaselineInterpret(
       COUNT_COVERAGE_MAIN();
 
 #ifndef __wasi__
-      if (frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
+      if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
         PUSH_EXIT_FRAME();
         if (!InterruptCheck(cx)) {
           goto error;
@@ -2651,7 +2667,7 @@ static PBIResult PortableBaselineInterpret(
   }
 
   TRACE_PRINTF("Entering: sp = %p fp = %p frame = %p, script = %p, pc = %p\n",
-               sp, stack.fp, frame, script.get(), pc);
+               sp, ctx.stack.fp, frame, script.get(), pc);
   TRACE_PRINTF("nslots = %d nfixed = %d\n", int(script->nslots()),
                int(script->nfixed()));
 
@@ -2675,8 +2691,8 @@ static PBIResult PortableBaselineInterpret(
            CodeName(op),
            (int)(frame->interpreterICEntry() -
                  script->jitScript()->icScript()->icEntries()),
-           frameMgr.cxForLocalUseOnly()->isExceptionPending());
-    printf("sp = %p fp = %p\n", sp, stack.fp);
+           ctx.frameMgr.cxForLocalUseOnly()->isExceptionPending());
+    printf("sp = %p fp = %p\n", sp, ctx.stack.fp);
     printf("TOS tag: %d\n", int(sp[0].asValue().asRawBits() >> 47));
     fflush(stdout);
   }
@@ -2758,7 +2774,7 @@ static PBIResult PortableBaselineInterpret(
     }
     CASE(Symbol) {
       PUSH(StackVal(
-          SymbolValue(frameMgr.cxForLocalUseOnly()->wellKnownSymbols().get(
+          SymbolValue(ctx.frameMgr.cxForLocalUseOnly()->wellKnownSymbols().get(
               GET_UINT8(pc)))));
       END_OP(Symbol);
     }
@@ -2772,7 +2788,7 @@ static PBIResult PortableBaselineInterpret(
       static_assert(JSOpLength_Typeof == JSOpLength_TypeofExpr);
       if (kHybridICs) {
         sp[0] = StackVal(StringValue(TypeOfOperation(
-            Stack::handle(sp), frameMgr.cxForLocalUseOnly()->runtime())));
+            Stack::handle(sp), ctx.frameMgr.cxForLocalUseOnly()->runtime())));
         NEXT_IC();
       } else {
         IC_POP_ARG(0);
@@ -2886,8 +2902,8 @@ static PBIResult PortableBaselineInterpret(
       } else {
         IC_POP_ARG(0);
         INVOKE_IC(ToBool);
-        PUSH(StackVal(
-            BooleanValue(!Value::fromRawBits(icregs.icResult).toBoolean())));
+        PUSH(StackVal(BooleanValue(
+            !Value::fromRawBits(ctx.icregs.icResult).toBoolean())));
       }
       END_OP(Not);
     }
@@ -2900,7 +2916,7 @@ static PBIResult PortableBaselineInterpret(
       } else {
         IC_SET_ARG_FROM_STACK(0, 0);
         INVOKE_IC(ToBool);
-        result = Value::fromRawBits(icregs.icResult).toBoolean();
+        result = Value::fromRawBits(ctx.icregs.icResult).toBoolean();
       }
       int32_t jumpOffset = GET_JUMP_OFFSET(pc);
       if (!result) {
@@ -2921,7 +2937,7 @@ static PBIResult PortableBaselineInterpret(
       } else {
         IC_SET_ARG_FROM_STACK(0, 0);
         INVOKE_IC(ToBool);
-        result = Value::fromRawBits(icregs.icResult).toBoolean();
+        result = Value::fromRawBits(ctx.icregs.icResult).toBoolean();
       }
       int32_t jumpOffset = GET_JUMP_OFFSET(pc);
       if (result) {
@@ -2943,7 +2959,7 @@ static PBIResult PortableBaselineInterpret(
       } else {
         IC_POP_ARG(0);
         INVOKE_IC(ToBool);
-        result = Value::fromRawBits(icregs.icResult).toBoolean();
+        result = Value::fromRawBits(ctx.icregs.icResult).toBoolean();
       }
       int32_t jumpOffset = GET_JUMP_OFFSET(pc);
       if (result) {
@@ -2965,7 +2981,7 @@ static PBIResult PortableBaselineInterpret(
       } else {
         IC_POP_ARG(0);
         INVOKE_IC(ToBool);
-        result = Value::fromRawBits(icregs.icResult).toBoolean();
+        result = Value::fromRawBits(ctx.icregs.icResult).toBoolean();
       }
       int32_t jumpOffset = GET_JUMP_OFFSET(pc);
       if (!result) {
@@ -3515,10 +3531,10 @@ static PBIResult PortableBaselineInterpret(
       }
       FakeRooted s(nullptr, sp[0].asValue());
       if (JSString* result =
-              ToStringSlow<NoGC>(frameMgr.cxForLocalUseOnly(), s)) {
+              ToStringSlow<NoGC>(ctx.frameMgr.cxForLocalUseOnly(), s)) {
         sp[0] = StackVal(StringValue(result));
       } else {
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());
+        ReservedRooted<Value> value0(&ctx.state.value0, POP().asValue());
         {
           PUSH_EXIT_FRAME();
           result = ToString<CanGC>(cx, value0);
@@ -3538,7 +3554,7 @@ static PBIResult PortableBaselineInterpret(
     }
 
     CASE(GlobalThis) {
-      PUSH(StackVal(ObjectValue(*frameMgr.cxForLocalUseOnly()
+      PUSH(StackVal(ObjectValue(*ctx.frameMgr.cxForLocalUseOnly()
                                      ->global()
                                      ->lexicalEnvironment()
                                      .thisObject())));
@@ -3547,8 +3563,9 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(NonSyntacticGlobalThis) {
       {
-        ReservedRooted<JSObject*> obj0(&state.obj0, frame->environmentChain());
-        ReservedRooted<Value> value0(&state.value0);
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                       frame->environmentChain());
+        ReservedRooted<Value> value0(&ctx.state.value0);
         {
           PUSH_EXIT_FRAME();
           js::GetNonSyntacticGlobalThis(cx, obj0, &value0);
@@ -3565,9 +3582,9 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(DynamicImport) {
       {
-        ReservedRooted<Value> value0(&state.value0,
+        ReservedRooted<Value> value0(&ctx.state.value0,
                                      POP().asValue());  // options
-        ReservedRooted<Value> value1(&state.value1,
+        ReservedRooted<Value> value1(&ctx.state.value1,
                                      POP().asValue());  // specifier
         JSObject* promise;
         {
@@ -3639,7 +3656,7 @@ static PBIResult PortableBaselineInterpret(
     }
     CASE(ObjWithProto) {
       {
-        ReservedRooted<Value> value0(&state.value0, sp[0].asValue());
+        ReservedRooted<Value> value0(&ctx.state.value0, sp[0].asValue());
         JSObject* obj;
         {
           PUSH_EXIT_FRAME();
@@ -3673,8 +3690,8 @@ static PBIResult PortableBaselineInterpret(
       }
       INVOKE_IC(SetElem);
       if (JSOp(*pc) == JSOp::InitElemInc) {
-        PUSH(StackVal(
-            Int32Value(Value::fromRawBits(icregs.icVals[1]).toInt32() + 1)));
+        PUSH(StackVal(Int32Value(
+            Value::fromRawBits(ctx.icregs.icVals[1]).toInt32() + 1)));
       }
       END_OP(InitElem);
     }
@@ -3689,11 +3706,13 @@ static PBIResult PortableBaselineInterpret(
       static_assert(JSOpLength_InitPropGetter ==
                     JSOpLength_InitHiddenPropSetter);
       {
-        ReservedRooted<JSObject*> obj1(&state.obj1,
+        ReservedRooted<JSObject*> obj1(&ctx.state.obj1,
                                        &POP().asValue().toObject());  // val
         ReservedRooted<JSObject*> obj0(
-            &state.obj0, &sp[0].asValue().toObject());  // obj; leave on stack
-        ReservedRooted<PropertyName*> name0(&state.name0, script->getName(pc));
+            &ctx.state.obj0,
+            &sp[0].asValue().toObject());  // obj; leave on stack
+        ReservedRooted<PropertyName*> name0(&ctx.state.name0,
+                                            script->getName(pc));
         {
           PUSH_EXIT_FRAME();
           if (!InitPropGetterSetterOperation(cx, pc, obj0, name0, obj1)) {
@@ -3714,12 +3733,13 @@ static PBIResult PortableBaselineInterpret(
       static_assert(JSOpLength_InitElemGetter ==
                     JSOpLength_InitHiddenElemSetter);
       {
-        ReservedRooted<JSObject*> obj1(&state.obj1,
+        ReservedRooted<JSObject*> obj1(&ctx.state.obj1,
                                        &POP().asValue().toObject());  // val
-        ReservedRooted<Value> value0(&state.value0,
+        ReservedRooted<Value> value0(&ctx.state.value0,
                                      POP().asValue());  // idval
         ReservedRooted<JSObject*> obj0(
-            &state.obj0, &sp[0].asValue().toObject());  // obj; leave on stack
+            &ctx.state.obj0,
+            &sp[0].asValue().toObject());  // obj; leave on stack
         {
           PUSH_EXIT_FRAME();
           if (!InitElemGetterSetterOperation(cx, pc, obj0, value0, obj1)) {
@@ -3756,7 +3776,8 @@ static PBIResult PortableBaselineInterpret(
           if (index < str->length() && str->isLinear()) {
             JSLinearString* linear = &str->asLinear();
             char16_t c = linear->latin1OrTwoByteChar(index);
-            StaticStrings& sstr = frameMgr.cxForLocalUseOnly()->staticStrings();
+            StaticStrings& sstr =
+                ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
             if (sstr.hasUnit(c)) {
               sp[1] = StackVal(StringValue(sstr.getUnit(c)));
               POP();
@@ -3768,7 +3789,7 @@ static PBIResult PortableBaselineInterpret(
         if (lhs.isObject()) {
           JSObject* obj = &lhs.toObject();
           Value ret;
-          if (GetElementNoGC(frameMgr.cxForLocalUseOnly(), obj, lhs, index,
+          if (GetElementNoGC(ctx.frameMgr.cxForLocalUseOnly(), obj, lhs, index,
                              &ret)) {
             sp[1] = StackVal(ret);
             POP();
@@ -3799,8 +3820,9 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(DelProp) {
       {
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());
-        ReservedRooted<PropertyName*> name0(&state.name0, script->getName(pc));
+        ReservedRooted<Value> value0(&ctx.state.value0, POP().asValue());
+        ReservedRooted<PropertyName*> name0(&ctx.state.name0,
+                                            script->getName(pc));
         bool res = false;
         {
           PUSH_EXIT_FRAME();
@@ -3814,8 +3836,9 @@ static PBIResult PortableBaselineInterpret(
     }
     CASE(StrictDelProp) {
       {
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());
-        ReservedRooted<PropertyName*> name0(&state.name0, script->getName(pc));
+        ReservedRooted<Value> value0(&ctx.state.value0, POP().asValue());
+        ReservedRooted<PropertyName*> name0(&ctx.state.name0,
+                                            script->getName(pc));
         bool res = false;
         {
           PUSH_EXIT_FRAME();
@@ -3829,8 +3852,8 @@ static PBIResult PortableBaselineInterpret(
     }
     CASE(DelElem) {
       {
-        ReservedRooted<Value> value1(&state.value1, POP().asValue());
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());
+        ReservedRooted<Value> value1(&ctx.state.value1, POP().asValue());
+        ReservedRooted<Value> value0(&ctx.state.value0, POP().asValue());
         bool res = false;
         {
           PUSH_EXIT_FRAME();
@@ -3844,8 +3867,8 @@ static PBIResult PortableBaselineInterpret(
     }
     CASE(StrictDelElem) {
       {
-        ReservedRooted<Value> value1(&state.value1, POP().asValue());
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());
+        ReservedRooted<Value> value1(&ctx.state.value1, POP().asValue());
+        ReservedRooted<Value> value0(&ctx.state.value0, POP().asValue());
         bool res = false;
         {
           PUSH_EXIT_FRAME();
@@ -3876,7 +3899,7 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(NewPrivateName) {
       {
-        ReservedRooted<JSAtom*> atom0(&state.atom0, script->getAtom(pc));
+        ReservedRooted<JSAtom*> atom0(&ctx.state.atom0, script->getAtom(pc));
         JS::Symbol* symbol;
         {
           PUSH_EXIT_FRAME();
@@ -3910,11 +3933,14 @@ static PBIResult PortableBaselineInterpret(
       static_assert(JSOpLength_SetPropSuper == JSOpLength_StrictSetPropSuper);
       bool strict = JSOp(*pc) == JSOp::StrictSetPropSuper;
       {
-        ReservedRooted<Value> value2(&state.value2, POP().asValue());  // rval
-        ReservedRooted<Value> value1(&state.value1, POP().asValue());  // lval
-        ReservedRooted<Value> value0(&state.value0,
+        ReservedRooted<Value> value2(&ctx.state.value2,
+                                     POP().asValue());  // rval
+        ReservedRooted<Value> value1(&ctx.state.value1,
+                                     POP().asValue());  // lval
+        ReservedRooted<Value> value0(&ctx.state.value0,
                                      POP().asValue());  // recevier
-        ReservedRooted<PropertyName*> name0(&state.name0, script->getName(pc));
+        ReservedRooted<PropertyName*> name0(&ctx.state.name0,
+                                            script->getName(pc));
         {
           PUSH_EXIT_FRAME();
           // SetPropertySuper(cx, lval, receiver, name, rval, strict)
@@ -3934,11 +3960,13 @@ static PBIResult PortableBaselineInterpret(
       static_assert(JSOpLength_SetElemSuper == JSOpLength_StrictSetElemSuper);
       bool strict = JSOp(*pc) == JSOp::StrictSetElemSuper;
       {
-        ReservedRooted<Value> value3(&state.value3, POP().asValue());  // rval
-        ReservedRooted<Value> value2(&state.value2, POP().asValue());  // lval
-        ReservedRooted<Value> value1(&state.value1,
+        ReservedRooted<Value> value3(&ctx.state.value3,
+                                     POP().asValue());  // rval
+        ReservedRooted<Value> value2(&ctx.state.value2,
+                                     POP().asValue());  // lval
+        ReservedRooted<Value> value1(&ctx.state.value1,
                                      POP().asValue());  // index
-        ReservedRooted<Value> value0(&state.value0,
+        ReservedRooted<Value> value0(&ctx.state.value0,
                                      POP().asValue());  // receiver
         {
           PUSH_EXIT_FRAME();
@@ -4000,7 +4028,7 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(CheckObjCoercible) {
       {
-        ReservedRooted<Value> value0(&state.value0, sp[0].asValue());
+        ReservedRooted<Value> value0(&ctx.state.value0, sp[0].asValue());
         if (value0.isNullOrUndefined()) {
           PUSH_EXIT_FRAME();
           MOZ_ALWAYS_FALSE(ThrowObjectCoercible(cx, value0));
@@ -4014,8 +4042,9 @@ static PBIResult PortableBaselineInterpret(
     CASE(ToAsyncIter) {
       // iter, next => asynciter
       {
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());  // next
-        ReservedRooted<JSObject*> obj0(&state.obj0,
+        ReservedRooted<Value> value0(&ctx.state.value0,
+                                     POP().asValue());  // next
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
                                        &POP().asValue().toObject());  // iter
         JSObject* result;
         {
@@ -4033,8 +4062,8 @@ static PBIResult PortableBaselineInterpret(
     CASE(MutateProto) {
       // obj, protoVal => obj
       {
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());
-        ReservedRooted<JSObject*> obj0(&state.obj0,
+        ReservedRooted<Value> value0(&ctx.state.value0, POP().asValue());
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
                                        &sp[0].asValue().toObject());
         {
           PUSH_EXIT_FRAME();
@@ -4070,8 +4099,8 @@ static PBIResult PortableBaselineInterpret(
     CASE(InitElemArray) {
       // array, val => array
       {
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());
-        ReservedRooted<JSObject*> obj0(&state.obj0,
+        ReservedRooted<Value> value0(&ctx.state.value0, POP().asValue());
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
                                        &sp[0].asValue().toObject());
         {
           PUSH_EXIT_FRAME();
@@ -4090,7 +4119,7 @@ static PBIResult PortableBaselineInterpret(
       JSObject* obj;
       {
         PUSH_EXIT_FRAME();
-        ReservedRooted<JSObject*> obj0(&state.obj0, script->getRegExp(pc));
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0, script->getRegExp(pc));
         obj = CloneRegExpObject(cx, obj0.as<RegExpObject>());
         if (!obj) {
           goto error;
@@ -4102,8 +4131,10 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(Lambda) {
       {
-        ReservedRooted<JSFunction*> fun0(&state.fun0, script->getFunction(pc));
-        ReservedRooted<JSObject*> obj0(&state.obj0, frame->environmentChain());
+        ReservedRooted<JSFunction*> fun0(&ctx.state.fun0,
+                                         script->getFunction(pc));
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                       frame->environmentChain());
         JSObject* res;
         {
           PUSH_EXIT_FRAME();
@@ -4120,9 +4151,10 @@ static PBIResult PortableBaselineInterpret(
     CASE(SetFunName) {
       // fun, name => fun
       {
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());  // name
+        ReservedRooted<Value> value0(&ctx.state.value0,
+                                     POP().asValue());  // name
         ReservedRooted<JSFunction*> fun0(
-            &state.fun0, &sp[0].asValue().toObject().as<JSFunction>());
+            &ctx.state.fun0, &sp[0].asValue().toObject().as<JSFunction>());
         FunctionPrefixKind prefixKind = FunctionPrefixKind(GET_UINT8(pc));
         {
           PUSH_EXIT_FRAME();
@@ -4138,9 +4170,9 @@ static PBIResult PortableBaselineInterpret(
       // fun, homeObject => fun
       {
         ReservedRooted<JSObject*> obj0(
-            &state.obj0, &POP().asValue().toObject());  // homeObject
+            &ctx.state.obj0, &POP().asValue().toObject());  // homeObject
         ReservedRooted<JSFunction*> fun0(
-            &state.fun0, &sp[0].asValue().toObject().as<JSFunction>());
+            &ctx.state.fun0, &sp[0].asValue().toObject().as<JSFunction>());
         MOZ_ASSERT(fun0->allowSuperProperty());
         MOZ_ASSERT(obj0->is<PlainObject>() || obj0->is<JSFunction>());
         fun0->setExtendedSlot(FunctionExtended::METHOD_HOMEOBJECT_SLOT,
@@ -4151,7 +4183,7 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(CheckClassHeritage) {
       {
-        ReservedRooted<Value> value0(&state.value0, sp[0].asValue());
+        ReservedRooted<Value> value0(&ctx.state.value0, sp[0].asValue());
         {
           PUSH_EXIT_FRAME();
           if (!CheckClassHeritageOperation(cx, value0)) {
@@ -4165,10 +4197,12 @@ static PBIResult PortableBaselineInterpret(
     CASE(FunWithProto) {
       // proto => obj
       {
-        ReservedRooted<JSObject*> obj0(&state.obj0,
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
                                        &POP().asValue().toObject());  // proto
-        ReservedRooted<JSObject*> obj1(&state.obj1, frame->environmentChain());
-        ReservedRooted<JSFunction*> fun0(&state.fun0, script->getFunction(pc));
+        ReservedRooted<JSObject*> obj1(&ctx.state.obj1,
+                                       frame->environmentChain());
+        ReservedRooted<JSFunction*> fun0(&ctx.state.fun0,
+                                         script->getFunction(pc));
         JSObject* obj;
         {
           PUSH_EXIT_FRAME();
@@ -4226,7 +4260,8 @@ static PBIResult PortableBaselineInterpret(
           if (!calleeScript->hasJitScript()) {
             break;
           }
-          if (frameMgr.cxForLocalUseOnly()->realm() != calleeScript->realm()) {
+          if (ctx.frameMgr.cxForLocalUseOnly()->realm() !=
+              calleeScript->realm()) {
             break;
           }
           if (argc < func->nargs()) {
@@ -4243,7 +4278,7 @@ static PBIResult PortableBaselineInterpret(
               "Call fastpath: argc = %d origArgs = %p callee = %" PRIx64 "\n",
               argc, origArgs, callee.get().asRawBits());
 
-          if (!stack.check(sp, sizeof(StackVal) * (totalArgs + 3))) {
+          if (!ctx.stack.check(sp, sizeof(StackVal) * (totalArgs + 3))) {
             break;
           }
 
@@ -4254,7 +4289,7 @@ static PBIResult PortableBaselineInterpret(
           // 1. Push a baseline stub frame. Don't use the frame manager
           // -- we don't want the frame to be auto-freed when we leave
           // this scope, and we don't want to shadow `sp`.
-          StackVal* exitFP = stack.pushExitFrame(sp, frame);
+          StackVal* exitFP = ctx.stack.pushExitFrame(sp, frame);
           MOZ_ASSERT(exitFP);  // safety: stack margin.
           sp = exitFP;
           TRACE_PRINTF("exit frame at %p\n", exitFP);
@@ -4282,19 +4317,19 @@ static PBIResult PortableBaselineInterpret(
           script.set(calleeScript);
           isd = script->immutableScriptData();
           BaselineFrame* newFrame =
-              stack.pushFrame(sp, frameMgr.cxForLocalUseOnly(),
-                              /* envChain = */ func->environment());
+              ctx.stack.pushFrame(sp, ctx.frameMgr.cxForLocalUseOnly(),
+                                  /* envChain = */ func->environment());
           MOZ_ASSERT(newFrame);  // safety: stack margin.
           TRACE_PRINTF("callee frame at %p\n", newFrame);
           frame = newFrame;
-          frameMgr.switchToFrame(frame);
+          ctx.frameMgr.switchToFrame(frame);
           // 6. Set up PC and SP for callee.
           sp = reinterpret_cast<StackVal*>(frame);
           pc = calleeScript->code();
           // 7. Check callee stack space for max stack depth.
-          if (!stack.check(sp, sizeof(StackVal) * calleeScript->nslots())) {
+          if (!ctx.stack.check(sp, sizeof(StackVal) * calleeScript->nslots())) {
             PUSH_EXIT_FRAME();
-            ReportOverRecursed(frameMgr.cxForLocalUseOnly());
+            ReportOverRecursed(ctx.frameMgr.cxForLocalUseOnly());
             goto error;
           }
           // 8. Push local slots, and set return value to `undefined` by
@@ -4321,7 +4356,7 @@ static PBIResult PortableBaselineInterpret(
           }
           // 11. Check for interrupts.
 #ifndef __wasi__
-          if (frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
+          if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
             PUSH_EXIT_FRAME();
             if (!InterruptCheck(cx)) {
               goto error;
@@ -4330,7 +4365,7 @@ static PBIResult PortableBaselineInterpret(
 #endif
           // 12. Initialize coverage tables, if needed.
           if (!script->hasScriptCounts()) {
-            if (frameMgr.cxForLocalUseOnly()
+            if (ctx.frameMgr.cxForLocalUseOnly()
                     ->realm()
                     ->collectCoverageForDebug()) {
               PUSH_EXIT_FRAME();
@@ -4347,12 +4382,12 @@ static PBIResult PortableBaselineInterpret(
       } while (0);
 
       // Slow path: use the IC!
-      icregs.icVals[0] = argc;
-      icregs.extraArgs = 2;
-      icregs.spreadCall = false;
+      ctx.icregs.icVals[0] = argc;
+      ctx.icregs.extraArgs = 2;
+      ctx.icregs.spreadCall = false;
       INVOKE_IC(Call);
       POPN(argc + 2);
-      PUSH(StackVal(Value::fromRawBits(icregs.icResult)));
+      PUSH(StackVal(Value::fromRawBits(ctx.icregs.icResult)));
       END_OP(Call);
     }
 
@@ -4362,12 +4397,12 @@ static PBIResult PortableBaselineInterpret(
       static_assert(JSOpLength_SuperCall == JSOpLength_New);
       static_assert(JSOpLength_SuperCall == JSOpLength_NewContent);
       uint32_t argc = GET_ARGC(pc);
-      icregs.icVals[0] = argc;
-      icregs.extraArgs = 3;
-      icregs.spreadCall = false;
+      ctx.icregs.icVals[0] = argc;
+      ctx.icregs.extraArgs = 3;
+      ctx.icregs.spreadCall = false;
       INVOKE_IC(Call);
       POPN(argc + 3);
-      PUSH(StackVal(Value::fromRawBits(icregs.icResult)));
+      PUSH(StackVal(Value::fromRawBits(ctx.icregs.icResult)));
       END_OP(SuperCall);
     }
 
@@ -4376,24 +4411,24 @@ static PBIResult PortableBaselineInterpret(
     CASE(StrictSpreadEval) {
       static_assert(JSOpLength_SpreadCall == JSOpLength_SpreadEval);
       static_assert(JSOpLength_SpreadCall == JSOpLength_StrictSpreadEval);
-      icregs.icVals[0] = 1;
-      icregs.extraArgs = 2;
-      icregs.spreadCall = true;
+      ctx.icregs.icVals[0] = 1;
+      ctx.icregs.extraArgs = 2;
+      ctx.icregs.spreadCall = true;
       INVOKE_IC(Call);
       POPN(3);
-      PUSH(StackVal(Value::fromRawBits(icregs.icResult)));
+      PUSH(StackVal(Value::fromRawBits(ctx.icregs.icResult)));
       END_OP(SpreadCall);
     }
 
     CASE(SpreadSuperCall)
     CASE(SpreadNew) {
       static_assert(JSOpLength_SpreadSuperCall == JSOpLength_SpreadNew);
-      icregs.icVals[0] = 1;
-      icregs.extraArgs = 3;
-      icregs.spreadCall = true;
+      ctx.icregs.icVals[0] = 1;
+      ctx.icregs.extraArgs = 3;
+      ctx.icregs.spreadCall = true;
       INVOKE_IC(Call);
       POPN(4);
-      PUSH(StackVal(Value::fromRawBits(icregs.icResult)));
+      PUSH(StackVal(Value::fromRawBits(ctx.icregs.icResult)));
       END_OP(SpreadSuperCall);
     }
 
@@ -4406,15 +4441,17 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(ImplicitThis) {
       {
-        ReservedRooted<JSObject*> obj0(&state.obj0, frame->environmentChain());
-        ReservedRooted<PropertyName*> name0(&state.name0, script->getName(pc));
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                       frame->environmentChain());
+        ReservedRooted<PropertyName*> name0(&ctx.state.name0,
+                                            script->getName(pc));
         PUSH_EXIT_FRAME();
-        if (!ImplicitThisOperation(cx, obj0, name0, &state.res)) {
+        if (!ImplicitThisOperation(cx, obj0, name0, &ctx.state.res)) {
           goto error;
         }
       }
-      PUSH(StackVal(state.res));
-      state.res.setUndefined();
+      PUSH(StackVal(ctx.state.res));
+      ctx.state.res.setUndefined();
       END_OP(ImplicitThis);
     }
 
@@ -4422,7 +4459,7 @@ static PBIResult PortableBaselineInterpret(
       JSObject* cso = script->getObject(pc);
       MOZ_ASSERT(!cso->as<ArrayObject>().isExtensible());
       MOZ_ASSERT(cso->as<ArrayObject>().containsPure(
-          frameMgr.cxForLocalUseOnly()->names().raw));
+          ctx.frameMgr.cxForLocalUseOnly()->names().raw));
       PUSH(StackVal(ObjectValue(*cso)));
       END_OP(CallSiteObj);
     }
@@ -4471,8 +4508,9 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(InitialYield) {
       // gen => rval, gen, resumeKind
-      ReservedRooted<JSObject*> obj0(&state.obj0, &sp[0].asValue().toObject());
-      uint32_t frameSize = stack.frameSize(sp, frame);
+      ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                     &sp[0].asValue().toObject());
+      uint32_t frameSize = ctx.stack.frameSize(sp, frame);
       {
         PUSH_EXIT_FRAME();
         if (!NormalSuspend(cx, obj0, frame, frameSize, pc)) {
@@ -4486,8 +4524,9 @@ static PBIResult PortableBaselineInterpret(
     CASE(Await)
     CASE(Yield) {
       // rval1, gen => rval2, gen, resumeKind
-      ReservedRooted<JSObject*> obj0(&state.obj0, &POP().asValue().toObject());
-      uint32_t frameSize = stack.frameSize(sp, frame);
+      ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                     &POP().asValue().toObject());
+      uint32_t frameSize = ctx.stack.frameSize(sp, frame);
       {
         PUSH_EXIT_FRAME();
         if (!NormalSuspend(cx, obj0, frame, frameSize, pc)) {
@@ -4500,7 +4539,8 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(FinalYieldRval) {
       // gen =>
-      ReservedRooted<JSObject*> obj0(&state.obj0, &POP().asValue().toObject());
+      ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                     &POP().asValue().toObject());
       {
         PUSH_EXIT_FRAME();
         if (!FinalSuspend(cx, obj0, pc)) {
@@ -4520,9 +4560,9 @@ static PBIResult PortableBaselineInterpret(
       // value, gen => promise
       JSObject* promise;
       {
-        ReservedRooted<JSObject*> obj0(&state.obj0,
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
                                        &POP().asValue().toObject());  // gen
-        ReservedRooted<Value> value0(&state.value0,
+        ReservedRooted<Value> value0(&ctx.state.value0,
                                      POP().asValue());  // value
         PUSH_EXIT_FRAME();
         promise = AsyncFunctionAwait(
@@ -4540,9 +4580,9 @@ static PBIResult PortableBaselineInterpret(
       auto resolveKind = AsyncFunctionResolveKind(GET_UINT8(pc));
       JSObject* promise;
       {
-        ReservedRooted<JSObject*> obj0(&state.obj0,
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
                                        &POP().asValue().toObject());  // gen
-        ReservedRooted<Value> value0(&state.value0,
+        ReservedRooted<Value> value0(&ctx.state.value0,
                                      POP().asValue());  // valueOrReason
         PUSH_EXIT_FRAME();
         promise = AsyncFunctionResolve(
@@ -4559,7 +4599,7 @@ static PBIResult PortableBaselineInterpret(
       // value => value, can_skip
       bool result = false;
       {
-        ReservedRooted<Value> value0(&state.value0, sp[0].asValue());
+        ReservedRooted<Value> value0(&ctx.state.value0, sp[0].asValue());
         PUSH_EXIT_FRAME();
         if (!CanSkipAwait(cx, value0, &result)) {
           goto error;
@@ -4573,7 +4613,7 @@ static PBIResult PortableBaselineInterpret(
       // value, can_skip => value_or_resolved, can_skip
       {
         Value can_skip = POP().asValue();
-        ReservedRooted<Value> value0(&state.value0,
+        ReservedRooted<Value> value0(&ctx.state.value0,
                                      POP().asValue());  // value
         if (can_skip.toBoolean()) {
           PUSH_EXIT_FRAME();
@@ -4598,9 +4638,10 @@ static PBIResult PortableBaselineInterpret(
       {
         GeneratorResumeKind resumeKind =
             IntToResumeKind(POP().asValue().toInt32());
-        ReservedRooted<JSObject*> obj0(&state.obj0,
-                                       &POP().asValue().toObject());   // gen
-        ReservedRooted<Value> value0(&state.value0, sp[0].asValue());  // rval
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                       &POP().asValue().toObject());  // gen
+        ReservedRooted<Value> value0(&ctx.state.value0,
+                                     sp[0].asValue());  // rval
         if (resumeKind != GeneratorResumeKind::Next) {
           PUSH_EXIT_FRAME();
           MOZ_ALWAYS_FALSE(GeneratorThrowOrReturn(
@@ -4616,8 +4657,8 @@ static PBIResult PortableBaselineInterpret(
       Value gen = sp[2].asValue();
       Value* callerSP = reinterpret_cast<Value*>(sp);
       {
-        ReservedRooted<Value> value0(&state.value0);
-        ReservedRooted<JSObject*> obj0(&state.obj0, &gen.toObject());
+        ReservedRooted<Value> value0(&ctx.state.value0);
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0, &gen.toObject());
         {
           PUSH_EXIT_FRAME();
           TRACE_PRINTF("Going to C++ interp for Resume\n");
@@ -4641,7 +4682,7 @@ static PBIResult PortableBaselineInterpret(
       int32_t icIndex = GET_INT32(pc);
       frame->interpreterICEntry() = frame->icScript()->icEntries() + icIndex;
 #ifndef __wasi__
-      if (frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
+      if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
         PUSH_EXIT_FRAME();
         if (!InterruptCheck(cx)) {
           goto error;
@@ -4762,11 +4803,11 @@ static PBIResult PortableBaselineInterpret(
       from_unwind = false;
 
       uint32_t argc = frame->numActualArgs();
-      sp = stack.popFrame();
+      sp = ctx.stack.popFrame();
 
       // If FP is higher than the entry frame now, return; otherwise,
-      // do an inline state update.
-      if (stack.fp > entryFrame) {
+      // do an inline ctx.state update.
+      if (ctx.stack.fp > entryFrame) {
         *ret = frame->returnValue();
         return ok ? PBIResult::Ok : PBIResult::Error;
       } else if (spec != PBISpecialization::Specialized) {
@@ -4774,7 +4815,7 @@ static PBIResult PortableBaselineInterpret(
         Value ret = frame->returnValue();
 
         // Pop exit frame as well.
-        sp = stack.popFrame();
+        sp = ctx.stack.popFrame();
         // Pop fake return address and descriptor.
         POPNNATIVE(2);
         // Pop args -- this is always `argc + 2` because we only do
@@ -4786,9 +4827,10 @@ static PBIResult PortableBaselineInterpret(
 
         // Set PC, frame, and current script.
         frame = reinterpret_cast<BaselineFrame*>(
-            reinterpret_cast<uintptr_t>(stack.fp) - BaselineFrame::Size());
-        TRACE_PRINTF(" sp -> %p, fp -> %p, frame -> %p\n", sp, stack.fp, frame);
-        frameMgr.switchToFrame(frame);
+            reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
+        TRACE_PRINTF(" sp -> %p, fp -> %p, frame -> %p\n", sp, ctx.stack.fp,
+                     frame);
+        ctx.frameMgr.switchToFrame(frame);
         pc = frame->interpreterPC();
         script.set(frame->script());
         isd = script->immutableScriptData();
@@ -4831,7 +4873,7 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(Throw) {
       {
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());
+        ReservedRooted<Value> value0(&ctx.state.value0, POP().asValue());
         PUSH_EXIT_FRAME();
         MOZ_ALWAYS_FALSE(ThrowOperation(cx, value0));
         goto error;
@@ -4866,18 +4908,18 @@ static PBIResult PortableBaselineInterpret(
     CASE(Exception) {
       {
         PUSH_EXIT_FRAME();
-        if (!GetAndClearException(cx, &state.res)) {
+        if (!GetAndClearException(cx, &ctx.state.res)) {
           goto error;
         }
       }
-      PUSH(StackVal(state.res));
-      state.res.setUndefined();
+      PUSH(StackVal(ctx.state.res));
+      ctx.state.res.setUndefined();
       END_OP(Exception);
     }
 
     CASE(Finally) {
 #ifndef __wasi__
-      if (frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
+      if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
         PUSH_EXIT_FRAME();
         if (!InterruptCheck(cx)) {
           goto error;
@@ -4922,7 +4964,7 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(BindGName) {
       IC_SET_OBJ_ARG(
-          0, &frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
+          0, &ctx.frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
       INVOKE_IC(BindName);
       IC_PUSH_RESULT();
       END_OP(BindGName);
@@ -4935,7 +4977,7 @@ static PBIResult PortableBaselineInterpret(
     }
     CASE(GetGName) {
       IC_SET_OBJ_ARG(
-          0, &frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
+          0, &ctx.frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
       INVOKE_IC(GetName);
       IC_PUSH_RESULT();
       END_OP(GetGName);
@@ -4993,8 +5035,9 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(GetImport) {
       {
-        ReservedRooted<JSObject*> obj0(&state.obj0, frame->environmentChain());
-        ReservedRooted<Value> value0(&state.value0);
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                       frame->environmentChain());
+        ReservedRooted<Value> value0(&ctx.state.value0);
         {
           PUSH_EXIT_FRAME();
           if (!GetImportOperation(cx, obj0, script, pc, &value0)) {
@@ -5040,7 +5083,7 @@ static PBIResult PortableBaselineInterpret(
       static_assert(JSOpLength_SetProp == JSOpLength_StrictSetGName);
       IC_POP_ARG(1);
       IC_POP_ARG(0);
-      PUSH(StackVal(icregs.icVals[1]));
+      PUSH(StackVal(ctx.icregs.icVals[1]));
       INVOKE_IC(SetProp);
       END_OP(SetProp);
     }
@@ -5058,7 +5101,7 @@ static PBIResult PortableBaselineInterpret(
     CASE(InitGLexical) {
       IC_SET_ARG_FROM_STACK(1, 0);
       IC_SET_OBJ_ARG(
-          0, &frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
+          0, &ctx.frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
       INVOKE_IC(SetProp);
       END_OP(InitGLexical);
     }
@@ -5090,7 +5133,7 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(SetIntrinsic) {
       {
-        ReservedRooted<Value> value0(&state.value0, sp[0].asValue());
+        ReservedRooted<Value> value0(&ctx.state.value0, sp[0].asValue());
         {
           PUSH_EXIT_FRAME();
           if (!SetIntrinsicOperation(cx, script, pc, value0)) {
@@ -5103,7 +5146,7 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(PushLexicalEnv) {
       {
-        ReservedRooted<Scope*> scope0(&state.scope0, script->getScope(pc));
+        ReservedRooted<Scope*> scope0(&ctx.state.scope0, script->getScope(pc));
         {
           PUSH_EXIT_FRAME();
           if (!frame->pushLexicalEnvironment(cx, scope0.as<LexicalScope>())) {
@@ -5171,7 +5214,7 @@ static PBIResult PortableBaselineInterpret(
     }
     CASE(PushClassBodyEnv) {
       {
-        ReservedRooted<Scope*> scope0(&state.scope0, script->getScope(pc));
+        ReservedRooted<Scope*> scope0(&ctx.state.scope0, script->getScope(pc));
         PUSH_EXIT_FRAME();
         if (!frame->pushClassBodyEnvironment(cx, scope0.as<ClassBodyScope>())) {
           goto error;
@@ -5181,7 +5224,7 @@ static PBIResult PortableBaselineInterpret(
     }
     CASE(PushVarEnv) {
       {
-        ReservedRooted<Scope*> scope0(&state.scope0, script->getScope(pc));
+        ReservedRooted<Scope*> scope0(&ctx.state.scope0, script->getScope(pc));
         PUSH_EXIT_FRAME();
         if (!frame->pushVarEnvironment(cx, scope0)) {
           goto error;
@@ -5191,8 +5234,8 @@ static PBIResult PortableBaselineInterpret(
     }
     CASE(EnterWith) {
       {
-        ReservedRooted<Scope*> scope0(&state.scope0, script->getScope(pc));
-        ReservedRooted<Value> value0(&state.value0, POP().asValue());
+        ReservedRooted<Scope*> scope0(&ctx.state.scope0, script->getScope(pc));
+        ReservedRooted<Value> value0(&ctx.state.value0, POP().asValue());
         PUSH_EXIT_FRAME();
         if (!EnterWithOperation(cx, frame, value0, scope0.as<WithScope>())) {
           goto error;
@@ -5207,7 +5250,8 @@ static PBIResult PortableBaselineInterpret(
     CASE(BindVar) {
       JSObject* varObj;
       {
-        ReservedRooted<JSObject*> obj0(&state.obj0, frame->environmentChain());
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                       frame->environmentChain());
         PUSH_EXIT_FRAME();
         varObj = BindVarOperation(cx, obj0);
       }
@@ -5218,7 +5262,8 @@ static PBIResult PortableBaselineInterpret(
     CASE(GlobalOrEvalDeclInstantiation) {
       GCThingIndex lastFun = GET_GCTHING_INDEX(pc);
       {
-        ReservedRooted<JSObject*> obj0(&state.obj0, frame->environmentChain());
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                       frame->environmentChain());
         PUSH_EXIT_FRAME();
         if (!GlobalOrEvalDeclInstantiation(cx, obj0, script, lastFun)) {
           goto error;
@@ -5229,27 +5274,29 @@ static PBIResult PortableBaselineInterpret(
 
     CASE(DelName) {
       {
-        ReservedRooted<PropertyName*> name0(&state.name0, script->getName(pc));
-        ReservedRooted<JSObject*> obj0(&state.obj0, frame->environmentChain());
+        ReservedRooted<PropertyName*> name0(&ctx.state.name0,
+                                            script->getName(pc));
+        ReservedRooted<JSObject*> obj0(&ctx.state.obj0,
+                                       frame->environmentChain());
         PUSH_EXIT_FRAME();
-        if (!DeleteNameOperation(cx, name0, obj0, &state.res)) {
+        if (!DeleteNameOperation(cx, name0, obj0, &ctx.state.res)) {
           goto error;
         }
       }
-      PUSH(StackVal(state.res));
-      state.res.setUndefined();
+      PUSH(StackVal(ctx.state.res));
+      ctx.state.res.setUndefined();
       END_OP(DelName);
     }
 
     CASE(Arguments) {
       {
         PUSH_EXIT_FRAME();
-        if (!NewArgumentsObject(cx, frame, &state.res)) {
+        if (!NewArgumentsObject(cx, frame, &ctx.state.res)) {
           goto error;
         }
       }
-      PUSH(StackVal(state.res));
-      state.res.setUndefined();
+      PUSH(StackVal(ctx.state.res));
+      ctx.state.res.setUndefined();
       END_OP(Arguments);
     }
 
@@ -5262,12 +5309,12 @@ static PBIResult PortableBaselineInterpret(
     CASE(FunctionThis) {
       {
         PUSH_EXIT_FRAME();
-        if (!js::GetFunctionThis(cx, frame, &state.res)) {
+        if (!js::GetFunctionThis(cx, frame, &ctx.state.res)) {
           goto error;
         }
       }
-      PUSH(StackVal(state.res));
-      state.res.setUndefined();
+      PUSH(StackVal(ctx.state.res));
+      ctx.state.res.setUndefined();
       END_OP(FunctionThis);
     }
 
@@ -5373,28 +5420,28 @@ error_restart:
       case ExceptionResumeKind::EntryFrame:
         TRACE_PRINTF(" -> Return from entry frame\n");
         frame->setReturnValue(MagicValue(JS_ION_ERROR));
-        stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
-        stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
+        ctx.stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
+        ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         goto unwind_error;
       case ExceptionResumeKind::Catch:
         pc = frame->interpreterPC();
-        stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
-        stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
+        ctx.stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
+        ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> catch to pc %p\n", pc);
         goto unwind;
       case ExceptionResumeKind::Finally:
         pc = frame->interpreterPC();
-        stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
+        ctx.stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
         sp = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> finally to pc %p\n", pc);
         PUSH(StackVal(rfe.exception));
         PUSH(StackVal(BooleanValue(true)));
-        stack.unwindingSP = sp;
+        ctx.stack.unwindingSP = sp;
         goto unwind;
       case ExceptionResumeKind::ForcedReturnBaseline:
         pc = frame->interpreterPC();
-        stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
-        stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
+        ctx.stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
+        ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> forced return\n");
         goto unwind_ret;
       case ExceptionResumeKind::ForcedReturnIon:
@@ -5416,8 +5463,8 @@ error_restart:
   DISPATCH();
 
 unwind:
-  TRACE_PRINTF("unwind: fp = %p entryFrame = %p\n", stack.fp, entryFrame);
-  if (reinterpret_cast<uintptr_t>(stack.fp) >
+  TRACE_PRINTF("unwind: fp = %p entryFrame = %p\n", ctx.stack.fp, entryFrame);
+  if (reinterpret_cast<uintptr_t>(ctx.stack.fp) >
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     TRACE_PRINTF(" -> returning\n");
     return PBIResult::Unwind;
@@ -5425,44 +5472,46 @@ unwind:
   ENSURE_GENERIC(PBIRestart::Unwind);
 unwind_restart:
 
-  sp = stack.unwindingSP;
+  sp = ctx.stack.unwindingSP;
   frame = reinterpret_cast<BaselineFrame*>(
-      reinterpret_cast<uintptr_t>(stack.fp) - BaselineFrame::Size());
+      reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
   TRACE_PRINTF(" -> setting sp to %p, frame to %p\n", sp, frame);
-  frameMgr.switchToFrame(frame);
+  ctx.frameMgr.switchToFrame(frame);
   pc = frame->interpreterPC();
   script.set(frame->script());
   isd = script->immutableScriptData();
   DISPATCH();
 unwind_error:
-  TRACE_PRINTF("unwind_error: fp = %p entryFrame = %p\n", stack.fp, entryFrame);
-  if (reinterpret_cast<uintptr_t>(stack.fp) >
+  TRACE_PRINTF("unwind_error: fp = %p entryFrame = %p\n", ctx.stack.fp,
+               entryFrame);
+  if (reinterpret_cast<uintptr_t>(ctx.stack.fp) >
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     return PBIResult::UnwindError;
   }
-  if (reinterpret_cast<uintptr_t>(stack.fp) ==
+  if (reinterpret_cast<uintptr_t>(ctx.stack.fp) ==
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     return PBIResult::Error;
   }
   ENSURE_GENERIC(PBIRestart::UnwindError);
 unwind_error_restart:
 
-  sp = stack.unwindingSP;
+  sp = ctx.stack.unwindingSP;
   frame = reinterpret_cast<BaselineFrame*>(
-      reinterpret_cast<uintptr_t>(stack.fp) - BaselineFrame::Size());
+      reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
   TRACE_PRINTF(" -> setting sp to %p, frame to %p\n", sp, frame);
-  frameMgr.switchToFrame(frame);
+  ctx.frameMgr.switchToFrame(frame);
   pc = frame->interpreterPC();
   script.set(frame->script());
   isd = script->immutableScriptData();
   goto error;
 unwind_ret:
-  TRACE_PRINTF("unwind_ret: fp = %p entryFrame = %p\n", stack.fp, entryFrame);
-  if (reinterpret_cast<uintptr_t>(stack.fp) >
+  TRACE_PRINTF("unwind_ret: fp = %p entryFrame = %p\n", ctx.stack.fp,
+               entryFrame);
+  if (reinterpret_cast<uintptr_t>(ctx.stack.fp) >
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     return PBIResult::UnwindRet;
   }
-  if (reinterpret_cast<uintptr_t>(stack.fp) ==
+  if (reinterpret_cast<uintptr_t>(ctx.stack.fp) ==
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     *ret = frame->returnValue();
     return PBIResult::Ok;
@@ -5470,11 +5519,11 @@ unwind_ret:
   ENSURE_GENERIC(PBIRestart::UnwindRet);
 unwind_ret_restart:
 
-  sp = stack.unwindingSP;
+  sp = ctx.stack.unwindingSP;
   frame = reinterpret_cast<BaselineFrame*>(
-      reinterpret_cast<uintptr_t>(stack.fp) - BaselineFrame::Size());
+      reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
   TRACE_PRINTF(" -> setting sp to %p, frame to %p\n", sp, frame);
-  frameMgr.switchToFrame(frame);
+  ctx.frameMgr.switchToFrame(frame);
   pc = frame->interpreterPC();
   script.set(frame->script());
   isd = script->immutableScriptData();

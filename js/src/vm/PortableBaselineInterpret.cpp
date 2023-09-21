@@ -438,18 +438,16 @@ enum class ICInterpretOpResult {
   UnwindRet,
 };
 
-typedef ICInterpretOpResult (*ICFunc)(BaselineFrame* frame,
-                                      VMFrameManager& frameMgr, State& state,
-                                      ICRegs& icregs, Stack& stack,
+typedef ICInterpretOpResult (*ICFunc)(PBLCtx& ctx, BaselineFrame* frame,
                                       StackVal* sp, ICCacheIRStub* cstub,
                                       const CacheIRStubInfo* stubInfo,
                                       const uint8_t* code, jsbytecode* pc);
 
 template <bool Specialized = false>
-static ICInterpretOpResult ICInterpretOps(
-    BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
-    ICRegs& icregs, Stack& stack, StackVal* sp, ICCacheIRStub* cstub,
-    const CacheIRStubInfo* stubInfo, const uint8_t* code, jsbytecode* pc);
+static ICInterpretOpResult ICInterpretOps(PBLCtx& ctx, BaselineFrame* frame,
+                                          StackVal* sp, ICCacheIRStub* cstub,
+                                          const CacheIRStubInfo* stubInfo,
+                                          const uint8_t* code, jsbytecode* pc);
 
 #ifdef ENABLE_JS_PBL_WEVAL
 void js::EnqueuePortableBaselineSpecialization(JSScript* script) {
@@ -481,10 +479,8 @@ void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
 
     weval.req = weval::weval(
         reinterpret_cast<ICFunc*>(&weval.func), &ICInterpretOps<true>,
-        Runtime<BaselineFrame*>(), Runtime<VMFrameManager&>(),
-        Runtime<State&>(), Runtime<ICRegs&>(), Runtime<Stack&>(),
-        Runtime<StackVal*>(), Runtime<ICCacheIRStub*>(),
-        Specialize<const CacheIRStubInfo*>(stubInfo),
+        Runtime<PBLCtx&>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),
+        Runtime<ICCacheIRStub*>(), Specialize<const CacheIRStubInfo*>(stubInfo),
         Specialize<const uint8_t*>(code), Runtime<jsbytecode*>());
   }
 }
@@ -495,21 +491,19 @@ void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
     return PBIResult::Error; \
   }
 
-#define PUSH_EXIT_FRAME_OR_RET(value, frameMgr, stack)          \
-  VMFrame cx(frameMgr, stack, sp, pc);                          \
+#define PUSH_EXIT_FRAME_OR_RET(value)                           \
+  VMFrame cx(ctx.frameMgr, ctx.stack, sp, pc);                  \
   if (!cx.success()) {                                          \
     return value;                                               \
   }                                                             \
   StackVal* sp = cx.spBelowFrame(); /* shadow the definition */ \
   (void)sp;                         /* avoid unused-variable warnings */
 
-#define PUSH_IC_FRAME() \
-  PUSH_EXIT_FRAME_OR_RET(ICInterpretOpResult::Error, frameMgr, stack);
+#define PUSH_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(ICInterpretOpResult::Error);
 
 template <bool Specialized>
 static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
-    BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
-    ICRegs& icregs, Stack& stack, StackVal* sp, ICCacheIRStub* cstub,
+    PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, ICCacheIRStub* cstub,
     const CacheIRStubInfo* stubInfo, const uint8_t* code, jsbytecode* pc) {
 #define CACHEOP_CASE(name)                                                   \
   cacheop_##name                                                             \
@@ -533,13 +527,13 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     weval_assert_const32(uint32_t(op), __LINE__); \
     goto* addresses_table[op];
 #  define READ_REG(idx) \
-    (Specialized ? weval_read_reg(idx) : icregs.icVals[(idx)])
-#  define WRITE_REG(idx, value)          \
-    do {                                 \
-      if (Specialized)                   \
-        weval_write_reg((idx), (value)); \
-      else                               \
-        icregs.icVals[(idx)] = (value);  \
+    (Specialized ? weval_read_reg(idx) : ctx.icregs.icVals[(idx)])
+#  define WRITE_REG(idx, value)             \
+    do {                                    \
+      if (Specialized)                      \
+        weval_write_reg((idx), (value));    \
+      else                                  \
+        ctx.icregs.icVals[(idx)] = (value); \
     } while (0)
 #else
 #  define UPDATE_CACHEOP_WEVAL_CONTEXT()
@@ -549,8 +543,8 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
       goto cacheop_##name;                  \
     }
 #  define GOTO_CACHEOP(op) goto* addresses[op];
-#  define READ_REG(idx) icregs.icVals[(idx)]
-#  define WRITE_REG(idx, value) icregs.icVals[(idx)] = (value)
+#  define READ_REG(idx) ctx.icregs.icVals[(idx)]
+#  define WRITE_REG(idx, value) ctx.icregs.icVals[(idx)] = (value)
 #endif
 
 #define DISPATCH_CACHEOP()        \
@@ -567,9 +561,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   code = weval::assume_const_memory(code);
   stubInfo = weval::assume_const_memory(stubInfo);
   auto* addresses_table = weval::assume_const_memory_transitive(addresses);
-  weval_write_reg(0, icregs.icVals[0]);
-  weval_write_reg(1, icregs.icVals[1]);
-  weval_write_reg(2, icregs.icVals[2]);
+  weval_write_reg(0, ctx.icregs.icVals[0]);
+  weval_write_reg(1, ctx.icregs.icVals[1]);
+  weval_write_reg(2, ctx.icregs.icVals[2]);
 #endif
 
   CacheIRReader reader(code);
@@ -856,8 +850,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
         }
         break;
       case GuardClassKind::WindowProxy:
-        if (object->getClass() !=
-            frameMgr.cxForLocalUseOnly()->runtime()->maybeWindowProxyClass()) {
+        if (object->getClass() != ctx.frameMgr.cxForLocalUseOnly()
+                                      ->runtime()
+                                      ->maybeWindowProxyClass()) {
           return ICInterpretOpResult::NextIC;
         }
         break;
@@ -938,21 +933,21 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(LoadOperandResult) {
     ValOperandId valId = reader.valOperandId();
-    icregs.icResult = READ_REG(valId.id());
+    ctx.icregs.icResult = READ_REG(valId.id());
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadValueResult) {
     uint32_t valOffset = reader.stubOffset();
-    icregs.icResult = stubInfo->getStubRawInt64(cstub, valOffset);
+    ctx.icregs.icResult = stubInfo->getStubRawInt64(cstub, valOffset);
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadObjectResult) {
     ObjOperandId objId = reader.objOperandId();
-    icregs.icResult =
+    ctx.icregs.icResult =
         ObjectValue(*reinterpret_cast<JSObject*>(READ_REG(objId.id())))
             .asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -961,7 +956,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(LoadStringResult) {
     StringOperandId stringId = reader.stringOperandId();
-    icregs.icResult =
+    ctx.icregs.icResult =
         StringValue(reinterpret_cast<JSString*>(READ_REG(stringId.id())))
             .asRawBits();
     DISPATCH_CACHEOP();
@@ -971,7 +966,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     uint32_t offset = reader.stubOffset();
     JSString* str =
         reinterpret_cast<JSString*>(stubInfo->getStubRawWord(cstub, offset));
-    icregs.icResult = StringValue(str).asRawBits();
+    ctx.icregs.icResult = StringValue(str).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -987,7 +982,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(LoadSymbolResult) {
     SymbolOperandId symbolId = reader.symbolOperandId();
-    icregs.icResult =
+    ctx.icregs.icResult =
         SymbolValue(reinterpret_cast<JS::Symbol*>(READ_REG(symbolId.id())))
             .asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -996,14 +991,14 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
   CACHEOP_CASE(LoadInt32Result) {
     Int32OperandId intId = reader.int32OperandId();
-    icregs.icResult = Int32Value(READ_REG(intId.id())).asRawBits();
+    ctx.icregs.icResult = Int32Value(READ_REG(intId.id())).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadBigIntResult) {
     BigIntOperandId bigintId = reader.bigIntOperandId();
-    icregs.icResult =
+    ctx.icregs.icResult =
         BigIntValue(reinterpret_cast<JS::BigInt*>(READ_REG(bigintId.id())))
             .asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -1016,13 +1011,13 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     if (val.isInt32()) {
       val = DoubleValue(val.toInt32());
     }
-    icregs.icResult = val.asRawBits();
+    ctx.icregs.icResult = val.asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
 
   CACHEOP_CASE(LoadBooleanResult) {
-    icregs.icResult = BooleanValue(reader.readBool()).asRawBits();
+    ctx.icregs.icResult = BooleanValue(reader.readBool()).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1038,7 +1033,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
         "LoadFixedSlotResult: obj %p offsetOffset %d offset %d slotPtr %p "
         "slot %" PRIx64 "\n",
         nobj, int(offsetOffset), int(offset), slot, slot->asRawBits());
-    icregs.icResult = slot->asRawBits();
+    ctx.icregs.icResult = slot->asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1049,7 +1044,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
     NativeObject* nobj = reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
     HeapSlot* slots = nobj->getSlotsUnchecked();
-    icregs.icResult = slots[offset / sizeof(Value)].get().asRawBits();
+    ctx.icregs.icResult = slots[offset / sizeof(Value)].get().asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1091,20 +1086,20 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     DISPATCH_CACHEOP();
   }
 
-#define INT32_OP(name, op, extra_check)                        \
-  CACHEOP_CASE(Int32##name##Result) {                          \
-    Int32OperandId lhsId = reader.int32OperandId();            \
-    Int32OperandId rhsId = reader.int32OperandId();            \
-    int64_t lhs = int64_t(int32_t(READ_REG(lhsId.id())));      \
-    int64_t rhs = int64_t(int32_t(READ_REG(rhsId.id())));      \
-    extra_check;                                               \
-    int64_t result = lhs op rhs;                               \
-    if (result < INT32_MIN || result > INT32_MAX) {            \
-      return ICInterpretOpResult::NextIC;                      \
-    }                                                          \
-    icregs.icResult = Int32Value(int32_t(result)).asRawBits(); \
-    PREDICT_NEXT(ReturnFromIC);                                \
-    DISPATCH_CACHEOP();                                        \
+#define INT32_OP(name, op, extra_check)                            \
+  CACHEOP_CASE(Int32##name##Result) {                              \
+    Int32OperandId lhsId = reader.int32OperandId();                \
+    Int32OperandId rhsId = reader.int32OperandId();                \
+    int64_t lhs = int64_t(int32_t(READ_REG(lhsId.id())));          \
+    int64_t rhs = int64_t(int32_t(READ_REG(rhsId.id())));          \
+    extra_check;                                                   \
+    int64_t result = lhs op rhs;                                   \
+    if (result < INT32_MIN || result > INT32_MAX) {                \
+      return ICInterpretOpResult::NextIC;                          \
+    }                                                              \
+    ctx.icregs.icResult = Int32Value(int32_t(result)).asRawBits(); \
+    PREDICT_NEXT(ReturnFromIC);                                    \
+    DISPATCH_CACHEOP();                                            \
   }
 
   INT32_OP(Add, +, {});
@@ -1168,7 +1163,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
       }
     }
 
-    icregs.icResult = Int32Value(int32_t(result)).asRawBits();
+    ctx.icregs.icResult = Int32Value(int32_t(result)).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1180,7 +1175,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     if (value > INT32_MAX) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icResult = Int32Value(int32_t(value)).asRawBits();
+    ctx.icregs.icResult = Int32Value(int32_t(value)).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1218,7 +1213,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
       default:
         MOZ_CRASH("Unexpected opcode");
     }
-    icregs.icResult = BooleanValue(result).asRawBits();
+    ctx.icregs.icResult = BooleanValue(result).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1239,7 +1234,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(IsObjectResult) {
     ValOperandId valId = reader.valOperandId();
     Value val = Value::fromRawBits(READ_REG(valId.id()));
-    icregs.icResult = BooleanValue(val.isObject()).asRawBits();
+    ctx.icregs.icResult = BooleanValue(val.isObject()).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1251,9 +1246,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     {
       PUSH_IC_FRAME();
       ReservedRooted<JSString*> lhs(
-          &state.str0, reinterpret_cast<JSString*>(READ_REG(lhsId.id())));
+          &ctx.state.str0, reinterpret_cast<JSString*>(READ_REG(lhsId.id())));
       ReservedRooted<JSString*> rhs(
-          &state.str1, reinterpret_cast<JSString*>(READ_REG(rhsId.id())));
+          &ctx.state.str1, reinterpret_cast<JSString*>(READ_REG(rhsId.id())));
       bool result;
       switch (op) {
         case JSOp::Eq:
@@ -1295,7 +1290,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
         default:
           MOZ_CRASH("bad opcode");
       }
-      icregs.icResult = BooleanValue(result).asRawBits();
+      ctx.icregs.icResult = BooleanValue(result).asRawBits();
     }
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
@@ -1331,7 +1326,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
       default:
         MOZ_CRASH("bad opcode");
     }
-    icregs.icResult = BooleanValue(result).asRawBits();
+    ctx.icregs.icResult = BooleanValue(result).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1343,7 +1338,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     if (cls->isProxyObject()) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icResult = BooleanValue(!cls->emulatesUndefined()).asRawBits();
+    ctx.icregs.icResult = BooleanValue(!cls->emulatesUndefined()).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1443,8 +1438,8 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     {
       PUSH_IC_FRAME();
 
-      if (!stack.check(sp, sizeof(StackVal) * (totalArgs + 6))) {
-        ReportOverRecursed(frameMgr.cxForLocalUseOnly());
+      if (!ctx.stack.check(sp, sizeof(StackVal) * (totalArgs + 6))) {
+        ReportOverRecursed(ctx.frameMgr.cxForLocalUseOnly());
         return ICInterpretOpResult::Error;
       }
 
@@ -1470,13 +1465,13 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 
         // We *also* need an exit frame (the native baseline
         // execution would invoke a trampoline here).
-        StackVal* trampolinePrevFP = stack.fp;
+        StackVal* trampolinePrevFP = ctx.stack.fp;
         PUSHNATIVE(StackValNative(nullptr));  // fake return address.
-        PUSHNATIVE(StackValNative(stack.fp));
-        stack.fp = sp;
+        PUSHNATIVE(StackValNative(ctx.stack.fp));
+        ctx.stack.fp = sp;
         PUSHNATIVE(StackValNative(uint32_t(ExitFrameType::CallNative)));
         cx.getCx()->activation()->asJit()->setJSExitFP(
-            reinterpret_cast<uint8_t*>(stack.fp));
+            reinterpret_cast<uint8_t*>(ctx.stack.fp));
         cx.getCx()->portableBaselineStack().top = reinterpret_cast<void*>(sp);
 
         JSNative native = ignoresRv
@@ -1484,13 +1479,13 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
                               : callee->native();
         bool success = native(cx, argc, args);
 
-        stack.fp = trampolinePrevFP;
+        ctx.stack.fp = trampolinePrevFP;
         POPNNATIVE(4);
 
         if (!success) {
           return ICInterpretOpResult::Error;
         }
-        icregs.icResult = args[0].asRawBits();
+        ctx.icregs.icResult = args[0].asRawBits();
       } else {
         PUSHNATIVE(StackValNative(
             MakeFrameDescriptorForJitCall(FrameType::BaselineStub, argc)));
@@ -1498,9 +1493,10 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
         JSScript* script = callee->nonLazyScript();
         ImmutableScriptData* isd = script->immutableScriptData();
         jsbytecode* pc = script->code();
-        Value* ret = reinterpret_cast<Value*>(&icregs.icResult);
+        Value* ret = reinterpret_cast<Value*>(&ctx.icregs.icResult);
 
-        switch (MaybeSpecializedPBI(cx, state, stack, sp, pc, script, isd,
+        switch (MaybeSpecializedPBI(cx, ctx.state, ctx.stack, sp, pc, script,
+                                    isd,
                                     /* envChain = */ nullptr, ret)) {
           case PBIResult::Ok:
             break;
@@ -1536,7 +1532,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     BOUNDSCHECK(resultId);
     int32_t input = int32_t(READ_REG(inputId.id()));
     JSLinearString* str =
-        Int32ToStringPure(frameMgr.cxForLocalUseOnly(), input);
+        Int32ToStringPure(ctx.frameMgr.cxForLocalUseOnly(), input);
     if (str) {
       WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str));
     } else {
@@ -1555,9 +1551,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     FakeRooted<JSString*> rhs(
         nullptr, reinterpret_cast<JSString*>(READ_REG(rhsId.id())));
     JSString* result =
-        ConcatStrings<NoGC>(frameMgr.cxForLocalUseOnly(), lhs, rhs);
+        ConcatStrings<NoGC>(ctx.frameMgr.cxForLocalUseOnly(), lhs, rhs);
     if (result) {
-      icregs.icResult = StringValue(result).asRawBits();
+      ctx.icregs.icResult = StringValue(result).asRawBits();
     } else {
       return ICInterpretOpResult::NextIC;
     }
@@ -1587,7 +1583,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     if (length > uint32_t(INT32_MAX)) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icResult = Int32Value(length).asRawBits();
+    ctx.icregs.icResult = Int32Value(length).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1599,7 +1595,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     if (length > size_t(INT32_MAX)) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icResult = Int32Value(length).asRawBits();
+    ctx.icregs.icResult = Int32Value(length).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1615,7 +1611,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     if (index < 0 || size_t(index) >= str->length()) {
       if (handleOOB) {
         // Return an empty string.
-        result = frameMgr.cxForLocalUseOnly()->names().empty;
+        result = ctx.frameMgr.cxForLocalUseOnly()->names().empty;
       } else {
         return ICInterpretOpResult::NextIC;
       }
@@ -1624,7 +1620,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
       // Guaranteed to be always work because this CacheIR op is
       // always preceded by LinearizeForCharAccess.
       MOZ_ALWAYS_TRUE(str->getChar(/* cx = */ nullptr, index, &c));
-      StaticStrings& sstr = frameMgr.cxForLocalUseOnly()->staticStrings();
+      StaticStrings& sstr = ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
       if (sstr.hasUnit(c)) {
         result = sstr.getUnit(c);
       } else {
@@ -1635,7 +1631,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
         }
       }
     }
-    icregs.icResult = StringValue(result).asRawBits();
+    ctx.icregs.icResult = StringValue(result).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1662,7 +1658,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
       MOZ_ALWAYS_TRUE(str->getChar(/* cx = */ nullptr, index, &c));
       result = Int32Value(c);
     }
-    icregs.icResult = result.asRawBits();
+    ctx.icregs.icResult = result.asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1692,7 +1688,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(LoadStringTruthyResult) {
     StringOperandId strId = reader.stringOperandId();
     JSString* str = reinterpret_cast<JSLinearString*>(READ_REG(strId.id()));
-    icregs.icResult = BooleanValue(str->length() > 0).asRawBits();
+    ctx.icregs.icResult = BooleanValue(str->length() > 0).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1700,7 +1696,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
   CACHEOP_CASE(LoadInt32TruthyResult) {
     ValOperandId valId = reader.valOperandId();
     int32_t val = int32_t(READ_REG(valId.id()));
-    icregs.icResult = BooleanValue(val != 0).asRawBits();
+    ctx.icregs.icResult = BooleanValue(val != 0).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1719,7 +1715,7 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
     if (val.isMagic()) {
       return ICInterpretOpResult::NextIC;
     }
-    icregs.icResult = val.asRawBits();
+    ctx.icregs.icResult = val.asRawBits();
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -2060,11 +2056,9 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 #endif
 
 static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
-    BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
-    ICRegs& icregs, Stack& stack, StackVal* sp, ICCacheIRStub* cstub,
+    PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, ICCacheIRStub* cstub,
     const CacheIRStubInfo* stubInfo, const uint8_t* code, jsbytecode* pc) {
-  return ICInterpretOps(frame, frameMgr, state, icregs, stack, sp, cstub,
-                        stubInfo, code, pc);
+  return ICInterpretOps(ctx, frame, sp, cstub, stubInfo, code, pc);
 }
 
 #define SAVE_INPUTS(arity)                \
@@ -2131,41 +2125,40 @@ static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
   }
 }
 
-#define DEFINE_IC_IMPL(kind, arity, fallback_body, ool)                        \
-  static PBIResult MOZ_ALWAYS_INLINE IC##kind##ool(                            \
-      PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, jsbytecode* pc) {       \
-    ICStub* stub = frame->interpreterICEntry()->firstStub();                   \
-    uint64_t inputs[3];                                                        \
-    SAVE_INPUTS(arity);                                                        \
-    while (true) {                                                             \
-    next_stub:                                                                 \
-      if (stub->isFallback()) {                                                \
-        ICFallbackStub* fallback = stub->toFallbackStub();                     \
-        fallback_body;                                                         \
-        ctx.icregs.icResult = ctx.state.res.asRawBits();                       \
-        ctx.state.res = UndefinedValue();                                      \
-        return PBIResult::Ok;                                                  \
-      } else {                                                                 \
-        ICCacheIRStub* cstub = stub->toCacheIRStub();                          \
-        cstub->incrementEnteredCount();                                        \
-        const CacheIRStubInfo* stubInfo = cstub->stubInfo();                   \
-        const uint8_t* code = stubInfo->code();                                \
-        INVOKE_WEVALED_OR_GENERIC_IC(                                          \
-            result, ICInterpretOps##ool,                                       \
-            (frame, ctx.frameMgr, ctx.state, ctx.icregs, ctx.stack, sp, cstub, \
-             stubInfo, code, pc));                                             \
-        switch (result) {                                                      \
-          case ICInterpretOpResult::NextIC:                                    \
-            stub = stub->maybeNext();                                          \
-            RESTORE_INPUTS(arity);                                             \
-            goto next_stub;                                                    \
-          case ICInterpretOpResult::Return:                                    \
-            return PBIResult::Ok;                                              \
-          default:                                                             \
-            return ICResultToPBIResult(result);                                \
-        }                                                                      \
-      }                                                                        \
-    }                                                                          \
+#define DEFINE_IC_IMPL(kind, arity, fallback_body, ool)                  \
+  static PBIResult MOZ_ALWAYS_INLINE IC##kind##ool(                      \
+      PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, jsbytecode* pc) { \
+    ICStub* stub = frame->interpreterICEntry()->firstStub();             \
+    uint64_t inputs[3];                                                  \
+    SAVE_INPUTS(arity);                                                  \
+    while (true) {                                                       \
+    next_stub:                                                           \
+      if (stub->isFallback()) {                                          \
+        ICFallbackStub* fallback = stub->toFallbackStub();               \
+        fallback_body;                                                   \
+        ctx.icregs.icResult = ctx.state.res.asRawBits();                 \
+        ctx.state.res = UndefinedValue();                                \
+        return PBIResult::Ok;                                            \
+      } else {                                                           \
+        ICCacheIRStub* cstub = stub->toCacheIRStub();                    \
+        cstub->incrementEnteredCount();                                  \
+        const CacheIRStubInfo* stubInfo = cstub->stubInfo();             \
+        const uint8_t* code = stubInfo->code();                          \
+        INVOKE_WEVALED_OR_GENERIC_IC(                                    \
+            result, ICInterpretOps##ool,                                 \
+            (ctx, frame, sp, cstub, stubInfo, code, pc));                \
+        switch (result) {                                                \
+          case ICInterpretOpResult::NextIC:                              \
+            stub = stub->maybeNext();                                    \
+            RESTORE_INPUTS(arity);                                       \
+            goto next_stub;                                              \
+          case ICInterpretOpResult::Return:                              \
+            return PBIResult::Ok;                                        \
+          default:                                                       \
+            return ICResultToPBIResult(result);                          \
+        }                                                                \
+      }                                                                  \
+    }                                                                    \
   }
 
 #define DEFINE_IC(kind, arity, fallback_body)                                \
@@ -2196,8 +2189,7 @@ static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
       &ctx.state.state_elem,            \
       reinterpret_cast<JSObject*>(ctx.icregs.icVals[(index)]))
 
-#define PUSH_FALLBACK_IC_FRAME() \
-  PUSH_EXIT_FRAME_OR_RET(PBIResult::Error, ctx.frameMgr, ctx.stack);
+#define PUSH_FALLBACK_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(PBIResult::Error)
 
 DEFINE_IC(Typeof, 1, {
   IC_LOAD_VAL(value0, 0);
@@ -2440,8 +2432,7 @@ DEFINE_IC(CloseIter, 1, {
   }
 });
 
-#define PUSH_EXIT_FRAME() \
-  PUSH_EXIT_FRAME_OR_RET(PBIResult::Error, ctx.frameMgr, ctx.stack)
+#define PUSH_EXIT_FRAME() PUSH_EXIT_FRAME_OR_RET(PBIResult::Error)
 
 #ifndef __wasi__
 #  define DEBUG_CHECK()                                                   \

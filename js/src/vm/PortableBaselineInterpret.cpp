@@ -2067,44 +2067,44 @@ static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
                         stubInfo, code, pc);
 }
 
-#define SAVE_INPUTS(arity)            \
-  do {                                \
-    switch (arity) {                  \
-      case 0:                         \
-        break;                        \
-      case 1:                         \
-        inputs[0] = icregs.icVals[0]; \
-        break;                        \
-      case 2:                         \
-        inputs[0] = icregs.icVals[0]; \
-        inputs[1] = icregs.icVals[1]; \
-        break;                        \
-      case 3:                         \
-        inputs[0] = icregs.icVals[0]; \
-        inputs[1] = icregs.icVals[1]; \
-        inputs[2] = icregs.icVals[2]; \
-        break;                        \
-    }                                 \
+#define SAVE_INPUTS(arity)                \
+  do {                                    \
+    switch (arity) {                      \
+      case 0:                             \
+        break;                            \
+      case 1:                             \
+        inputs[0] = ctx.icregs.icVals[0]; \
+        break;                            \
+      case 2:                             \
+        inputs[0] = ctx.icregs.icVals[0]; \
+        inputs[1] = ctx.icregs.icVals[1]; \
+        break;                            \
+      case 3:                             \
+        inputs[0] = ctx.icregs.icVals[0]; \
+        inputs[1] = ctx.icregs.icVals[1]; \
+        inputs[2] = ctx.icregs.icVals[2]; \
+        break;                            \
+    }                                     \
   } while (0)
 
-#define RESTORE_INPUTS(arity)         \
-  do {                                \
-    switch (arity) {                  \
-      case 0:                         \
-        break;                        \
-      case 1:                         \
-        icregs.icVals[0] = inputs[0]; \
-        break;                        \
-      case 2:                         \
-        icregs.icVals[0] = inputs[0]; \
-        icregs.icVals[1] = inputs[1]; \
-        break;                        \
-      case 3:                         \
-        icregs.icVals[0] = inputs[0]; \
-        icregs.icVals[1] = inputs[1]; \
-        icregs.icVals[2] = inputs[2]; \
-        break;                        \
-    }                                 \
+#define RESTORE_INPUTS(arity)             \
+  do {                                    \
+    switch (arity) {                      \
+      case 0:                             \
+        break;                            \
+      case 1:                             \
+        ctx.icregs.icVals[0] = inputs[0]; \
+        break;                            \
+      case 2:                             \
+        ctx.icregs.icVals[0] = inputs[0]; \
+        ctx.icregs.icVals[1] = inputs[1]; \
+        break;                            \
+      case 3:                             \
+        ctx.icregs.icVals[0] = inputs[0]; \
+        ctx.icregs.icVals[1] = inputs[1]; \
+        ctx.icregs.icVals[2] = inputs[2]; \
+        break;                            \
+    }                                     \
   } while (0)
 
 #ifdef ENABLE_JS_PBL_WEVAL
@@ -2131,79 +2131,78 @@ static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
   }
 }
 
-#define DEFINE_IC_IMPL(kind, arity, fallback_body, ool)                      \
-  static PBIResult MOZ_ALWAYS_INLINE IC##kind##ool(                          \
-      BaselineFrame* frame, VMFrameManager& frameMgr, State& state,          \
-      ICRegs& icregs, Stack& stack, StackVal* sp, jsbytecode* pc) {          \
-    ICStub* stub = frame->interpreterICEntry()->firstStub();                 \
-    uint64_t inputs[3];                                                      \
-    SAVE_INPUTS(arity);                                                      \
-    while (true) {                                                           \
-    next_stub:                                                               \
-      if (stub->isFallback()) {                                              \
-        ICFallbackStub* fallback = stub->toFallbackStub();                   \
-        fallback_body;                                                       \
-        icregs.icResult = state.res.asRawBits();                             \
-        state.res = UndefinedValue();                                        \
-        return PBIResult::Ok;                                                \
-      } else {                                                               \
-        ICCacheIRStub* cstub = stub->toCacheIRStub();                        \
-        cstub->incrementEnteredCount();                                      \
-        const CacheIRStubInfo* stubInfo = cstub->stubInfo();                 \
-        const uint8_t* code = stubInfo->code();                              \
-        INVOKE_WEVALED_OR_GENERIC_IC(result, ICInterpretOps##ool,            \
-                                     (frame, frameMgr, state, icregs, stack, \
-                                      sp, cstub, stubInfo, code, pc));       \
-        switch (result) {                                                    \
-          case ICInterpretOpResult::NextIC:                                  \
-            stub = stub->maybeNext();                                        \
-            RESTORE_INPUTS(arity);                                           \
-            goto next_stub;                                                  \
-          case ICInterpretOpResult::Return:                                  \
-            return PBIResult::Ok;                                            \
-          default:                                                           \
-            return ICResultToPBIResult(result);                              \
-        }                                                                    \
-      }                                                                      \
-    }                                                                        \
+#define DEFINE_IC_IMPL(kind, arity, fallback_body, ool)                        \
+  static PBIResult MOZ_ALWAYS_INLINE IC##kind##ool(                            \
+      PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, jsbytecode* pc) {       \
+    ICStub* stub = frame->interpreterICEntry()->firstStub();                   \
+    uint64_t inputs[3];                                                        \
+    SAVE_INPUTS(arity);                                                        \
+    while (true) {                                                             \
+    next_stub:                                                                 \
+      if (stub->isFallback()) {                                                \
+        ICFallbackStub* fallback = stub->toFallbackStub();                     \
+        fallback_body;                                                         \
+        ctx.icregs.icResult = ctx.state.res.asRawBits();                       \
+        ctx.state.res = UndefinedValue();                                      \
+        return PBIResult::Ok;                                                  \
+      } else {                                                                 \
+        ICCacheIRStub* cstub = stub->toCacheIRStub();                          \
+        cstub->incrementEnteredCount();                                        \
+        const CacheIRStubInfo* stubInfo = cstub->stubInfo();                   \
+        const uint8_t* code = stubInfo->code();                                \
+        INVOKE_WEVALED_OR_GENERIC_IC(                                          \
+            result, ICInterpretOps##ool,                                       \
+            (frame, ctx.frameMgr, ctx.state, ctx.icregs, ctx.stack, sp, cstub, \
+             stubInfo, code, pc));                                             \
+        switch (result) {                                                      \
+          case ICInterpretOpResult::NextIC:                                    \
+            stub = stub->maybeNext();                                          \
+            RESTORE_INPUTS(arity);                                             \
+            goto next_stub;                                                    \
+          case ICInterpretOpResult::Return:                                    \
+            return PBIResult::Ok;                                              \
+          default:                                                             \
+            return ICResultToPBIResult(result);                                \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
   }
 
-#define DEFINE_IC(kind, arity, fallback_body)                                 \
-  DEFINE_IC_IMPL(kind, arity, fallback_body, )                                \
-                                                                              \
-  static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(                       \
-      BaselineFrame* frame, VMFrameManager& frameMgr, State& state,           \
-      ICRegs& icregs, Stack& stack, StackVal* sp, jsbytecode* pc,             \
-      ICFallbackStub* fallback) {                                             \
-    fallback_body;                                                            \
-    return PBIResult::Ok;                                                     \
-  }                                                                           \
-                                                                              \
-  DEFINE_IC_IMPL(                                                             \
-      kind, arity,                                                            \
-      {                                                                       \
-        PBIResult result = IC##kind##Fallback(frame, frameMgr, state, icregs, \
-                                              stack, sp, pc, fallback);       \
-        if (result != PBIResult::Ok) {                                        \
-          return result;                                                      \
-        }                                                                     \
-      },                                                                      \
+#define DEFINE_IC(kind, arity, fallback_body)                                \
+  DEFINE_IC_IMPL(kind, arity, fallback_body, )                               \
+                                                                             \
+  static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(                      \
+      PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, jsbytecode* pc,       \
+      ICFallbackStub* fallback) {                                            \
+    fallback_body;                                                           \
+    return PBIResult::Ok;                                                    \
+  }                                                                          \
+                                                                             \
+  DEFINE_IC_IMPL(                                                            \
+      kind, arity,                                                           \
+      {                                                                      \
+        PBIResult result = IC##kind##Fallback(ctx, frame, sp, pc, fallback); \
+        if (result != PBIResult::Ok) {                                       \
+          return result;                                                     \
+        }                                                                    \
+      },                                                                     \
       Outlined)
 
-#define IC_LOAD_VAL(state_elem, index)                \
-  ReservedRooted<Value> state_elem(&state.state_elem, \
-                                   Value::fromRawBits(icregs.icVals[(index)]))
+#define IC_LOAD_VAL(state_elem, index) \
+  ReservedRooted<Value> state_elem(    \
+      &ctx.state.state_elem, Value::fromRawBits(ctx.icregs.icVals[(index)]))
 #define IC_LOAD_OBJ(state_elem, index)  \
   ReservedRooted<JSObject*> state_elem( \
-      &state.state_elem, reinterpret_cast<JSObject*>(icregs.icVals[(index)]))
+      &ctx.state.state_elem,            \
+      reinterpret_cast<JSObject*>(ctx.icregs.icVals[(index)]))
 
 #define PUSH_FALLBACK_IC_FRAME() \
-  PUSH_EXIT_FRAME_OR_RET(PBIResult::Error, frameMgr, stack);
+  PUSH_EXIT_FRAME_OR_RET(PBIResult::Error, ctx.frameMgr, ctx.stack);
 
 DEFINE_IC(Typeof, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoTypeOfFallback(cx, frame, fallback, value0, &state.res)) {
+  if (!DoTypeOfFallback(cx, frame, fallback, value0, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2211,15 +2210,15 @@ DEFINE_IC(Typeof, 1, {
 DEFINE_IC(GetName, 1, {
   IC_LOAD_OBJ(obj0, 0);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoGetNameFallback(cx, frame, fallback, obj0, &state.res)) {
+  if (!DoGetNameFallback(cx, frame, fallback, obj0, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
 
 DEFINE_IC(Call, 1, {
-  uint32_t argc = uint32_t(icregs.icVals[0]);
+  uint32_t argc = uint32_t(ctx.icregs.icVals[0]);
   uint32_t totalArgs =
-      argc + icregs.extraArgs;  // this, callee, (constructing?), func args
+      argc + ctx.icregs.extraArgs;  // this, callee, (constructing?), func args
   Value* args = reinterpret_cast<Value*>(&sp[0]);
   TRACE_PRINTF("Call fallback: argc %d totalArgs %d args %p\n", argc, totalArgs,
                args);
@@ -2227,13 +2226,13 @@ DEFINE_IC(Call, 1, {
   std::reverse(args, args + totalArgs);
   {
     PUSH_FALLBACK_IC_FRAME();
-    if (icregs.spreadCall) {
-      if (!DoSpreadCallFallback(cx, frame, fallback, args, &state.res)) {
+    if (ctx.icregs.spreadCall) {
+      if (!DoSpreadCallFallback(cx, frame, fallback, args, &ctx.state.res)) {
         std::reverse(args, args + totalArgs);
         return PBIResult::Error;
       }
     } else {
-      if (!DoCallFallback(cx, frame, fallback, argc, args, &state.res)) {
+      if (!DoCallFallback(cx, frame, fallback, argc, args, &ctx.state.res)) {
         std::reverse(args, args + totalArgs);
         return PBIResult::Error;
       }
@@ -2244,7 +2243,7 @@ DEFINE_IC(Call, 1, {
 DEFINE_IC(UnaryArith, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoUnaryArithFallback(cx, frame, fallback, value0, &state.res)) {
+  if (!DoUnaryArithFallback(cx, frame, fallback, value0, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2253,7 +2252,8 @@ DEFINE_IC(BinaryArith, 2, {
   IC_LOAD_VAL(value0, 0);
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoBinaryArithFallback(cx, frame, fallback, value0, value1, &state.res)) {
+  if (!DoBinaryArithFallback(cx, frame, fallback, value0, value1,
+                             &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2261,7 +2261,7 @@ DEFINE_IC(BinaryArith, 2, {
 DEFINE_IC(ToBool, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoToBoolFallback(cx, frame, fallback, value0, &state.res)) {
+  if (!DoToBoolFallback(cx, frame, fallback, value0, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2270,7 +2270,7 @@ DEFINE_IC(Compare, 2, {
   IC_LOAD_VAL(value0, 0);
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoCompareFallback(cx, frame, fallback, value0, value1, &state.res)) {
+  if (!DoCompareFallback(cx, frame, fallback, value0, value1, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2279,7 +2279,8 @@ DEFINE_IC(InstanceOf, 2, {
   IC_LOAD_VAL(value0, 0);
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoInstanceOfFallback(cx, frame, fallback, value0, value1, &state.res)) {
+  if (!DoInstanceOfFallback(cx, frame, fallback, value0, value1,
+                            &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2288,7 +2289,7 @@ DEFINE_IC(In, 2, {
   IC_LOAD_VAL(value0, 0);
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoInFallback(cx, frame, fallback, value0, value1, &state.res)) {
+  if (!DoInFallback(cx, frame, fallback, value0, value1, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2296,7 +2297,7 @@ DEFINE_IC(In, 2, {
 DEFINE_IC(BindName, 1, {
   IC_LOAD_OBJ(obj0, 0);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoBindNameFallback(cx, frame, fallback, obj0, &state.res)) {
+  if (!DoBindNameFallback(cx, frame, fallback, obj0, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2312,7 +2313,7 @@ DEFINE_IC(SetProp, 2, {
 
 DEFINE_IC(NewObject, 0, {
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoNewObjectFallback(cx, frame, fallback, &state.res)) {
+  if (!DoNewObjectFallback(cx, frame, fallback, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2320,7 +2321,7 @@ DEFINE_IC(NewObject, 0, {
 DEFINE_IC(GetProp, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoGetPropFallback(cx, frame, fallback, &value0, &state.res)) {
+  if (!DoGetPropFallback(cx, frame, fallback, &value0, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2330,7 +2331,7 @@ DEFINE_IC(GetPropSuper, 2, {
   IC_LOAD_VAL(value1, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoGetPropSuperFallback(cx, frame, fallback, value0, &value1,
-                              &state.res)) {
+                              &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2339,7 +2340,7 @@ DEFINE_IC(GetElem, 2, {
   IC_LOAD_VAL(value0, 0);
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoGetElemFallback(cx, frame, fallback, value0, value1, &state.res)) {
+  if (!DoGetElemFallback(cx, frame, fallback, value0, value1, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2350,21 +2351,21 @@ DEFINE_IC(GetElemSuper, 3, {
   IC_LOAD_VAL(value2, 2);  // key (rhs)
   PUSH_FALLBACK_IC_FRAME();
   if (!DoGetElemSuperFallback(cx, frame, fallback, value1, value2, value0,
-                              &state.res)) {
+                              &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
 
 DEFINE_IC(NewArray, 0, {
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoNewArrayFallback(cx, frame, fallback, &state.res)) {
+  if (!DoNewArrayFallback(cx, frame, fallback, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
 
 DEFINE_IC(GetIntrinsic, 0, {
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoGetIntrinsicFallback(cx, frame, fallback, &state.res)) {
+  if (!DoGetIntrinsicFallback(cx, frame, fallback, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2384,7 +2385,7 @@ DEFINE_IC(HasOwn, 2, {
   IC_LOAD_VAL(value0, 0);
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoHasOwnFallback(cx, frame, fallback, value0, value1, &state.res)) {
+  if (!DoHasOwnFallback(cx, frame, fallback, value0, value1, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2394,7 +2395,7 @@ DEFINE_IC(CheckPrivateField, 2, {
   IC_LOAD_VAL(value1, 1);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoCheckPrivateFieldFallback(cx, frame, fallback, value0, value1,
-                                   &state.res)) {
+                                   &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2402,7 +2403,7 @@ DEFINE_IC(CheckPrivateField, 2, {
 DEFINE_IC(GetIterator, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoGetIteratorFallback(cx, frame, fallback, value0, &state.res)) {
+  if (!DoGetIteratorFallback(cx, frame, fallback, value0, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2410,7 +2411,7 @@ DEFINE_IC(GetIterator, 1, {
 DEFINE_IC(ToPropertyKey, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoToPropertyKeyFallback(cx, frame, fallback, value0, &state.res)) {
+  if (!DoToPropertyKeyFallback(cx, frame, fallback, value0, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2418,14 +2419,15 @@ DEFINE_IC(ToPropertyKey, 1, {
 DEFINE_IC(OptimizeSpreadCall, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoOptimizeSpreadCallFallback(cx, frame, fallback, value0, &state.res)) {
+  if (!DoOptimizeSpreadCallFallback(cx, frame, fallback, value0,
+                                    &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
 
 DEFINE_IC(Rest, 0, {
   PUSH_FALLBACK_IC_FRAME();
-  if (!DoRestFallback(cx, frame, fallback, &state.res)) {
+  if (!DoRestFallback(cx, frame, fallback, &ctx.state.res)) {
     return PBIResult::Error;
   }
 });
@@ -2530,16 +2532,14 @@ DEFINE_IC(CloseIter, 1, {
 
 #define NEXT_IC() frame->interpreterICEntry()++;
 
-#define INVOKE_IC(kind)                                                 \
-  icResult = (spec == PBISpecialization::Specialized)                   \
-                 ? IC##kind##Outlined(frame, ctx.frameMgr, ctx.state,   \
-                                      ctx.icregs, ctx.stack, sp, pc)    \
-                 : IC##kind(frame, ctx.frameMgr, ctx.state, ctx.icregs, \
-                            ctx.stack, sp, pc);                         \
-  if (MOZ_UNLIKELY(icResult != PBIResult::Ok)) {                        \
-    WEVAL_POP_CONTEXT();                                                \
-    goto ic_fail;                                                       \
-  }                                                                     \
+#define INVOKE_IC(kind)                                   \
+  icResult = (spec == PBISpecialization::Specialized)     \
+                 ? IC##kind##Outlined(ctx, frame, sp, pc) \
+                 : IC##kind(ctx, frame, sp, pc);          \
+  if (MOZ_UNLIKELY(icResult != PBIResult::Ok)) {          \
+    WEVAL_POP_CONTEXT();                                  \
+    goto ic_fail;                                         \
+  }                                                       \
   NEXT_IC();
 
 template <PBISpecialization spec>

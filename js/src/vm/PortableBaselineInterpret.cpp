@@ -353,8 +353,17 @@ struct PBLCtx {
   VMFrameManager frameMgr;
   ICRegs icregs;
 
+  // State to pass to ICs while saving on direct args:
+  jsbytecode* pc;
+  StackVal* sp;
+
   PBLCtx(JSContext* cx, BaselineFrame* frame, State& state_, Stack& stack_)
-      : state(state_), stack(stack_), frameMgr(cx, frame), icregs() {}
+      : state(state_),
+        stack(stack_),
+        frameMgr(cx, frame),
+        icregs(),
+        pc(nullptr),
+        sp(nullptr) {}
 };
 
 static EnvironmentObject& getEnvironmentFromCoordinate(
@@ -438,16 +447,14 @@ enum class ICInterpretOpResult {
   UnwindRet,
 };
 
-typedef ICInterpretOpResult (*ICFunc)(PBLCtx& ctx, BaselineFrame* frame,
-                                      StackVal* sp, ICCacheIRStub* cstub,
+typedef ICInterpretOpResult (*ICFunc)(PBLCtx& ctx, ICCacheIRStub* cstub,
                                       const CacheIRStubInfo* stubInfo,
-                                      const uint8_t* code, jsbytecode* pc);
+                                      const uint8_t* code);
 
 template <bool Specialized = false>
-static ICInterpretOpResult ICInterpretOps(PBLCtx& ctx, BaselineFrame* frame,
-                                          StackVal* sp, ICCacheIRStub* cstub,
+static ICInterpretOpResult ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
                                           const CacheIRStubInfo* stubInfo,
-                                          const uint8_t* code, jsbytecode* pc);
+                                          const uint8_t* code);
 
 #ifdef ENABLE_JS_PBL_WEVAL
 void js::EnqueuePortableBaselineSpecialization(JSScript* script) {
@@ -477,11 +484,11 @@ void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
 
     const uint8_t* code = stubInfo->code();
 
-    weval.req = weval::weval(
-        reinterpret_cast<ICFunc*>(&weval.func), &ICInterpretOps<true>,
-        Runtime<PBLCtx&>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),
-        Runtime<ICCacheIRStub*>(), Specialize<const CacheIRStubInfo*>(stubInfo),
-        Specialize<const uint8_t*>(code), Runtime<jsbytecode*>());
+    weval.req = weval::weval(reinterpret_cast<ICFunc*>(&weval.func),
+                             &ICInterpretOps<true>, Runtime<PBLCtx&>(),
+                             Runtime<ICCacheIRStub*>(),
+                             Specialize<const CacheIRStubInfo*>(stubInfo),
+                             Specialize<const uint8_t*>(code));
   }
 }
 #endif
@@ -502,9 +509,12 @@ void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
 #define PUSH_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(ICInterpretOpResult::Error);
 
 template <bool Specialized>
-static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
-    PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, ICCacheIRStub* cstub,
-    const CacheIRStubInfo* stubInfo, const uint8_t* code, jsbytecode* pc) {
+static ICInterpretOpResult MOZ_ALWAYS_INLINE
+ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
+               const CacheIRStubInfo* stubInfo, const uint8_t* code) {
+  StackVal* sp = ctx.sp;
+  jsbytecode* pc = ctx.pc;
+
 #define CACHEOP_CASE(name)                                                   \
   cacheop_##name                                                             \
       : TRACE_PRINTF("cacheop (frame %p pc %p stub %p): " #name "\n", frame, \
@@ -2055,10 +2065,10 @@ static ICInterpretOpResult MOZ_ALWAYS_INLINE ICInterpretOps(
 #  define WEVAL_POP_CONTEXT()
 #endif
 
-static ICInterpretOpResult MOZ_NEVER_INLINE ICInterpretOpsOutlined(
-    PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, ICCacheIRStub* cstub,
-    const CacheIRStubInfo* stubInfo, const uint8_t* code, jsbytecode* pc) {
-  return ICInterpretOps(ctx, frame, sp, cstub, stubInfo, code, pc);
+static ICInterpretOpResult MOZ_NEVER_INLINE
+ICInterpretOpsOutlined(PBLCtx& ctx, ICCacheIRStub* cstub,
+                       const CacheIRStubInfo* stubInfo, const uint8_t* code) {
+  return ICInterpretOps(ctx, cstub, stubInfo, code);
 }
 
 #define SAVE_INPUTS(arity)                \
@@ -2128,6 +2138,8 @@ static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
 #define DEFINE_IC_IMPL(kind, arity, fallback_body, ool)                  \
   static PBIResult MOZ_ALWAYS_INLINE IC##kind##ool(                      \
       PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, jsbytecode* pc) { \
+    ctx.sp = sp;                                                         \
+    ctx.pc = pc;                                                         \
     ICStub* stub = frame->interpreterICEntry()->firstStub();             \
     uint64_t inputs[3];                                                  \
     SAVE_INPUTS(arity);                                                  \
@@ -2144,9 +2156,8 @@ static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
         cstub->incrementEnteredCount();                                  \
         const CacheIRStubInfo* stubInfo = cstub->stubInfo();             \
         const uint8_t* code = stubInfo->code();                          \
-        INVOKE_WEVALED_OR_GENERIC_IC(                                    \
-            result, ICInterpretOps##ool,                                 \
-            (ctx, frame, sp, cstub, stubInfo, code, pc));                \
+        INVOKE_WEVALED_OR_GENERIC_IC(result, ICInterpretOps##ool,        \
+                                     (ctx, cstub, stubInfo, code));      \
         switch (result) {                                                \
           case ICInterpretOpResult::NextIC:                              \
             stub = stub->maybeNext();                                    \

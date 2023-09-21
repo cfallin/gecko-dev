@@ -15,9 +15,9 @@
   X add stack-renaming and renaming for icregs
   - ensure that IC invocation code is minimized (put error-case switch off the
     critical path, ensure it's not in PC-specialized code)
-  - No hybrid ICs in specialized bodies? (Collect common ICs for this too)
+  X No hybrid ICs in specialized bodies? (Collect common ICs for this too)
   - Replace OOL stuff with unified template-specialized code
-  - Minimize args (four args only on x86-64) to avoid stack arg-passing to ICs
+  X Minimize args (four args only on x86-64) to avoid stack arg-passing to ICs
   - Switch to a tail-call (or just normal call-chaining) design; uniformly use
     pointer to either ICInterpretOps or specialized func; minimize size of IC
     callsite

@@ -2076,8 +2076,8 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
 
 static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
   switch (r) {
-  case ICInterpretOpResult::Return:
-    return PBIResult::Ok;
+    case ICInterpretOpResult::Return:
+      return PBIResult::Ok;
     case ICInterpretOpResult::Error:
       return PBIResult::Error;
     case ICInterpretOpResult::Unwind:
@@ -2100,21 +2100,26 @@ template <bool Specialized>
 static PBIResult ICCacheIR(PBLCtx& ctx, ICStub* stub,
                            const CacheIRStubInfo* stubInfo,
                            const uint8_t* code) {
-  uint64_t inputs[3] = {ctx.icregs.icVals[0], ctx.icregs.icVals[1],
-                        ctx.icregs.icVals[2]};
   ICCacheIRStub* cstub = stub->toCacheIRStub();
   cstub->incrementEnteredCount();
+
+  uint64_t inputs[3];
   if (!Specialized) {
-    printf("called interp from stub\n");
     stubInfo = cstub->stubInfo();
     code = stubInfo->code();
+    inputs[0] = ctx.icregs.icVals[0];
+    inputs[1] = ctx.icregs.icVals[1];
+    inputs[2] = ctx.icregs.icVals[2];
   }
+  
   auto result = ICInterpretOps<Specialized>(ctx, cstub, stubInfo, code);
   if (MOZ_UNLIKELY(result == ICInterpretOpResult::NextIC)) {
     ICStub* next = stub->maybeNext();
-    ctx.icregs.icVals[0] = inputs[0];
-    ctx.icregs.icVals[1] = inputs[1];
-    ctx.icregs.icVals[2] = inputs[2];
+    if (!Specialized) {
+      ctx.icregs.icVals[0] = inputs[0];
+      ctx.icregs.icVals[1] = inputs[1];
+      ctx.icregs.icVals[2] = inputs[2];
+    }
     return InvokeIC(ctx, next);
   }
   return ICResultToPBIResult(result);
@@ -2142,11 +2147,11 @@ uint8_t* js::GetPortableBaselineICInterpreterStub() {
     return PBIResult::Ok;                                         \
   }
 
-#define DEFINE_IC_ALIAS(kind, target)                     \
+#define DEFINE_IC_ALIAS(kind, target)                             \
   static PBIResult MOZ_ALWAYS_INLINE IC##kind##Fallback(          \
       PBLCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo, \
       const uint8_t* code) {                                      \
-    return IC##target##Fallback(ctx, stub, stubInfo, code); \
+    return IC##target##Fallback(ctx, stub, stubInfo, code);       \
   }
 
 #define IC_LOAD_VAL(state_elem, index) \

@@ -18,7 +18,7 @@
   X No hybrid ICs in specialized bodies? (Collect common ICs for this too)
   - Replace OOL stuff with unified template-specialized code
   X Minimize args (four args only on x86-64) to avoid stack arg-passing to ICs
-  - Switch to a tail-call (or just normal call-chaining) design; uniformly use
+  X Switch to a tail-call (or just normal call-chaining) design; uniformly use
     pointer to either ICInterpretOps or specialized func; minimize size of IC
     callsite
     - define a new signature and a wrapper that invokes
@@ -32,6 +32,10 @@
       template parameter is set appropriately
     - invoke jitcode pointer directly from IC site in specialized
       version of function bodies
+  - debug tail-call variant (crashes on deltablue)
+  - make sure tail-call variant preserves interp perf
+    - maybe icsite should be a static if-else to call either icinterpretops or
+      the appropriate fallback...
   - implement more missing CacheOps (at least AddAndStore... slot ops)
   - try ICs for binops etc again, once IC-site overhead is smaller
   - === milestone 3: opts

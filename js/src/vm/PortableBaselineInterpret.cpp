@@ -454,6 +454,10 @@ static ICInterpretOpResult ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
                                           const CacheIRStubInfo* stubInfo,
                                           const uint8_t* code);
 
+typedef PBIResult (*StubFunc)(PBLCtx& ctx, ICStub* stub,
+                              const CacheIRStubInfo* stubInfo,
+                              const uint8_t* code);
+
 #ifdef ENABLE_JS_PBL_WEVAL
 void js::EnqueuePortableBaselineSpecialization(JSScript* script) {
   auto& weval = script->weval();
@@ -473,10 +477,6 @@ void js::EnqueuePortableBaselineSpecialization(JSScript* script) {
         Runtime<PBIRestart>());
   }
 }
-
-typedef PBIResult (*StubFunc)(PBLCtx& ctx, ICStub* stub,
-                              const CacheIRStubInfo* stubInfo,
-                              const uint8_t* code);
 
 template <bool Specialized>
 static PBIResult ICCacheIR(PBLCtx& ctx, ICStub* stub,
@@ -521,6 +521,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
                const CacheIRStubInfo* stubInfo, const uint8_t* code) {
   StackVal* sp = ctx.sp;
   jsbytecode* pc = ctx.pc;
+  BaselineFrame* frame = ctx.frame;
 
 #define CACHEOP_CASE(name)                                                   \
   cacheop_##name                                                             \

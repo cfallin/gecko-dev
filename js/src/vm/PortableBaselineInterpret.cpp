@@ -522,6 +522,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
   StackVal* sp = ctx.sp;
   jsbytecode* pc = ctx.pc;
   BaselineFrame* frame = ctx.frame;
+  (void)frame;
 
 #define CACHEOP_CASE(name)                                                   \
   cacheop_##name                                                             \

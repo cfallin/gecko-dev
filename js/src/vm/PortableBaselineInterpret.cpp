@@ -440,19 +440,10 @@ static PBIResult MaybeSpecializedPBI(JSContext* cx, State& state, Stack& stack,
 #endif
 }
 
-enum class ICInterpretOpResult {
-  NextIC,
-  Return,
-  Error,
-  Unwind,
-  UnwindError,
-  UnwindRet,
-};
-
-template <bool Specialized = false>
-static ICInterpretOpResult ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
-                                          const CacheIRStubInfo* stubInfo,
-                                          const uint8_t* code);
+template <bool Specialized>
+static PBIResult ICInterpretOps(PBLCtx& ctx, ICStub* cstub,
+                                const CacheIRStubInfo* stubInfo,
+                                const uint8_t* code);
 
 typedef PBIResult (*StubFunc)(PBLCtx& ctx, ICStub* stub,
                               const CacheIRStubInfo* stubInfo,
@@ -491,11 +482,11 @@ void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
 
     const uint8_t* code = stubInfo->code();
 
-    weval.req =
-        weval::weval(reinterpret_cast<StubFunc*>(&weval.func), &ICCacheIR<true>,
-                     Runtime<PBLCtx&>(), Runtime<ICStub*>(),
-                     Specialize<const CacheIRStubInfo*>(stubInfo),
-                     Specialize<const uint8_t*>(code));
+    weval.req = weval::weval(reinterpret_cast<StubFunc*>(&weval.func),
+                             &ICInterpretOps<true>, Runtime<PBLCtx&>(),
+                             Runtime<ICStub*>(),
+                             Specialize<const CacheIRStubInfo*>(stubInfo),
+                             Specialize<const uint8_t*>(code));
   }
 }
 #endif
@@ -513,16 +504,30 @@ void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
   StackVal* sp = cx.spBelowFrame(); /* shadow the definition */ \
   (void)sp;                         /* avoid unused-variable warnings */
 
-#define PUSH_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(ICInterpretOpResult::Error);
+#define PUSH_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(PBIResult::Error);
+
+static MOZ_ALWAYS_INLINE PBIResult InvokeIC(PBLCtx& ctx, ICStub* stub) {
+  StubFunc func = reinterpret_cast<StubFunc>(stub->rawJitCode());
+  return func(ctx, stub, nullptr, nullptr);
+}
 
 template <bool Specialized>
-static ICInterpretOpResult MOZ_ALWAYS_INLINE
-ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
-               const CacheIRStubInfo* stubInfo, const uint8_t* code) {
+static PBIResult ICInterpretOps(PBLCtx& ctx, ICStub* stub,
+                                const CacheIRStubInfo* stubInfo,
+                                const uint8_t* code) {
+  ICCacheIRStub* cstub = stub->toCacheIRStub();
+  cstub->incrementEnteredCount();
+
   StackVal* sp = ctx.sp;
   jsbytecode* pc = ctx.pc;
   BaselineFrame* frame = ctx.frame;
   (void)frame;
+
+  uint64_t input0 = ctx.icregs.icVals[0];
+  uint64_t input1 = ctx.icregs.icVals[1];
+  uint64_t input2 = ctx.icregs.icVals[2];
+
+  PBIResult interpretResult;
 
 #define CACHEOP_CASE(name)                                                   \
   cacheop_##name                                                             \
@@ -549,10 +554,11 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     (Specialized ? weval_read_reg(idx) : ctx.icregs.icVals[(idx)])
 #  define WRITE_REG(idx, value)             \
     do {                                    \
-      if (Specialized)                      \
+      if (Specialized) {                    \
         weval_write_reg((idx), (value));    \
-      else                                  \
+      } else {                              \
         ctx.icregs.icVals[(idx)] = (value); \
+      }                                     \
     } while (0)
 #else
 #  define UPDATE_CACHEOP_WEVAL_CONTEXT()
@@ -566,13 +572,19 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
 #  define WRITE_REG(idx, value) ctx.icregs.icVals[(idx)] = (value)
 #endif
 
+#define RETURN(r)        \
+  do {                   \
+    interpretResult = r; \
+    goto out;            \
+  } while (0)
+
 #define DISPATCH_CACHEOP()        \
   UPDATE_CACHEOP_WEVAL_CONTEXT(); \
   cacheop = reader.readOp();      \
   GOTO_CACHEOP(long(cacheop));
 
 #define BOUNDSCHECK(resultId) \
-  if (resultId.id() >= ICRegs::kMaxICVals) return ICInterpretOpResult::NextIC;
+  if (resultId.id() >= ICRegs::kMaxICVals) goto next_ic;
 
   CacheOp cacheop;
 
@@ -595,7 +607,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
 
   CACHEOP_CASE(ReturnFromIC) {
     TRACE_PRINTF("stub successful!\n");
-    return ICInterpretOpResult::Return;
+    RETURN(PBIResult::Ok);
   }
 
   CACHEOP_CASE(GuardToInt32) {
@@ -604,7 +616,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     TRACE_PRINTF("GuardToInt32 (%d): icVal %" PRIx64 "\n", inputId.id(),
                  READ_REG(inputId.id()));
     if (!v.isInt32()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     // N.B.: we don't need to unbox because the low 32 bits are
     // already the int32 itself, and we are careful when using
@@ -619,7 +631,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     Value v = Value::fromRawBits(READ_REG(inputId.id()));
     TRACE_PRINTF("GuardToObject: icVal %" PRIx64 "\n", READ_REG(inputId.id()));
     if (!v.isObject()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(&v.toObject()));
     PREDICT_NEXT(GuardShape);
@@ -631,7 +643,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ValOperandId inputId = reader.valOperandId();
     Value v = Value::fromRawBits(READ_REG(inputId.id()));
     if (!v.isString()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toString()));
     PREDICT_NEXT(GuardToString);
@@ -642,7 +654,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ValOperandId inputId = reader.valOperandId();
     Value v = Value::fromRawBits(READ_REG(inputId.id()));
     if (!v.isSymbol()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toSymbol()));
     PREDICT_NEXT(GuardSpecificSymbol);
@@ -653,7 +665,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ValOperandId inputId = reader.valOperandId();
     Value v = Value::fromRawBits(READ_REG(inputId.id()));
     if (!v.isBigInt()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toBigInt()));
     DISPATCH_CACHEOP();
@@ -663,7 +675,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ValOperandId inputId = reader.valOperandId();
     Value v = Value::fromRawBits(READ_REG(inputId.id()));
     if (!v.isBoolean()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     WRITE_REG(inputId.id(), v.toBoolean() ? 1 : 0);
     DISPATCH_CACHEOP();
@@ -673,7 +685,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ObjOperandId inputId = reader.objOperandId();
     Value v = Value::fromRawBits(READ_REG(inputId.id()));
     if (!v.isNullOrUndefined()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -682,7 +694,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ObjOperandId inputId = reader.objOperandId();
     Value v = Value::fromRawBits(READ_REG(inputId.id()));
     if (!v.isNull()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -691,7 +703,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ObjOperandId inputId = reader.objOperandId();
     Value v = Value::fromRawBits(READ_REG(inputId.id()));
     if (!v.isUndefined()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -703,37 +715,37 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     switch (type) {
       case ValueType::String:
         if (!val.isString()) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case ValueType::Symbol:
         if (!val.isSymbol()) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case ValueType::BigInt:
         if (!val.isBigInt()) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case ValueType::Int32:
         if (!val.isInt32()) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case ValueType::Boolean:
         if (!val.isBoolean()) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case ValueType::Undefined:
         if (!val.isUndefined()) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case ValueType::Null:
         if (!val.isNull()) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       default:
@@ -748,7 +760,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
     uintptr_t expectedShape = stubInfo->getStubRawWord(cstub, shapeOffset);
     if (reinterpret_cast<uintptr_t>(obj->shape()) != expectedShape) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -759,7 +771,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
     uintptr_t expectedProto = stubInfo->getStubRawWord(cstub, protoOffset);
     if (reinterpret_cast<uintptr_t>(obj->staticPrototype()) != expectedProto) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     PREDICT_NEXT(LoadProto);
     DISPATCH_CACHEOP();
@@ -782,7 +794,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     (void)nargsAndFlagsOffset;  // Unused.
     uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
     if (expected != READ_REG(funId.id())) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     PREDICT_NEXT(LoadArgumentFixedSlot);
     DISPATCH_CACHEOP();
@@ -793,7 +805,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     uint32_t expectedOffset = reader.stubOffset();
     uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
     if (expected != READ_REG(funId.id())) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -803,7 +815,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     uint32_t expectedOffset = reader.stubOffset();
     uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
     if (expected != READ_REG(strId.id())) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -813,7 +825,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     uint32_t expectedOffset = reader.stubOffset();
     uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
     if (expected != READ_REG(symId.id())) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -823,7 +835,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     uint32_t expectedOffset = reader.stubOffset();
     uint32_t expected = stubInfo->getStubRawInt32(cstub, expectedOffset);
     if (expected != uint32_t(READ_REG(int32Id.id()))) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -835,64 +847,64 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     switch (kind) {
       case GuardClassKind::Array:
         if (object->getClass() != &ArrayObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::PlainObject:
         if (object->getClass() != &PlainObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::ArrayBuffer:
         if (object->getClass() != &ArrayBufferObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::SharedArrayBuffer:
         if (object->getClass() != &SharedArrayBufferObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::DataView:
         if (object->getClass() != &DataViewObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::MappedArguments:
         if (object->getClass() != &MappedArgumentsObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::UnmappedArguments:
         if (object->getClass() != &UnmappedArgumentsObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::WindowProxy:
         if (object->getClass() != ctx.frameMgr.cxForLocalUseOnly()
                                       ->runtime()
                                       ->maybeWindowProxyClass()) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::JSFunction:
         if (!object->is<JSFunction>()) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::Set:
         if (object->getClass() != &SetObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::Map:
         if (object->getClass() != &MapObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
       case GuardClassKind::BoundFunction:
         if (object->getClass() != &BoundFunctionObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
         break;
     }
@@ -1064,6 +1076,8 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     NativeObject* nobj = reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
     HeapSlot* slots = nobj->getSlotsUnchecked();
     ctx.icregs.icResult = slots[offset / sizeof(Value)].get().asRawBits();
+    TRACE_PRINTF("LoadDynamicSlotResult: nobj %p offset %d -> %" PRIx64 "\n",
+                 nobj, int(offset), ctx.icregs.icResult);
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
   }
@@ -1078,7 +1092,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     uintptr_t actual = slots[offset / sizeof(Value)].get().asRawBits();
     uintptr_t expected = READ_REG(expectedId.id());
     if (actual != expected) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -1114,7 +1128,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     extra_check;                                                   \
     int64_t result = lhs op rhs;                                   \
     if (result < INT32_MIN || result > INT32_MAX) {                \
-      return ICInterpretOpResult::NextIC;                          \
+      goto next_ic;                                                \
     }                                                              \
     ctx.icregs.icResult = Int32Value(int32_t(result)).asRawBits(); \
     PREDICT_NEXT(ReturnFromIC);                                    \
@@ -1125,26 +1139,26 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
   INT32_OP(Sub, -, {});
   INT32_OP(Mul, *, {
     if (rhs * lhs == 0 && ((rhs < 0) ^ (lhs < 0))) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
   });
   INT32_OP(Div, /, {
     if (rhs == 0 || (lhs == INT32_MIN && rhs == -1)) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     if (lhs == 0 && rhs < 0) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     if (lhs % rhs != 0) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
   });
   INT32_OP(Mod, %, {
     if (rhs == 0 || (lhs == INT32_MIN && rhs == -1)) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     if (lhs % rhs == 0 && lhs < 0) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
   });
   INT32_OP(BitAnd, &, {});
@@ -1160,7 +1174,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     if (lhs == 1) {
       result = 1;
     } else if (rhs < 0) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     } else {
       result = 1;
       int64_t runningSquare = lhs;
@@ -1168,7 +1182,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
         if (rhs & 1) {
           result *= runningSquare;
           if (result > int64_t(INT32_MAX)) {
-            return ICInterpretOpResult::NextIC;
+            goto next_ic;
           }
         }
         rhs >>= 1;
@@ -1177,7 +1191,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
         }
         runningSquare *= runningSquare;
         if (runningSquare > int64_t(INT32_MAX)) {
-          return ICInterpretOpResult::NextIC;
+          goto next_ic;
         }
       }
     }
@@ -1192,7 +1206,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     int64_t value = int64_t(int32_t(READ_REG(intId.id())));
     value++;
     if (value > INT32_MAX) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     ctx.icregs.icResult = Int32Value(int32_t(value)).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -1273,37 +1287,37 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
         case JSOp::Eq:
         case JSOp::StrictEq:
           if (!StringsEqual<EqualityKind::Equal>(cx, lhs, rhs, &result)) {
-            return ICInterpretOpResult::Error;
+            RETURN(PBIResult::Error);
           }
           break;
         case JSOp::Ne:
         case JSOp::StrictNe:
           if (!StringsEqual<EqualityKind::NotEqual>(cx, lhs, rhs, &result)) {
-            return ICInterpretOpResult::Error;
+            RETURN(PBIResult::Error);
           }
           break;
         case JSOp::Lt:
           if (!StringsCompare<ComparisonKind::LessThan>(cx, lhs, rhs,
                                                         &result)) {
-            return ICInterpretOpResult::Error;
+            RETURN(PBIResult::Error);
           }
           break;
         case JSOp::Ge:
           if (!StringsCompare<ComparisonKind::GreaterThanOrEqual>(cx, lhs, rhs,
                                                                   &result)) {
-            return ICInterpretOpResult::Error;
+            RETURN(PBIResult::Error);
           }
           break;
         case JSOp::Le:
           if (!StringsCompare<ComparisonKind::GreaterThanOrEqual>(
                   cx, /* N.B. swapped order */ rhs, lhs, &result)) {
-            return ICInterpretOpResult::Error;
+            RETURN(PBIResult::Error);
           }
           break;
         case JSOp::Gt:
           if (!StringsCompare<ComparisonKind::LessThan>(
                   cx, /* N.B. swapped order */ rhs, lhs, &result)) {
-            return ICInterpretOpResult::Error;
+            RETURN(PBIResult::Error);
           }
           break;
         default:
@@ -1321,7 +1335,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ValOperandId inputId = reader.valOperandId();
     Value val = Value::fromRawBits(READ_REG(inputId.id()));
     if (val.isObject() && val.toObject().getClass()->isProxyObject()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
 
     bool result;
@@ -1355,7 +1369,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
     const JSClass* cls = obj->getClass();
     if (cls->isProxyObject()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     ctx.icregs.icResult = BooleanValue(!cls->emulatesUndefined()).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -1377,7 +1391,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
         DISPATCH_CACHEOP();
       }
     }
-    return ICInterpretOpResult::NextIC;
+    goto next_ic;
   }
 
   CACHEOP_CASE(GuardGlobalGeneration) {
@@ -1387,7 +1401,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     uint32_t* generationAddr = reinterpret_cast<uint32_t*>(
         stubInfo->getStubRawWord(cstub, generationAddrOffset));
     if (*generationAddr != expected) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -1402,7 +1416,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     (void)nargsFlagsAndOffset;
 
     if (!fun->hasBaseScript() || fun->baseScript() != expected) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
 
     PREDICT_NEXT(CallScriptedFunction);
@@ -1429,25 +1443,25 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     if (!isNative) {
       if (!callee->hasBaseScript() || !callee->baseScript()->hasBytecode() ||
           !callee->baseScript()->hasJitScript()) {
-        return ICInterpretOpResult::NextIC;
+        goto next_ic;
       }
     }
 
     // For now, fail any constructing or different-realm cases.
     if (flags.isConstructing() || !flags.isSameRealm()) {
       TRACE_PRINTF("failing: constructing or not same realm\n");
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     // And support only "standard" arg formats.
     if (flags.getArgFormat() != CallFlags::Standard) {
       TRACE_PRINTF("failing: not standard arg format\n");
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
 
     // For now, fail any arg-underflow case.
     if (argc < callee->nargs()) {
       TRACE_PRINTF("failing: too few args\n");
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
 
     uint32_t extra = 1 + flags.isConstructing() + isNative;
@@ -1459,7 +1473,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
 
       if (!ctx.stack.check(sp, sizeof(StackVal) * (totalArgs + 6))) {
         ReportOverRecursed(ctx.frameMgr.cxForLocalUseOnly());
-        return ICInterpretOpResult::Error;
+        RETURN(PBIResult::Error);
       }
 
       // This will not be an Exit frame but a BaselineStub frame, so
@@ -1502,7 +1516,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
         POPNNATIVE(4);
 
         if (!success) {
-          return ICInterpretOpResult::Error;
+          RETURN(PBIResult::Error);
         }
         ctx.icregs.icResult = args[0].asRawBits();
       } else {
@@ -1520,13 +1534,13 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
           case PBIResult::Ok:
             break;
           case PBIResult::Error:
-            return ICInterpretOpResult::Error;
+            RETURN(PBIResult::Error);
           case PBIResult::Unwind:
-            return ICInterpretOpResult::Unwind;
+            RETURN(PBIResult::Unwind);
           case PBIResult::UnwindError:
-            return ICInterpretOpResult::UnwindError;
+            RETURN(PBIResult::UnwindError);
           case PBIResult::UnwindRet:
-            return ICInterpretOpResult::UnwindRet;
+            RETURN(PBIResult::UnwindRet);
         }
       }
     }
@@ -1555,7 +1569,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     if (str) {
       WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str));
     } else {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -1574,7 +1588,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     if (result) {
       ctx.icregs.icResult = StringValue(result).asRawBits();
     } else {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     PREDICT_NEXT(ReturnFromIC);
     DISPATCH_CACHEOP();
@@ -1588,7 +1602,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ObjectElements* elems = nobj->getElementsHeader();
     uint32_t length = elems->getLength();
     if (length > uint32_t(INT32_MAX)) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     WRITE_REG(resultId.id(), length);
     DISPATCH_CACHEOP();
@@ -1600,7 +1614,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ObjectElements* elems = nobj->getElementsHeader();
     uint32_t length = elems->getLength();
     if (length > uint32_t(INT32_MAX)) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     ctx.icregs.icResult = Int32Value(length).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -1612,7 +1626,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
     size_t length = str->length();
     if (length > size_t(INT32_MAX)) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     ctx.icregs.icResult = Int32Value(length).asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -1632,7 +1646,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
         // Return an empty string.
         result = ctx.frameMgr.cxForLocalUseOnly()->names().empty;
       } else {
-        return ICInterpretOpResult::NextIC;
+        goto next_ic;
       }
     } else {
       char16_t c;
@@ -1646,7 +1660,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
         PUSH_IC_FRAME();
         result = StringFromCharCode(cx, c);
         if (!result) {
-          return ICInterpretOpResult::Error;
+          RETURN(PBIResult::Error);
         }
       }
     }
@@ -1668,7 +1682,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
         // Return NaN.
         result = JS::NaNValue();
       } else {
-        return ICInterpretOpResult::NextIC;
+        goto next_ic;
       }
     } else {
       char16_t c;
@@ -1696,7 +1710,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
       PUSH_IC_FRAME();
       JSLinearString* result = LinearizeForCharAccess(cx, str);
       if (!result) {
-        return ICInterpretOpResult::Error;
+        RETURN(PBIResult::Error);
       }
       WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(result));
     }
@@ -1727,12 +1741,12 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ObjectElements* elems = nobj->getElementsHeader();
     int32_t index = int32_t(READ_REG(indexId.id()));
     if (index < 0 || uint32_t(index) >= elems->getInitializedLength()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     HeapSlot* slot = &elems->elements()[index];
     Value val = slot->get();
     if (val.isMagic()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     ctx.icregs.icResult = val.asRawBits();
     PREDICT_NEXT(ReturnFromIC);
@@ -1747,11 +1761,11 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     ObjectElements* elems = nobj->getElementsHeader();
     int32_t index = int32_t(READ_REG(indexId.id()));
     if (index < 0 || uint32_t(index) >= elems->getInitializedLength()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     HeapSlot* slot = &elems->elements()[index];
     if (slot->get().isMagic()) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     Value val = Value::fromRawBits(READ_REG(valId.id()));
     slot->set(nobj, HeapSlot::Element, index + elems->numShiftedElements(),
@@ -1764,7 +1778,7 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
     uint32_t builderAddrOffset = reader.stubOffset();
     uintptr_t builderAddr = stubInfo->getStubRawWord(cstub, builderAddrOffset);
     if (*reinterpret_cast<uintptr_t*>(builderAddr) != 0) {
-      return ICInterpretOpResult::NextIC;
+      goto next_ic;
     }
     DISPATCH_CACHEOP();
   }
@@ -2062,8 +2076,20 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
   CACHEOP_CASE_UNIMPL(AssertRecoveredOnBailoutResult)
   CACHEOP_CASE_UNIMPL(GuardIsNotUninitializedLexical) {
     TRACE_PRINTF("unknown CacheOp: %s\n", CacheIROpNames[int(cacheop)]);
-    return ICInterpretOpResult::NextIC;
+    goto next_ic;
   }
+
+out:
+  return interpretResult;
+
+next_ic:
+  ICStub* next = stub->maybeNext();
+  if (!Specialized) {
+    ctx.icregs.icVals[0] = input0;
+    ctx.icregs.icVals[1] = input1;
+    ctx.icregs.icVals[2] = input2;
+  }
+  return InvokeIC(ctx, next);
 
 #undef PREDICT_NEXT
 }
@@ -2074,59 +2100,8 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
 #  define WEVAL_POP_CONTEXT()
 #endif
 
-static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
-  switch (r) {
-    case ICInterpretOpResult::Return:
-      return PBIResult::Ok;
-    case ICInterpretOpResult::Error:
-      return PBIResult::Error;
-    case ICInterpretOpResult::Unwind:
-      return PBIResult::Unwind;
-    case ICInterpretOpResult::UnwindError:
-      return PBIResult::UnwindError;
-    case ICInterpretOpResult::UnwindRet:
-      return PBIResult::UnwindRet;
-    default:
-      MOZ_CRASH("ICResultToPBIResult invoked for unknown enum value");
-  }
-}
-
-static MOZ_ALWAYS_INLINE PBIResult InvokeIC(PBLCtx& ctx, ICStub* stub) {
-  StubFunc func = reinterpret_cast<StubFunc>(stub->rawJitCode());
-  return func(ctx, stub, nullptr, nullptr);
-}
-
-template <bool Specialized>
-static PBIResult ICCacheIR(PBLCtx& ctx, ICStub* stub,
-                           const CacheIRStubInfo* stubInfo,
-                           const uint8_t* code) {
-  ICCacheIRStub* cstub = stub->toCacheIRStub();
-  cstub->incrementEnteredCount();
-
-  uint64_t inputs[3];
-  if (!Specialized) {
-    stubInfo = cstub->stubInfo();
-    code = stubInfo->code();
-    inputs[0] = ctx.icregs.icVals[0];
-    inputs[1] = ctx.icregs.icVals[1];
-    inputs[2] = ctx.icregs.icVals[2];
-  }
-  
-  auto result = ICInterpretOps<Specialized>(ctx, cstub, stubInfo, code);
-  if (MOZ_UNLIKELY(result == ICInterpretOpResult::NextIC)) {
-    ICStub* next = stub->maybeNext();
-    if (!Specialized) {
-      ctx.icregs.icVals[0] = inputs[0];
-      ctx.icregs.icVals[1] = inputs[1];
-      ctx.icregs.icVals[2] = inputs[2];
-    }
-    return InvokeIC(ctx, next);
-  }
-  return ICResultToPBIResult(result);
-}
-
 uint8_t* js::GetPortableBaselineICInterpreterStub() {
-  return reinterpret_cast<uint8_t*>(&ICCacheIR<false>);
+  return reinterpret_cast<uint8_t*>(&ICInterpretOps<false>);
 }
 
 #define DEFINE_IC(kind, arity, fallback_body)                     \
@@ -2459,8 +2434,9 @@ uint8_t* js::GetPortableBaselineICFallback(BaselineICFallbackKind kind) {
     WEVAL_UPDATE_CONTEXT(pc); \
     GOTO_OP_AT_PC();
 #else
-#  define DISPATCH() \
-    DEBUG_CHECK();   \
+#  define DISPATCH()          \
+    DEBUG_CHECK();            \
+    WEVAL_UPDATE_CONTEXT(pc); \
     goto dispatch
 #endif
 

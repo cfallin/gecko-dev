@@ -191,12 +191,22 @@ class ICStub {
     return isFallback();
   }
   JitCode* jitCode() {
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+    MOZ_CRASH("PBL mode does not have JitCode on ICs");
+#else
     MOZ_ASSERT(!usesTrampolineCode());
     return JitCode::FromExecutable(stubCode_);
+#endif
   }
   bool hasJitCode() {
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+    return false;
+#else
     return !!stubCode_;
+#endif
   }
+
+  uint8_t* rawJitCode() { return stubCode_; }
 
   uint32_t enteredCount() const { return enteredCount_; }
   inline void incrementEnteredCount() { enteredCount_++; }
@@ -271,8 +281,11 @@ class ICCacheIRStub final : public ICStub {
 
  public:
   ICCacheIRStub(JitCode* stubCode, const CacheIRStubInfo* stubInfo)
-      : ICStub(stubCode ? stubCode->raw() : nullptr, /* isFallback = */ false),
+      : ICStub(stubCode->raw(), /* isFallback = */ false),
         stubInfo_(stubInfo) {}
+
+  ICCacheIRStub(uint8_t* stubCodeRaw, const CacheIRStubInfo* stubInfo)
+      : ICStub(stubCodeRaw, /* isFallback = */ false), stubInfo_(stubInfo) {}
 
   ICStub* next() const { return next_; }
   void setNext(ICStub* stub) { next_ = stub; }

@@ -356,6 +356,7 @@ struct PBLCtx {
   // State to pass to ICs while saving on direct args:
   jsbytecode* pc;
   StackVal* sp;
+  BaselineFrame* frame;
 
   PBLCtx(JSContext* cx, BaselineFrame* frame, State& state_, Stack& stack_)
       : state(state_),
@@ -363,7 +364,8 @@ struct PBLCtx {
         frameMgr(cx, frame),
         icregs(),
         pc(nullptr),
-        sp(nullptr) {}
+        sp(nullptr),
+        frame(nullptr) {}
 };
 
 static EnvironmentObject& getEnvironmentFromCoordinate(
@@ -447,10 +449,6 @@ enum class ICInterpretOpResult {
   UnwindRet,
 };
 
-typedef ICInterpretOpResult (*ICFunc)(PBLCtx& ctx, ICCacheIRStub* cstub,
-                                      const CacheIRStubInfo* stubInfo,
-                                      const uint8_t* code);
-
 template <bool Specialized = false>
 static ICInterpretOpResult ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
                                           const CacheIRStubInfo* stubInfo,
@@ -476,6 +474,15 @@ void js::EnqueuePortableBaselineSpecialization(JSScript* script) {
   }
 }
 
+typedef PBIResult (*StubFunc)(PBLCtx& ctx, ICStub* stub,
+                              const CacheIRStubInfo* stubInfo,
+                              const uint8_t* code);
+
+template <bool Specialized>
+static PBIResult ICCacheIR(PBLCtx& ctx, ICStub* stub,
+                           const CacheIRStubInfo* stubInfo,
+                           const uint8_t* code);
+
 void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
   auto& weval = stubInfo->weval();
   if (!weval.req) {
@@ -484,11 +491,11 @@ void js::EnqueuePortableBaselineICSpecialization(CacheIRStubInfo* stubInfo) {
 
     const uint8_t* code = stubInfo->code();
 
-    weval.req = weval::weval(reinterpret_cast<ICFunc*>(&weval.func),
-                             &ICInterpretOps<true>, Runtime<PBLCtx&>(),
-                             Runtime<ICCacheIRStub*>(),
-                             Specialize<const CacheIRStubInfo*>(stubInfo),
-                             Specialize<const uint8_t*>(code));
+    weval.req =
+        weval::weval(reinterpret_cast<StubFunc*>(&weval.func), &ICCacheIR<true>,
+                     Runtime<PBLCtx&>(), Runtime<ICStub*>(),
+                     Specialize<const CacheIRStubInfo*>(stubInfo),
+                     Specialize<const uint8_t*>(code));
   }
 }
 #endif
@@ -2065,63 +2072,10 @@ ICInterpretOps(PBLCtx& ctx, ICCacheIRStub* cstub,
 #  define WEVAL_POP_CONTEXT()
 #endif
 
-static ICInterpretOpResult MOZ_NEVER_INLINE
-ICInterpretOpsOutlined(PBLCtx& ctx, ICCacheIRStub* cstub,
-                       const CacheIRStubInfo* stubInfo, const uint8_t* code) {
-  return ICInterpretOps(ctx, cstub, stubInfo, code);
-}
-
-#define SAVE_INPUTS(arity)                \
-  do {                                    \
-    switch (arity) {                      \
-      case 0:                             \
-        break;                            \
-      case 1:                             \
-        inputs[0] = ctx.icregs.icVals[0]; \
-        break;                            \
-      case 2:                             \
-        inputs[0] = ctx.icregs.icVals[0]; \
-        inputs[1] = ctx.icregs.icVals[1]; \
-        break;                            \
-      case 3:                             \
-        inputs[0] = ctx.icregs.icVals[0]; \
-        inputs[1] = ctx.icregs.icVals[1]; \
-        inputs[2] = ctx.icregs.icVals[2]; \
-        break;                            \
-    }                                     \
-  } while (0)
-
-#define RESTORE_INPUTS(arity)             \
-  do {                                    \
-    switch (arity) {                      \
-      case 0:                             \
-        break;                            \
-      case 1:                             \
-        ctx.icregs.icVals[0] = inputs[0]; \
-        break;                            \
-      case 2:                             \
-        ctx.icregs.icVals[0] = inputs[0]; \
-        ctx.icregs.icVals[1] = inputs[1]; \
-        break;                            \
-      case 3:                             \
-        ctx.icregs.icVals[0] = inputs[0]; \
-        ctx.icregs.icVals[1] = inputs[1]; \
-        ctx.icregs.icVals[2] = inputs[2]; \
-        break;                            \
-    }                                     \
-  } while (0)
-
-#ifdef ENABLE_JS_PBL_WEVAL
-#  define INVOKE_WEVALED_OR_GENERIC_IC(result, generic, args)     \
-    auto func = reinterpret_cast<ICFunc>(stubInfo->weval().func); \
-    auto result = func ? func args : generic args
-#else
-#  define INVOKE_WEVALED_OR_GENERIC_IC(result, generic, args) \
-    auto result = generic args
-#endif
-
 static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
   switch (r) {
+  case ICInterpretOpResult::Return:
+    return PBIResult::Ok;
     case ICInterpretOpResult::Error:
       return PBIResult::Error;
     case ICInterpretOpResult::Unwind:
@@ -2135,62 +2089,63 @@ static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
   }
 }
 
-#define DEFINE_IC_IMPL(kind, arity, fallback_body, ool)                  \
-  static PBIResult MOZ_ALWAYS_INLINE IC##kind##ool(                      \
-      PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, jsbytecode* pc) { \
-    ctx.sp = sp;                                                         \
-    ctx.pc = pc;                                                         \
-    ICStub* stub = frame->interpreterICEntry()->firstStub();             \
-    uint64_t inputs[3];                                                  \
-    SAVE_INPUTS(arity);                                                  \
-    while (true) {                                                       \
-    next_stub:                                                           \
-      if (stub->isFallback()) {                                          \
-        ICFallbackStub* fallback = stub->toFallbackStub();               \
-        fallback_body;                                                   \
-        ctx.icregs.icResult = ctx.state.res.asRawBits();                 \
-        ctx.state.res = UndefinedValue();                                \
-        return PBIResult::Ok;                                            \
-      } else {                                                           \
-        ICCacheIRStub* cstub = stub->toCacheIRStub();                    \
-        cstub->incrementEnteredCount();                                  \
-        const CacheIRStubInfo* stubInfo = cstub->stubInfo();             \
-        const uint8_t* code = stubInfo->code();                          \
-        INVOKE_WEVALED_OR_GENERIC_IC(result, ICInterpretOps##ool,        \
-                                     (ctx, cstub, stubInfo, code));      \
-        switch (result) {                                                \
-          case ICInterpretOpResult::NextIC:                              \
-            stub = stub->maybeNext();                                    \
-            RESTORE_INPUTS(arity);                                       \
-            goto next_stub;                                              \
-          case ICInterpretOpResult::Return:                              \
-            return PBIResult::Ok;                                        \
-          default:                                                       \
-            return ICResultToPBIResult(result);                          \
-        }                                                                \
-      }                                                                  \
-    }                                                                    \
+static MOZ_ALWAYS_INLINE PBIResult InvokeIC(PBLCtx& ctx, ICStub* stub) {
+  StubFunc func = reinterpret_cast<StubFunc>(stub->rawJitCode());
+  return func(ctx, stub, nullptr, nullptr);
+}
+
+template <bool Specialized>
+static PBIResult ICCacheIR(PBLCtx& ctx, ICStub* stub,
+                           const CacheIRStubInfo* stubInfo,
+                           const uint8_t* code) {
+  uint64_t inputs[3] = {ctx.icregs.icVals[0], ctx.icregs.icVals[1],
+                        ctx.icregs.icVals[2]};
+  ICCacheIRStub* cstub = stub->toCacheIRStub();
+  cstub->incrementEnteredCount();
+  if (!Specialized) {
+    printf("called interp from stub\n");
+    stubInfo = cstub->stubInfo();
+    code = stubInfo->code();
+  }
+  auto result = ICInterpretOps<Specialized>(ctx, cstub, stubInfo, code);
+  if (MOZ_UNLIKELY(result == ICInterpretOpResult::NextIC)) {
+    ICStub* next = stub->maybeNext();
+    ctx.icregs.icVals[0] = inputs[0];
+    ctx.icregs.icVals[1] = inputs[1];
+    ctx.icregs.icVals[2] = inputs[2];
+    return InvokeIC(ctx, next);
+  }
+  return ICResultToPBIResult(result);
+}
+
+uint8_t* js::GetPortableBaselineICInterpreterStub() {
+  return reinterpret_cast<uint8_t*>(&ICCacheIR<false>);
+}
+
+#define DEFINE_IC(kind, arity, fallback_body)                     \
+  static PBIResult MOZ_ALWAYS_INLINE IC##kind##Fallback(          \
+      PBLCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo, \
+      const uint8_t* code) {                                      \
+    ICFallbackStub* fallback = stub->toFallbackStub();            \
+    StackVal* sp = ctx.sp;                                        \
+    jsbytecode* pc = ctx.pc;                                      \
+    BaselineFrame* frame = ctx.frame;                             \
+    (void)fallback;                                               \
+    (void)sp;                                                     \
+    (void)pc;                                                     \
+    (void)frame;                                                  \
+    fallback_body;                                                \
+    ctx.icregs.icResult = ctx.state.res.asRawBits();              \
+    ctx.state.res = UndefinedValue();                             \
+    return PBIResult::Ok;                                         \
   }
 
-#define DEFINE_IC(kind, arity, fallback_body)                                \
-  DEFINE_IC_IMPL(kind, arity, fallback_body, )                               \
-                                                                             \
-  static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(                      \
-      PBLCtx& ctx, BaselineFrame* frame, StackVal* sp, jsbytecode* pc,       \
-      ICFallbackStub* fallback) {                                            \
-    fallback_body;                                                           \
-    return PBIResult::Ok;                                                    \
-  }                                                                          \
-                                                                             \
-  DEFINE_IC_IMPL(                                                            \
-      kind, arity,                                                           \
-      {                                                                      \
-        PBIResult result = IC##kind##Fallback(ctx, frame, sp, pc, fallback); \
-        if (result != PBIResult::Ok) {                                       \
-          return result;                                                     \
-        }                                                                    \
-      },                                                                     \
-      Outlined)
+#define DEFINE_IC_ALIAS(kind, target)                     \
+  static PBIResult MOZ_ALWAYS_INLINE IC##kind##Fallback(          \
+      PBLCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo, \
+      const uint8_t* code) {                                      \
+    return IC##target##Fallback(ctx, stub, stubInfo, code); \
+  }
 
 #define IC_LOAD_VAL(state_elem, index) \
   ReservedRooted<Value> state_elem(    \
@@ -2202,7 +2157,7 @@ static MOZ_NEVER_INLINE PBIResult ICResultToPBIResult(ICInterpretOpResult r) {
 
 #define PUSH_FALLBACK_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(PBIResult::Error)
 
-DEFINE_IC(Typeof, 1, {
+DEFINE_IC(TypeOf, 1, {
   IC_LOAD_VAL(value0, 0);
   PUSH_FALLBACK_IC_FRAME();
   if (!DoTypeOfFallback(cx, frame, fallback, value0, &ctx.state.res)) {
@@ -2443,6 +2398,22 @@ DEFINE_IC(CloseIter, 1, {
   }
 });
 
+DEFINE_IC_ALIAS(CallConstructing, Call);
+DEFINE_IC_ALIAS(SpreadCall, Call);
+DEFINE_IC_ALIAS(SpreadCallConstructing, Call);
+
+uint8_t* js::GetPortableBaselineICFallback(BaselineICFallbackKind kind) {
+  switch (kind) {
+#define CASE(kind)                   \
+  case BaselineICFallbackKind::kind: \
+    return reinterpret_cast<uint8_t*>(&IC##kind##Fallback);
+    IC_BASELINE_FALLBACK_CODE_KIND_LIST(CASE)
+#undef CASE
+    default:
+      MOZ_CRASH("Unknown IC kind");
+  }
+}
+
 #define PUSH_EXIT_FRAME() PUSH_EXIT_FRAME_OR_RET(PBIResult::Error)
 
 #ifndef __wasi__
@@ -2534,14 +2505,21 @@ DEFINE_IC(CloseIter, 1, {
 
 #define NEXT_IC() frame->interpreterICEntry()++;
 
-#define INVOKE_IC(kind)                                   \
-  icResult = (spec == PBISpecialization::Specialized)     \
-                 ? IC##kind##Outlined(ctx, frame, sp, pc) \
-                 : IC##kind(ctx, frame, sp, pc);          \
-  if (MOZ_UNLIKELY(icResult != PBIResult::Ok)) {          \
-    WEVAL_POP_CONTEXT();                                  \
-    goto ic_fail;                                         \
-  }                                                       \
+static PBIResult MOZ_ALWAYS_INLINE ICSite(PBLCtx& ctx, BaselineFrame* frame,
+                                          StackVal* sp, jsbytecode* pc) {
+  ctx.frame = frame;
+  ctx.sp = sp;
+  ctx.pc = pc;
+  ICStub* stub = frame->interpreterICEntry()->firstStub();
+  return InvokeIC(ctx, stub);
+}
+
+#define INVOKE_IC(kind)                          \
+  icResult = ICSite(ctx, frame, sp, pc);         \
+  if (MOZ_UNLIKELY(icResult != PBIResult::Ok)) { \
+    WEVAL_POP_CONTEXT();                         \
+    goto ic_fail;                                \
+  }                                              \
   NEXT_IC();
 
 template <PBISpecialization spec>
@@ -2794,7 +2772,7 @@ static PBIResult PortableBaselineInterpret(
         NEXT_IC();
       } else {
         IC_POP_ARG(0);
-        INVOKE_IC(Typeof);
+        INVOKE_IC(TypeOf);
         IC_PUSH_RESULT();
       }
       END_OP(Typeof);

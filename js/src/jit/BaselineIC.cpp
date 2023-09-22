@@ -32,6 +32,7 @@
 #include "vm/JSFunction.h"
 #include "vm/JSScript.h"
 #include "vm/Opcodes.h"
+#include "vm/PortableBaselineInterpret.h"
 #ifdef MOZ_VTUNE
 #  include "vtune/VTuneWrapper.h"
 #endif
@@ -323,12 +324,12 @@ static constexpr OpToFallbackKindTable FallbackKindTable;
 
 void ICScript::initICEntries(JSContext* cx, JSScript* script) {
   MOZ_ASSERT(cx->realm()->jitRealm());
-  #ifdef ENABLE_PORTABLE_BASELINE_INTERP
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
   MOZ_ASSERT(jit::IsBaselineInterpreterEnabled() ||
              jit::IsPortableBaselineInterpreterEnabled());
-  #else
+#else
   MOZ_ASSERT(jit::IsBaselineInterpreterEnabled());
-  #endif
+#endif
 
   MOZ_ASSERT(numICEntries() == script->numICEntries());
 
@@ -357,9 +358,15 @@ void ICScript::initICEntries(JSContext* cx, JSScript* script) {
                "Unexpected fallback kind for non-JOF_IC op");
 
     BaselineICFallbackKind kind = BaselineICFallbackKind(tableValue);
+
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
     TrampolinePtr stubCode = jit::IsBaselineInterpreterEnabled()
                                  ? fallbackCode.addr(kind)
                                  : TrampolinePtr();
+#else
+    (void)fallbackCode;
+    TrampolinePtr stubCode = TrampolinePtr{GetPortableBaselineICFallback(kind)};
+#endif
 
     // Initialize the ICEntry and ICFallbackStub.
     uint32_t offset = loc.bytecodeToOffset(script);

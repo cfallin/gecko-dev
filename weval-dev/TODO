@@ -21,6 +21,17 @@
   - Switch to a tail-call (or just normal call-chaining) design; uniformly use
     pointer to either ICInterpretOps or specialized func; minimize size of IC
     callsite
+    - define a new signature and a wrapper that invokes
+      ICInterpretOps, then tail-calls next func
+    - set jitcode pointer in IC stubs to cast function pointer from
+      weval state in CacheIRStubInfo
+    - if not set, set to a wrapper function that invokes IC interpreter
+    - set jitcode pointer in fallback stubs to a wrapper that invokes
+      fallback
+    - at tail of ICInterpretOps, invoke next stub's function, if
+      template parameter is set appropriately
+    - invoke jitcode pointer directly from IC site in specialized
+      version of function bodies
   - implement more missing CacheOps (at least AddAndStore... slot ops)
   - try ICs for binops etc again, once IC-site overhead is smaller
   - === milestone 3: opts

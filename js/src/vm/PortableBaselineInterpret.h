@@ -14,8 +14,10 @@
 
 #include "jspubtd.h"
 
+#include "jit/BaselineIC.h"
 #include "jit/CacheIRCompiler.h"
 #include "jit/JitContext.h"
+#include "jit/JitRuntime.h"
 #include "jit/JitScript.h"
 #include "vm/Interpreter.h"
 #include "vm/Stack.h"
@@ -30,6 +32,8 @@ jit::MethodStatus CanEnterPortableBaselineInterpreter(JSContext* cx,
                                                       RunState& state);
 bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
                                            size_t numActualArgs);
+uint8_t* GetPortableBaselineICFallback(jit::BaselineICFallbackKind kind);
+uint8_t* GetPortableBaselineICInterpreterStub();
 
 #ifdef ENABLE_JS_PBL_WEVAL
 void EnqueuePortableBaselineSpecialization(JSScript* script);

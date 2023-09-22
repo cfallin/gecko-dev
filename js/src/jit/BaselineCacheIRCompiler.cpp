@@ -433,7 +433,7 @@ bool BaselineCacheIRCompiler::emitGuardSpecificAtom(StringOperandId strId,
                                liveVolatileFloatRegs());
   masm.PushRegsInMask(volatileRegs);
 
-  using Fn = bool (*)(JSString* str1, JSString* str2);
+  using Fn = bool (*)(JSString * str1, JSString * str2);
   masm.setupUnalignedABICall(scratch);
   masm.loadPtr(atomAddr, scratch);
   masm.passABIArg(scratch);
@@ -884,7 +884,7 @@ bool BaselineCacheIRCompiler::emitAddAndStoreSlotShared(
                          liveVolatileFloatRegs());
     masm.PushRegsInMask(save);
 
-    using Fn = bool (*)(JSContext* cx, NativeObject* obj, uint32_t newCount);
+    using Fn = bool (*)(JSContext * cx, NativeObject * obj, uint32_t newCount);
     masm.setupUnalignedABICall(scratch1);
     masm.loadJSContext(scratch1);
     masm.passABIArg(scratch1);
@@ -1434,7 +1434,7 @@ void BaselineCacheIRCompiler::emitAtomizeString(Register str, Register temp,
                          liveVolatileFloatRegs());
     masm.PushRegsInMask(save);
 
-    using Fn = JSAtom* (*)(JSContext* cx, JSString* str);
+    using Fn = JSAtom* (*)(JSContext * cx, JSString * str);
     masm.setupUnalignedABICall(temp);
     masm.loadJSContext(temp);
     masm.passABIArg(temp);
@@ -1822,7 +1822,7 @@ bool BaselineCacheIRCompiler::emitCallAddOrUpdateSparseElementHelper(
   masm.Push(id);
   masm.Push(obj);
 
-  using Fn = bool (*)(JSContext* cx, Handle<NativeObject*> obj, int32_t int_id,
+  using Fn = bool (*)(JSContext * cx, Handle<NativeObject*> obj, int32_t int_id,
                       HandleValue v, bool strict);
   callVM<Fn, AddOrUpdateSparseElementHelper>(masm);
 
@@ -2576,7 +2576,18 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
       break;
   }
 
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
   auto newStub = new (newStubMem) ICCacheIRStub(code, stubInfo);
+#elif defined(ENABLE_JS_PBL_WEVAL)
+  auto& weval = stubInfo->weval();
+  uint8_t* rawCode = weval.func ? reinterpret_cast<uint8_t*>(weval.func)
+                                : GetPortableBaselineICInterpreterStub();
+  auto newStub = new (newStubMem) ICCacheIRStub(rawCode, stubInfo);
+#else
+  uint8_t* rawCode = GetPortableBaselineICInterpreterStub();
+  auto newStub = new (newStubMem) ICCacheIRStub(rawCode, stubInfo);
+#endif
+
   writer.copyStubData(newStub->stubDataStart());
   newStub->setTypeData(writer.typeData());
   stub->addNewStub(icEntry, newStub);
@@ -3983,7 +3994,7 @@ bool BaselineCacheIRCompiler::emitCallRegExpMatcherResult(
     masm.Push(regexp);
 
     using Fn = bool (*)(JSContext*, HandleObject regexp, HandleString input,
-                        int32_t lastIndex, MatchPairs* pairs,
+                        int32_t lastIndex, MatchPairs * pairs,
                         MutableHandleValue output);
     callVM<Fn, RegExpMatcherRaw>(masm);
   }
@@ -4044,8 +4055,9 @@ bool BaselineCacheIRCompiler::emitCallRegExpSearcherResult(
     masm.Push(input);
     masm.Push(regexp);
 
-    using Fn = bool (*)(JSContext*, HandleObject regexp, HandleString input,
-                        int32_t lastIndex, MatchPairs* pairs, int32_t* result);
+    using Fn =
+        bool (*)(JSContext*, HandleObject regexp, HandleString input,
+                 int32_t lastIndex, MatchPairs * pairs, int32_t * result);
     callVM<Fn, RegExpSearcherRaw>(masm);
   }
 
@@ -4100,7 +4112,7 @@ bool BaselineCacheIRCompiler::emitRegExpBuiltinExecMatchResult(
 
     using Fn =
         bool (*)(JSContext*, Handle<RegExpObject*> regexp, HandleString input,
-                 MatchPairs* pairs, MutableHandleValue output);
+                 MatchPairs * pairs, MutableHandleValue output);
     callVM<Fn, RegExpBuiltinExecMatchFromJit>(masm);
   }
 

@@ -518,6 +518,11 @@ static PBIResult ICInterpretOps(PBLCtx& ctx, ICStub* stub,
   ICCacheIRStub* cstub = stub->toCacheIRStub();
   cstub->incrementEnteredCount();
 
+  if (!Specialized) {
+    stubInfo = cstub->stubInfo();
+    code = stubInfo->code();
+  }
+
   StackVal* sp = ctx.sp;
   jsbytecode* pc = ctx.pc;
   BaselineFrame* frame = ctx.frame;

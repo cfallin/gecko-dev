@@ -32,13 +32,25 @@
       template parameter is set appropriately
     - invoke jitcode pointer directly from IC site in specialized
       version of function bodies
-  - debug tail-call variant (crashes on deltablue)
+  X debug tail-call variant (crashes on deltablue)
   - make sure tail-call variant preserves interp perf
     - maybe icsite should be a static if-else to call either icinterpretops or
       the appropriate fallback...
   - implement more missing CacheOps (at least AddAndStore... slot ops)
+  - push IC-site return-value switch past an ensure_generic; only check a bool
+    (put interpResult in PBLCtx)
+  - conserve args: get `code` from const `stubInfo`; add field to weval req to
+    delete constant args, and delete `stubInfo` in specialized variant; now we
+    have two args for IC args (plus ctx and stub instance)
+  - return icResult instead, and put failure flag in PBLCtx? Then we have a
+    load after every IC chain returns, but common-case data path is through
+    registers, and we don't have a store to "fail" flag in common case
   - try ICs for binops etc again, once IC-site overhead is smaller
   - === milestone 3: opts
+  - add a "binary dump" of IC bodies via an env var; do this across all tests;
+    pass this binary as a blob into engine init; keep reference to it, and use
+    it when initializing new Realms
+  - === milestone 4: cleanup
 
 - PBL
   - async resume (v2 -- fix perf regression)

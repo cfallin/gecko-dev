@@ -414,7 +414,7 @@ class VMFrame {
  * -----------------------------------------------
  */
 
-ICInterpretOpResult MOZ_ALWAYS_INLINE
+ICInterpretOpResult MOZ_NEVER_INLINE
 ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
                ICRegs& icregs, Stack& stack, StackVal* sp, ICCacheIRStub* cstub,
                jsbytecode* pc) {

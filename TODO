@@ -20,3 +20,17 @@
   - generate a function that somehow does a hashtable lookup?
 
 - weval IC bodies
+
+- "fast IC invocation" mechanism: typed funcref table, fixed indices
+  in wevaled body, return updated funcref? or set it separately when
+  setting IC head?
+  - declare that the "fast funcptr" mechanism handles just one
+    signature -- say `(i32, i32, i32, i32) -> i32`.
+  - two new tables: typed funcref table for all weval'd bodies of this
+    signature; typed funcref table for all callsites. add a new
+    function (and link calls to `weval_update_fast_funcptr` to it)
+    that copies from former to latter.
+  - weval request fills in fast-funcptr (if sig matches) alongside
+    normal funcptr.
+  - intrinsic to invoke fast-funcptr if available; i32 return; if
+    returns nonzero then do slow funcptr call; constant-fold this.

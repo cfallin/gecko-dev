@@ -435,6 +435,14 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   cacheop = icregs.cacheIRReader.readOp(); \
   goto* addresses[long(cacheop)];
 
+#define FAIL_IC()                       \
+  do {                                  \
+    icregs.icVals[0] = inputs[0];       \
+    icregs.icVals[1] = inputs[1];       \
+    icregs.icVals[2] = inputs[2];       \
+    return ICInterpretOpResult::NextIC; \
+  } while (0)
+
 // We set a fixed bound on the number of icVals which is smaller than what IC
 // generators may use. As a result we can't evaluate an IC if it defines too
 // many values. Note that we don't need to check this when reading from icVals
@@ -442,7 +450,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
 // same value. Similarly, we don't need to check writes to locations which we've
 // just read from.
 #define BOUNDSCHECK(resultId) \
-  if (resultId.id() >= ICRegs::kMaxICVals) return ICInterpretOpResult::NextIC;
+  if (resultId.id() >= ICRegs::kMaxICVals) FAIL_IC();
 
 #define PREDICT_NEXT(name)                              \
   if (icregs.cacheIRReader.peekOp() == CacheOp::name) { \
@@ -456,7 +464,13 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     return ICInterpretOpResult::Return;                         \
   }
 
+  uint64_t inputs[3];
   CacheOp cacheop;
+
+  // Save inputs so a stub failure can restore them.
+  inputs[0] = icregs.icVals[0];
+  inputs[1] = icregs.icVals[1];
+  inputs[2] = icregs.icVals[2];
 
   DISPATCH_CACHEOP();
 
@@ -471,7 +485,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     TRACE_PRINTF("GuardToObject: icVal %" PRIx64 "\n",
                  icregs.icVals[inputId.id()]);
     if (!v.isObject()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icVals[inputId.id()] = reinterpret_cast<uint64_t>(&v.toObject());
     PREDICT_NEXT(GuardShape);
@@ -483,7 +497,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId inputId = icregs.cacheIRReader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isNullOrUndefined()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -492,7 +506,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId inputId = icregs.cacheIRReader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isNull()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -501,7 +515,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId inputId = icregs.cacheIRReader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isUndefined()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -510,7 +524,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId valId = icregs.cacheIRReader.valOperandId();
     Value val = Value::fromRawBits(icregs.icVals[valId.id()]);
     if (val == MagicValue(JS_UNINITIALIZED_LEXICAL)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -519,7 +533,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId inputId = icregs.cacheIRReader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isBoolean()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icVals[inputId.id()] = v.toBoolean() ? 1 : 0;
     DISPATCH_CACHEOP();
@@ -529,7 +543,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId inputId = icregs.cacheIRReader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isString()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icVals[inputId.id()] = reinterpret_cast<uint64_t>(v.toString());
     PREDICT_NEXT(GuardToString);
@@ -540,7 +554,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId inputId = icregs.cacheIRReader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isSymbol()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icVals[inputId.id()] = reinterpret_cast<uint64_t>(v.toSymbol());
     PREDICT_NEXT(GuardSpecificSymbol);
@@ -551,7 +565,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId inputId = icregs.cacheIRReader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isBigInt()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icVals[inputId.id()] = reinterpret_cast<uint64_t>(v.toBigInt());
     DISPATCH_CACHEOP();
@@ -561,7 +575,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId inputId = icregs.cacheIRReader.valOperandId();
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isNumber()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -572,7 +586,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     TRACE_PRINTF("GuardToInt32 (%d): icVal %" PRIx64 "\n", inputId.id(),
                  icregs.icVals[inputId.id()]);
     if (!v.isInt32()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     // N.B.: we don't need to unbox because the low 32 bits are
     // already the int32 itself, and we are careful when using
@@ -586,7 +600,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId inputId = icregs.cacheIRReader.valOperandId();
     Value input = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (input.isGCThing()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -597,7 +611,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     BOUNDSCHECK(resultId);
     Value v = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (!v.isBoolean()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icVals[resultId.id()] = v.toBoolean() ? 1 : 0;
     DISPATCH_CACHEOP();
@@ -618,7 +632,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         DISPATCH_CACHEOP();
       }
     }
-    return ICInterpretOpResult::NextIC;
+    FAIL_IC();
   }
 
   CACHEOP_CASE(Int32ToIntPtr) {
@@ -648,7 +662,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         DISPATCH_CACHEOP();
       }
     }
-    return ICInterpretOpResult::NextIC;
+    FAIL_IC();
   }
 
   CACHEOP_CASE(GuardNonDoubleType) {
@@ -658,37 +672,37 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     switch (type) {
       case ValueType::String:
         if (!val.isString()) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case ValueType::Symbol:
         if (!val.isSymbol()) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case ValueType::BigInt:
         if (!val.isBigInt()) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case ValueType::Int32:
         if (!val.isInt32()) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case ValueType::Boolean:
         if (!val.isBoolean()) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case ValueType::Undefined:
         if (!val.isUndefined()) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case ValueType::Null:
         if (!val.isNull()) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       default:
@@ -704,7 +718,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     uintptr_t expectedShape =
         cstub->stubInfo()->getStubRawWord(cstub, shapeOffset);
     if (reinterpret_cast<uintptr_t>(obj->shape()) != expectedShape) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -715,7 +729,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
              ->realm()
              ->realmFuses.getFuseByIndex(fuseIndex)
              ->intact()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -727,7 +741,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JSObject* proto = reinterpret_cast<JSObject*>(
         cstub->stubInfo()->getStubRawWord(cstub, protoOffset));
     if (obj->staticPrototype() != proto) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     PREDICT_NEXT(LoadProto);
     DISPATCH_CACHEOP();
@@ -737,7 +751,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId objId = icregs.cacheIRReader.objOperandId();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     if (obj->taggedProto().raw()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -749,63 +763,63 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     switch (kind) {
       case GuardClassKind::Array:
         if (object->getClass() != &ArrayObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::PlainObject:
         if (object->getClass() != &PlainObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::FixedLengthArrayBuffer:
         if (object->getClass() != &FixedLengthArrayBufferObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::FixedLengthSharedArrayBuffer:
         if (object->getClass() != &FixedLengthSharedArrayBufferObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::FixedLengthDataView:
         if (object->getClass() != &FixedLengthDataViewObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::MappedArguments:
         if (object->getClass() != &MappedArgumentsObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::UnmappedArguments:
         if (object->getClass() != &UnmappedArgumentsObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::WindowProxy:
         if (object->getClass() !=
             frameMgr.cxForLocalUseOnly()->runtime()->maybeWindowProxyClass()) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::JSFunction:
         if (!object->is<JSFunction>()) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::Set:
         if (object->getClass() != &SetObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::Map:
         if (object->getClass() != &MapObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
       case GuardClassKind::BoundFunction:
         if (object->getClass() != &BoundFunctionObject::class_) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
         break;
     }
@@ -819,7 +833,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JSClass* clasp = reinterpret_cast<JSClass*>(
         cstub->stubInfo()->getStubRawWord(cstub, claspOffset));
     if (obj->getClass() != clasp) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -832,7 +846,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     uint32_t* generationAddr = reinterpret_cast<uint32_t*>(
         cstub->stubInfo()->getStubRawWord(cstub, generationAddrOffset));
     if (*generationAddr != expected) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -858,10 +872,10 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JS::Compartment* compartment = reinterpret_cast<JS::Compartment*>(
         cstub->stubInfo()->getStubRawWord(cstub, compartmentOffset));
     if (IsDeadProxyObject(global)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     if (obj->compartment() != compartment) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -870,7 +884,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId objId = icregs.cacheIRReader.objOperandId();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     if (obj->nonProxyIsExtensible()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -879,7 +893,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId objId = icregs.cacheIRReader.objOperandId();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     if (!obj->is<NativeObject>()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -888,7 +902,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId objId = icregs.cacheIRReader.objOperandId();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     if (!obj->is<ProxyObject>()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -897,7 +911,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId objId = icregs.cacheIRReader.objOperandId();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     if (obj->is<ProxyObject>()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -908,7 +922,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     const JSClass* clasp = obj->getClass();
     if (clasp == &ArrayBufferObject::protoClass_ ||
         clasp == &SharedArrayBufferObject::protoClass_) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -917,7 +931,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId objId = icregs.cacheIRReader.objOperandId();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     if (!IsTypedArrayClass(obj->getClass())) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -929,7 +943,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     BaseProxyHandler* handler = reinterpret_cast<BaseProxyHandler*>(
         cstub->stubInfo()->getStubRawWord(cstub, handlerOffset));
     if (obj->as<ProxyObject>().handler() != handler) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -939,7 +953,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     if (obj->as<ProxyObject>().handler()->family() ==
         GetDOMProxyHandlerFamily()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -951,7 +965,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JSObject* expected = reinterpret_cast<JSObject*>(
         cstub->stubInfo()->getStubRawWord(cstub, expectedOffset));
     if (obj != expected) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -962,7 +976,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JSObject* obj1 = reinterpret_cast<JSObject*>(icregs.icVals[obj1Id.id()]);
     JSObject* obj2 = reinterpret_cast<JSObject*>(icregs.icVals[obj2Id.id()]);
     if (obj1 != obj2) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -975,7 +989,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     uintptr_t expected =
         cstub->stubInfo()->getStubRawWord(cstub, expectedOffset);
     if (expected != icregs.icVals[funId.id()]) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     PREDICT_NEXT(LoadArgumentFixedSlot);
     DISPATCH_CACHEOP();
@@ -991,7 +1005,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     (void)nargsAndFlagsOffset;
 
     if (!fun->hasBaseScript() || fun->baseScript() != expected) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
 
     PREDICT_NEXT(CallScriptedFunction);
@@ -1005,7 +1019,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         cstub->stubInfo()->getStubRawWord(cstub, expectedOffset);
     if (expected != icregs.icVals[strId.id()]) {
       // TODO: BaselineCacheIRCompiler also checks for equal strings
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1016,7 +1030,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     uintptr_t expected =
         cstub->stubInfo()->getStubRawWord(cstub, expectedOffset);
     if (expected != icregs.icVals[symId.id()]) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1025,7 +1039,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     Int32OperandId numId = icregs.cacheIRReader.int32OperandId();
     int32_t expected = icregs.cacheIRReader.int32Immediate();
     if (expected != int32_t(icregs.icVals[numId.id()])) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1034,7 +1048,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId objId = icregs.cacheIRReader.objOperandId();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     if (obj->as<NativeObject>().getDenseInitializedLength() != 0) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1052,7 +1066,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     } else {
       result = GetIndexFromString(str);
       if (result < 0) {
-        return ICInterpretOpResult::NextIC;
+        FAIL_IC();
       }
     }
     icregs.icVals[resultId.id()] = result;
@@ -1072,7 +1086,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
       result = index;
     } else {
       if (!GetInt32FromStringPure(frameMgr.cxForLocalUseOnly(), str, &result)) {
-        return ICInterpretOpResult::NextIC;
+        FAIL_IC();
       }
     }
     icregs.icVals[resultId.id()] = result;
@@ -1093,7 +1107,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     } else {
       double value;
       if (!StringToNumberPure(frameMgr.cxForLocalUseOnly(), str, &value)) {
-        return ICInterpretOpResult::NextIC;
+        FAIL_IC();
       }
       result = DoubleValue(value);
     }
@@ -1122,7 +1136,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         cstub->stubInfo()->getStubRawWord(cstub, getterSetterOffset));
     if (!ObjectHasGetterSetterPure(frameMgr.cxForLocalUseOnly(), obj, id,
                                    getterSetter)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1131,7 +1145,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     Int32OperandId indexId = icregs.cacheIRReader.int32OperandId();
     int32_t index = int32_t(icregs.icVals[indexId.id()]);
     if (index < 0) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1150,7 +1164,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     // a slot index rather than a byte offset.
     Value actual = slots[slot];
     if (actual != ObjectValue(*expected)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1166,7 +1180,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     // slot index rather than a byte offset.
     Value actual = slots[slot];
     if (actual.isObject()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1183,7 +1197,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         reinterpret_cast<uintptr_t>(obj) + offset);
     Value actual = slot->get();
     if (actual != val) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1200,7 +1214,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     HeapSlot* slots = nobj->getSlotsUnchecked();
     Value actual = slots[offset / sizeof(Value)];
     if (actual != val) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1240,7 +1254,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     uintptr_t builderAddr =
         cstub->stubInfo()->getStubRawWord(cstub, builderAddrOffset);
     if (*reinterpret_cast<uintptr_t*>(builderAddr) != 0) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1251,7 +1265,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JSObject* fun = reinterpret_cast<JSObject*>(icregs.icVals[funId.id()]);
     uint16_t flags = FunctionFlags::HasJitEntryFlags(constructing);
     if (!fun->as<JSFunction>().flags().hasFlags(flags)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1261,7 +1275,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JSObject* fun = reinterpret_cast<JSObject*>(icregs.icVals[funId.id()]);
     uint16_t flags = FunctionFlags::HasJitEntryFlags(/*constructing =*/false);
     if (fun->as<JSFunction>().flags().hasFlags(flags)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1270,7 +1284,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId funId = icregs.cacheIRReader.objOperandId();
     JSObject* fun = reinterpret_cast<JSObject*>(icregs.icVals[funId.id()]);
     if (!fun->as<JSFunction>().isNonBuiltinConstructor()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1279,7 +1293,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId funId = icregs.cacheIRReader.objOperandId();
     JSObject* fun = reinterpret_cast<JSObject*>(icregs.icVals[funId.id()]);
     if (!fun->as<JSFunction>().isConstructor()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1288,7 +1302,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId funId = icregs.cacheIRReader.objOperandId();
     JSObject* fun = reinterpret_cast<JSObject*>(icregs.icVals[funId.id()]);
     if (fun->as<JSFunction>().isClassConstructor()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1297,7 +1311,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjOperandId arrayId = icregs.cacheIRReader.objOperandId();
     JSObject* array = reinterpret_cast<JSObject*>(icregs.icVals[arrayId.id()]);
     if (!IsPackedArray(array)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1307,7 +1321,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     uint8_t flags = icregs.cacheIRReader.readByte();
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     if (obj->as<ArgumentsObject>().hasFlags(flags)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1412,12 +1426,12 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     jsid name =
         jsid::fromRawBits(cstub->stubInfo()->getStubRawWord(cstub, nameOffset));
     if (!obj->shape()->isNative()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     Value result;
     if (!GetNativeDataPropertyPureWithCacheLookup(
             frameMgr.cxForLocalUseOnly(), obj, name, nullptr, &result)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icResult = result.asRawBits();
     DISPATCH_CACHEOP();
@@ -1429,12 +1443,12 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     Value id = Value::fromRawBits(icregs.icVals[idId.id()]);
     if (!obj->shape()->isNative()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     Value values[2] = {id};
     if (!GetNativeDataPropertyByValuePure(frameMgr.cxForLocalUseOnly(), obj,
                                           nullptr, values)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icResult = values[1].asRawBits();
     DISPATCH_CACHEOP();
@@ -1548,7 +1562,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     // does not GC. Otherwise this is the same as AddAndStoreDynamicSlot above.
     if (!NativeObject::growSlotsPure(frameMgr.cxForLocalUseOnly(), nobj,
                                      numNewSlots)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     obj->setShape(newShape);
     HeapSlot* slots = nobj->getSlotsUnchecked();
@@ -1568,11 +1582,11 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjectElements* elems = nobj->getElementsHeader();
     int32_t index = int32_t(icregs.icVals[indexId.id()]);
     if (index < 0 || uint32_t(index) >= nobj->getDenseInitializedLength()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     HeapSlot* slot = &elems->elements()[index];
     if (slot->get().isMagic()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     Value val = Value::fromRawBits(icregs.icVals[rhsId.id()]);
     slot->set(nobj, HeapSlot::Element, index + elems->numShiftedElements(),
@@ -1594,12 +1608,12 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     if (index < initLength) {
       nobj->setDenseElement(index, rhs);
     } else if (!handleAdd || index > initLength) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     } else {
       if (index >= nobj->getDenseCapacity()) {
         if (!NativeObject::addDenseElementPure(frameMgr.cxForLocalUseOnly(),
                                                nobj)) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
       }
       nobj->setDenseInitializedLength(initLength + 1);
@@ -1629,12 +1643,12 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ArrayObject* aobj = &obj->as<ArrayObject>();
     uint32_t initLength = aobj->getDenseInitializedLength();
     if (aobj->length() != initLength) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     if (initLength >= aobj->getDenseCapacity()) {
       if (!NativeObject::addDenseElementPure(frameMgr.cxForLocalUseOnly(),
                                              aobj)) {
-        return ICInterpretOpResult::NextIC;
+        FAIL_IC();
       }
     }
     aobj->setDenseInitializedLength(initLength + 1);
@@ -1676,11 +1690,11 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     uintptr_t index = uintptr_t(icregs.icVals[indexId.id()]);
     uint64_t rhs = icregs.icVals[rhsId];
     if (obj->as<TypedArrayObject>().length().isNothing()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     if (index >= obj->as<TypedArrayObject>().length().value()) {
       if (!handleOOB) {
-        return ICInterpretOpResult::NextIC;
+        FAIL_IC();
       }
     } else {
       Value v;
@@ -1736,7 +1750,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     if (str) {
       icregs.icVals[resultId.id()] = reinterpret_cast<uintptr_t>(str);
     } else {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     DISPATCH_CACHEOP();
   }
@@ -1763,29 +1777,29 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     if (!isNative) {
       if (!callee->hasBaseScript() || !callee->baseScript()->hasBytecode() ||
           !callee->baseScript()->hasJitScript()) {
-        return ICInterpretOpResult::NextIC;
+        FAIL_IC();
       }
     }
 
     // For now, fail any constructing or different-realm cases.
     if (flags.isConstructing()) {
       TRACE_PRINTF("failing: constructing\n");
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     if (!flags.isSameRealm()) {
       TRACE_PRINTF("failing: not same realm\n");
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     // And support only "standard" arg formats.
     if (flags.getArgFormat() != CallFlags::Standard) {
       TRACE_PRINTF("failing: not standard arg format\n");
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
 
     // For now, fail any arg-underflow case.
     if (argc < callee->nargs()) {
       TRACE_PRINTF("failing: too few args\n");
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
 
     uint32_t extra = 1 + flags.isConstructing() + isNative;
@@ -1913,12 +1927,12 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ObjectElements* elems = nobj->getElementsHeader();
     int32_t index = int32_t(icregs.icVals[indexId.id()]);
     if (index < 0 || uint32_t(index) >= nobj->getDenseInitializedLength()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     HeapSlot* slot = &elems->elements()[index];
     Value val = slot->get();
     if (val.isMagic()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icResult = val.asRawBits();
     PREDICT_RETURN();
@@ -1931,7 +1945,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         reinterpret_cast<ArrayObject*>(icregs.icVals[objId.id()]);
     uint32_t length = aobj->length();
     if (length > uint32_t(INT32_MAX)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icResult = Int32Value(length).asRawBits();
     PREDICT_RETURN();
@@ -1946,7 +1960,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         reinterpret_cast<ArrayObject*>(icregs.icVals[objId.id()]);
     uint32_t length = aobj->length();
     if (length > uint32_t(INT32_MAX)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icVals[resultId.id()] = length;
     DISPATCH_CACHEOP();
@@ -1959,10 +1973,10 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     uint32_t index = uint32_t(icregs.icVals[indexId.id()]);
     ArgumentsObject* args = &obj->as<ArgumentsObject>();
     if (index >= args->initialLength() || args->hasOverriddenElement()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     if (args->argIsForwarded(index)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icResult = args->arg(index).asRawBits();
     DISPATCH_CACHEOP();
@@ -2005,7 +2019,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         // Return an empty string.
         result = frameMgr.cxForLocalUseOnly()->names().empty_;
       } else {
-        return ICInterpretOpResult::NextIC;
+        FAIL_IC();
       }
     } else {
       char16_t c;
@@ -2042,7 +2056,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         // Return NaN.
         result = JS::NaNValue();
       } else {
-        return ICInterpretOpResult::NextIC;
+        FAIL_IC();
       }
     } else {
       char16_t c;
@@ -2061,7 +2075,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JSString* str = reinterpret_cast<JSString*>(icregs.icVals[strId.id()]);
     size_t length = str->length();
     if (length > size_t(INT32_MAX)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icResult = Int32Value(length).asRawBits();
     PREDICT_RETURN();
@@ -2156,7 +2170,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     extra_check;                                                  \
     int64_t result = lhs op rhs;                                  \
     if (result < INT32_MIN || result > INT32_MAX) {               \
-      return ICInterpretOpResult::NextIC;                         \
+      FAIL_IC();                         \
     }                                                             \
     icregs.icResult = Int32Value(int32_t(result)).asRawBits();    \
     PREDICT_RETURN();                                             \
@@ -2169,26 +2183,26 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   // clang-format on
   INT32_OP(Mul, *, {
     if (rhs * lhs == 0 && ((rhs < 0) ^ (lhs < 0))) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
   });
   INT32_OP(Div, /, {
     if (rhs == 0 || (lhs == INT32_MIN && rhs == -1)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     if (lhs == 0 && rhs < 0) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     if (lhs % rhs != 0) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
   });
   INT32_OP(Mod, %, {
     if (rhs == 0 || (lhs == INT32_MIN && rhs == -1)) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     if (lhs % rhs == 0 && lhs < 0) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
   });
   // clang-format off
@@ -2207,7 +2221,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     if (lhs == 1) {
       result = 1;
     } else if (rhs < 0) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     } else {
       result = 1;
       int64_t runningSquare = lhs;
@@ -2215,7 +2229,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         if (rhs & 1) {
           result *= runningSquare;
           if (result > int64_t(INT32_MAX)) {
-            return ICInterpretOpResult::NextIC;
+            FAIL_IC();
           }
         }
         rhs >>= 1;
@@ -2224,7 +2238,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
         }
         runningSquare *= runningSquare;
         if (runningSquare > int64_t(INT32_MAX)) {
-          return ICInterpretOpResult::NextIC;
+          FAIL_IC();
         }
       }
     }
@@ -2239,7 +2253,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     int64_t value = int64_t(int32_t(icregs.icVals[inputId.id()]));
     value++;
     if (value > INT32_MAX) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icResult = Int32Value(int32_t(value)).asRawBits();
     PREDICT_RETURN();
@@ -2268,7 +2282,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     JSObject* obj = reinterpret_cast<JSObject*>(icregs.icVals[objId.id()]);
     const JSClass* cls = obj->getClass();
     if (cls->isProxyObject()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     icregs.icResult = BooleanValue(!cls->emulatesUndefined()).asRawBits();
     PREDICT_RETURN();
@@ -2303,7 +2317,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     if (result) {
       icregs.icResult = StringValue(result).asRawBits();
     } else {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
     PREDICT_RETURN();
     DISPATCH_CACHEOP();
@@ -2433,7 +2447,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
     ValOperandId inputId = icregs.cacheIRReader.valOperandId();
     Value val = Value::fromRawBits(icregs.icVals[inputId.id()]);
     if (val.isObject() && val.toObject().getClass()->isProxyObject()) {
-      return ICInterpretOpResult::NextIC;
+      FAIL_IC();
     }
 
     bool result;
@@ -2734,7 +2748,7 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
   CACHEOP_CASE_UNIMPL(Bailout)
   CACHEOP_CASE_UNIMPL(AssertRecoveredOnBailoutResult) {
     TRACE_PRINTF("unknown CacheOp: %s\n", CacheIROpNames[int(cacheop)]);
-    return ICInterpretOpResult::NextIC;
+    FAIL_IC();
   }
 
 #undef PREDICT_NEXT
@@ -2746,53 +2760,11 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
  * -----------------------------------------------
  */
 
-#define SAVE_INPUTS(arity)            \
-  do {                                \
-    switch (arity) {                  \
-      case 0:                         \
-        break;                        \
-      case 1:                         \
-        inputs[0] = icregs.icVals[0]; \
-        break;                        \
-      case 2:                         \
-        inputs[0] = icregs.icVals[0]; \
-        inputs[1] = icregs.icVals[1]; \
-        break;                        \
-      case 3:                         \
-        inputs[0] = icregs.icVals[0]; \
-        inputs[1] = icregs.icVals[1]; \
-        inputs[2] = icregs.icVals[2]; \
-        break;                        \
-    }                                 \
-  } while (0)
-
-#define RESTORE_INPUTS(arity)         \
-  do {                                \
-    switch (arity) {                  \
-      case 0:                         \
-        break;                        \
-      case 1:                         \
-        icregs.icVals[0] = inputs[0]; \
-        break;                        \
-      case 2:                         \
-        icregs.icVals[0] = inputs[0]; \
-        icregs.icVals[1] = inputs[1]; \
-        break;                        \
-      case 3:                         \
-        icregs.icVals[0] = inputs[0]; \
-        icregs.icVals[1] = inputs[1]; \
-        icregs.icVals[2] = inputs[2]; \
-        break;                        \
-    }                                 \
-  } while (0)
-
 #define DEFINE_IC(kind, arity, fallback_body)                             \
   static PBIResult MOZ_ALWAYS_INLINE IC##kind(                            \
       BaselineFrame* frame, VMFrameManager& frameMgr, State& state,       \
       ICRegs& icregs, Stack& stack, StackVal* sp, jsbytecode* pc) {       \
     ICStub* stub = frame->interpreterICEntry()->firstStub();              \
-    uint64_t inputs[3];                                                   \
-    SAVE_INPUTS(arity);                                                   \
     while (true) {                                                        \
     next_stub:                                                            \
       if (stub->isFallback()) {                                           \
@@ -2811,7 +2783,6 @@ ICInterpretOps(BaselineFrame* frame, VMFrameManager& frameMgr, State& state,
                                cstub, pc)) {                              \
           case ICInterpretOpResult::NextIC:                               \
             stub = stub->maybeNext();                                     \
-            RESTORE_INPUTS(arity);                                        \
             goto next_stub;                                               \
           case ICInterpretOpResult::Return:                               \
             return PBIResult::Ok;                                         \
@@ -3289,7 +3260,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
     DEBUG_CHECK();
 
 #ifndef __wasi__
-  dispatch:
+  dispatch :
 #endif
 
 #ifdef TRACE_INTERP
@@ -3477,7 +3448,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       END_OP(ToNumeric);
     }
 
-  generic_unary: {
+  generic_unary : {
     static_assert(JSOpLength_Pos == JSOpLength_Neg);
     static_assert(JSOpLength_Pos == JSOpLength_BitNot);
     static_assert(JSOpLength_Pos == JSOpLength_Inc);
@@ -3877,7 +3848,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       goto generic_binary;
     }
 
-  generic_binary: {
+  generic_binary : {
     static_assert(JSOpLength_BitOr == JSOpLength_BitXor);
     static_assert(JSOpLength_BitOr == JSOpLength_BitAnd);
     static_assert(JSOpLength_BitOr == JSOpLength_Lsh);
@@ -4079,7 +4050,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
     }
 
-  generic_cmp: {
+  generic_cmp : {
     static_assert(JSOpLength_Eq == JSOpLength_Ne);
     static_assert(JSOpLength_Eq == JSOpLength_StrictEq);
     static_assert(JSOpLength_Eq == JSOpLength_StrictNe);
@@ -6165,7 +6136,7 @@ unwind_ret:
   goto do_return;
 
 #ifndef __wasi__
-debug: {
+debug : {
   TRACE_PRINTF("hit debug point\n");
   PUSH_EXIT_FRAME();
   if (!HandleDebugTrap(cx, frame, pc)) {

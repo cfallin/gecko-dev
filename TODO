@@ -1,0 +1,22 @@
+- Clean up the PBL execution model
+  - Put the IC invocation loop into the ICs themselves; minimize the size of
+    the body in the interpreter loop (just one unconditional function call)
+  - Put any context needed for JSOp and IC interpreters in a struct, and ensure
+    that all signatures are <= 4 args for ABI efficiency on Wasm
+
+  - end goal: JSOp interpreter calls a single invocation of IC interpreter; that
+    ends with a loop that invokes IC interpreter again if needed; fallback is
+    incorporated into that somehow
+
+- update weval to have a "symbolic memory at this ptr, len" abstraction
+
+- import latest weval header and Weval abstraction built around it
+
+- incorporate wevaled main function bodies
+  - specialization-mode template parameters
+
+- build functionality to dump all weval'ing requests after running, save them,
+  and pre-weval later
+  - generate a function that somehow does a hashtable lookup?
+
+- weval IC bodies

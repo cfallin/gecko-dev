@@ -1,4 +1,4 @@
-- Clean up the PBL execution model
+- (x) Clean up the PBL execution model
   - Put the IC invocation loop into the ICs themselves; minimize the size of
     the body in the interpreter loop (just one unconditional function call)
   - Put any context needed for JSOp and IC interpreters in a struct, and ensure
@@ -8,7 +8,7 @@
     ends with a loop that invokes IC interpreter again if needed; fallback is
     incorporated into that somehow
 
-- update weval to have a "symbolic memory at this ptr, len" abstraction
+- (x) update weval to have a "symbolic memory at this ptr, len" abstraction
 
 - import latest weval header and Weval abstraction built around it
 

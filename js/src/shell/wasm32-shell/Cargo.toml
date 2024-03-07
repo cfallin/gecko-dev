@@ -1,0 +1,12 @@
+[package]
+name = "wasm32-shell"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+wasmtime = "17.0.0"
+wasmtime-wasi = "17.0.0"
+wasi-common = ">= 8.0.0, < 18.0.0"
+anyhow = "1.0.80"

@@ -5605,8 +5605,8 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 
         i = uint32_t(i) - uint32_t(low);
         if ((uint32_t(i) < uint32_t(high - low + 1))) {
-          len = script->tableSwitchCaseOffset(pc, uint32_t(i)) -
-                script->pcToOffset(pc);
+          len = isd->tableSwitchCaseOffset(pc, uint32_t(i)) -
+                isd->pcToOffset(pc);
         }
         ADVANCE(len);
         DISPATCH();

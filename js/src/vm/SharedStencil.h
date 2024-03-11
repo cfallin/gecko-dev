@@ -635,7 +635,7 @@ class alignas(uint32_t) ImmutableScriptData final
     return pc >= code() && pc < codeEnd;
   }
 
-  uint32_t tableSwitchCaseOffset(jsbytecode* pc, uint32_t caseIndex) {
+  MOZ_ALWAYS_INLINE uint32_t tableSwitchCaseOffset(jsbytecode* pc, uint32_t caseIndex) {
     MOZ_ASSERT(containsPC(pc));
     MOZ_ASSERT(JSOp(*pc) == JSOp::TableSwitch);
     uint32_t firstResumeIndex = GET_RESUMEINDEX(pc + 3 * JUMP_OFFSET_LEN);

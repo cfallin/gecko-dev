@@ -2023,7 +2023,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
             JSScript* script = callee->nonLazyScript();
             jsbytecode* pc = script->code();
             ImmutableScriptData* isd = script->immutableScriptData();
-            auto result = PortableBaselineInterpret<false>(
+            auto result = PortableBaselineInterpret<false, kHybridICs>(
                 cx, ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
                 reinterpret_cast<Value*>(&ctx.icregs.icResult), pc, isd,
                 nullptr, nullptr, PBIResult::Ok);
@@ -3358,7 +3358,7 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
   }                                                                  \
   NEXT_IC();
 
-template <bool IsRestart>
+template <bool IsRestart, bool HybridICs>
 PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
                                     StackVal* sp, JSObject* envChain,
                                     Value* ret, jsbytecode* pc,
@@ -3366,11 +3366,11 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
                                     BaselineFrame* restartFrame,
                                     StackVal* restartEntryFrame,
                                     PBIResult restartCode) {
-#define RESTART(code)                                                         \
-  if (!IsRestart) {                                                           \
-    return PortableBaselineInterpret<true>(ctx.frameMgr.cxForLocalUseOnly(),  \
-                                           state, stack, sp, envChain, ret,   \
-                                           pc, isd, frame, entryFrame, code); \
+#define RESTART(code)                                                          \
+  if (!IsRestart) {                                                            \
+    return PortableBaselineInterpret<true, HybridICs>(                         \
+        ctx.frameMgr.cxForLocalUseOnly(), state, stack, sp, envChain, ret, pc, \
+        isd, frame, entryFrame, code);                                         \
   }
 
 #define OPCODE_LABEL(op, ...) LABEL(op),
@@ -3576,7 +3576,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       CASE(Typeof)
       CASE(TypeofExpr) {
         static_assert(JSOpLength_Typeof == JSOpLength_TypeofExpr);
-        if (kHybridICs) {
+        if (HybridICs) {
           sp[0] = StackVal(StringValue(TypeOfOperation(
               Stack::handle(sp), ctx.frameMgr.cxForLocalUseOnly()->runtime())));
           NEXT_IC();
@@ -3658,7 +3658,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
 
       CASE(ToNumeric) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isNumeric()) {
             NEXT_IC();
           } else {
@@ -3688,7 +3688,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
     }
 
       CASE(Not) {
-        if (kHybridICs) {
+        if (HybridICs) {
           sp[0] = StackVal(BooleanValue(!ToBoolean(Stack::handle(sp))));
           NEXT_IC();
         } else {
@@ -3702,7 +3702,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 
       CASE(And) {
         bool result;
-        if (kHybridICs) {
+        if (HybridICs) {
           result = ToBoolean(Stack::handle(sp));
           NEXT_IC();
         } else {
@@ -3722,7 +3722,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
       CASE(Or) {
         bool result;
-        if (kHybridICs) {
+        if (HybridICs) {
           result = ToBoolean(Stack::handle(sp));
           NEXT_IC();
         } else {
@@ -3742,7 +3742,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
       CASE(JumpIfTrue) {
         bool result;
-        if (kHybridICs) {
+        if (HybridICs) {
           result = ToBoolean(Stack::handle(sp));
           POP();
           NEXT_IC();
@@ -3763,7 +3763,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
       CASE(JumpIfFalse) {
         bool result;
-        if (kHybridICs) {
+        if (HybridICs) {
           result = ToBoolean(Stack::handle(sp));
           POP();
           NEXT_IC();
@@ -3784,7 +3784,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
 
       CASE(Add) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             int64_t lhs = sp[1].asValue().toInt32();
             int64_t rhs = sp[0].asValue().toInt32();
@@ -3822,7 +3822,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
 
       CASE(Sub) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             int64_t lhs = sp[1].asValue().toInt32();
             int64_t rhs = sp[0].asValue().toInt32();
@@ -3860,7 +3860,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
 
       CASE(Mul) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             int64_t lhs = sp[1].asValue().toInt32();
             int64_t rhs = sp[0].asValue().toInt32();
@@ -3899,7 +3899,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_binary;
       }
       CASE(Div) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
             double lhs = sp[1].asValue().toNumber();
             double rhs = sp[0].asValue().toNumber();
@@ -3925,7 +3925,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_binary;
       }
       CASE(Mod) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             int64_t lhs = sp[1].asValue().toInt32();
             int64_t rhs = sp[0].asValue().toInt32();
@@ -3962,7 +3962,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_binary;
       }
       CASE(Pow) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
             double lhs = sp[1].asValue().toNumber();
             double rhs = sp[0].asValue().toNumber();
@@ -3988,7 +3988,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_binary;
       }
       CASE(BitOr) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             int32_t lhs = sp[1].asValue().toInt32();
             int32_t rhs = sp[0].asValue().toInt32();
@@ -4001,7 +4001,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_binary;
       }
       CASE(BitAnd) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             int32_t lhs = sp[1].asValue().toInt32();
             int32_t rhs = sp[0].asValue().toInt32();
@@ -4014,7 +4014,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_binary;
       }
       CASE(BitXor) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             int32_t lhs = sp[1].asValue().toInt32();
             int32_t rhs = sp[0].asValue().toInt32();
@@ -4027,7 +4027,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_binary;
       }
       CASE(Lsh) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             // Unsigned to avoid undefined behavior on left-shift overflow
             // (see comment in BitLshOperation in Interpreter.cpp).
@@ -4043,7 +4043,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_binary;
       }
       CASE(Rsh) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             int32_t lhs = sp[1].asValue().toInt32();
             int32_t rhs = sp[0].asValue().toInt32();
@@ -4057,7 +4057,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_binary;
       }
       CASE(Ursh) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             uint32_t lhs = uint32_t(sp[1].asValue().toInt32());
             int32_t rhs = sp[0].asValue().toInt32();
@@ -4096,7 +4096,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
     }
 
       CASE(Eq) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             bool result =
                 sp[0].asValue().toInt32() == sp[1].asValue().toInt32();
@@ -4127,7 +4127,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
 
       CASE(Ne) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             bool result =
                 sp[0].asValue().toInt32() != sp[1].asValue().toInt32();
@@ -4158,7 +4158,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
 
       CASE(Lt) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             bool result = sp[1].asValue().toInt32() < sp[0].asValue().toInt32();
             POP();
@@ -4182,7 +4182,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_cmp;
       }
       CASE(Le) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             bool result =
                 sp[1].asValue().toInt32() <= sp[0].asValue().toInt32();
@@ -4207,7 +4207,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_cmp;
       }
       CASE(Gt) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             bool result = sp[1].asValue().toInt32() > sp[0].asValue().toInt32();
             POP();
@@ -4231,7 +4231,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_cmp;
       }
       CASE(Ge) {
-        if (kHybridICs) {
+        if (HybridICs) {
           if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
             bool result =
                 sp[1].asValue().toInt32() >= sp[0].asValue().toInt32();
@@ -4258,7 +4258,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 
       CASE(StrictEq)
       CASE(StrictNe) {
-        if (kHybridICs) {
+        if (HybridICs) {
           bool result;
           HandleValue lval = Stack::handle(sp + 1);
           HandleValue rval = Stack::handle(sp);
@@ -4409,7 +4409,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
 
       CASE(NewInit) {
-        if (kHybridICs) {
+        if (HybridICs) {
           JSObject* obj;
           {
             PUSH_EXIT_FRAME();
@@ -4428,7 +4428,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         }
       }
       CASE(NewObject) {
-        if (kHybridICs) {
+        if (HybridICs) {
           JSObject* obj;
           {
             PUSH_EXIT_FRAME();
@@ -4865,7 +4865,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
 
       CASE(NewArray) {
-        if (kHybridICs) {
+        if (HybridICs) {
           ArrayObject* obj;
           {
             PUSH_EXIT_FRAME();
@@ -6506,9 +6506,9 @@ bool PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   JSScript* script = ScriptFromCalleeToken(calleeToken);
   jsbytecode* pc = script->code();
   ImmutableScriptData* isd = script->immutableScriptData();
-  switch (PortableBaselineInterpret<false>(cx, state, stack, sp, envChain,
-                                           result, pc, isd, nullptr, nullptr,
-                                           PBIResult::Ok)) {
+  switch (PortableBaselineInterpret<false, kHybridICs>(
+      cx, state, stack, sp, envChain, result, pc, isd, nullptr, nullptr,
+      PBIResult::Ok)) {
     case PBIResult::Ok:
     case PBIResult::UnwindRet:
       TRACE_PRINTF("PBI returned Ok/UnwindRet with result %" PRIx64 "\n",

@@ -2020,9 +2020,12 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
             PUSHNATIVE(StackValNative(
                 MakeFrameDescriptorForJitCall(FrameType::BaselineStub, argc)));
 
+            JSScript* script = callee->nonLazyScript();
+            jsbytecode* pc = script->code();
+            ImmutableScriptData* isd = script->immutableScriptData();
             auto result = PortableBaselineInterpret(
                 cx, ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-                reinterpret_cast<Value*>(&ctx.icregs.icResult));
+                reinterpret_cast<Value*>(&ctx.icregs.icResult), pc, isd);
             if (result != PBIResult::Ok) {
               return result;
             }
@@ -3356,7 +3359,8 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 
 PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
                                     StackVal* sp, JSObject* envChain,
-                                    Value* ret) {
+                                    Value* ret, jsbytecode* pc,
+                                    ImmutableScriptData* isd) {
 #define OPCODE_LABEL(op, ...) LABEL(op),
 #define TRAILING_LABEL(v) LABEL(default),
 
@@ -3377,7 +3381,6 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
   StackVal* entryFrame = sp;
 
   RootedScript script(cx_, frame->script());
-  jsbytecode* pc = frame->interpreterPC();
   bool from_unwind = false;
   PBIResult ic_result = PBIResult::Ok;
 
@@ -5154,6 +5157,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
             // 6. Set up PC and SP for callee.
             sp = reinterpret_cast<StackVal*>(frame);
             pc = calleeScript->code();
+            isd = calleeScript->immutableScriptData();
             // 7. Check callee stack space for max stack depth.
             if (!ctx.stack.check(sp,
                                  sizeof(StackVal) * calleeScript->nslots())) {
@@ -5662,6 +5666,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
           ctx.frame = frame;
           pc = frame->interpreterPC();
           script.set(frame->script());
+          isd = script->immutableScriptData();
 
           // Adjust caller's stack to complete the call op that PC still points
           // to in that frame (pop args, push return value).
@@ -6479,7 +6484,11 @@ bool PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   PUSHNATIVE(StackValNative(
       MakeFrameDescriptorForJitCall(FrameType::CppToJSJit, numActuals)));
 
-  switch (PortableBaselineInterpret(cx, state, stack, sp, envChain, result)) {
+  JSScript* script = ScriptFromCalleeToken(calleeToken);
+  jsbytecode* pc = script->code();
+  ImmutableScriptData* isd = script->immutableScriptData();
+  switch (PortableBaselineInterpret(cx, state, stack, sp, envChain, result, pc,
+                                    isd)) {
     case PBIResult::Ok:
     case PBIResult::UnwindRet:
       TRACE_PRINTF("PBI returned Ok/UnwindRet with result %" PRIx64 "\n",

@@ -329,7 +329,8 @@ enum class PBIResult {
 
 PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
                                     StackVal* sp, JSObject* envChain,
-                                    Value* ret);
+                                    Value* ret, jsbytecode* pc,
+                                    ImmutableScriptData* isd);
 
 uint8_t* GetPortableFallbackStub(jit::BaselineICFallbackKind kind);
 

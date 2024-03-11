@@ -2023,9 +2023,10 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
             JSScript* script = callee->nonLazyScript();
             jsbytecode* pc = script->code();
             ImmutableScriptData* isd = script->immutableScriptData();
-            auto result = PortableBaselineInterpret(
+            auto result = PortableBaselineInterpret<false>(
                 cx, ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-                reinterpret_cast<Value*>(&ctx.icregs.icResult), pc, isd);
+                reinterpret_cast<Value*>(&ctx.icregs.icResult), pc, isd,
+                nullptr, nullptr, PBIResult::Ok);
             if (result != PBIResult::Ok) {
               return result;
             }
@@ -3357,10 +3358,21 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
   }                                                                  \
   NEXT_IC();
 
+template <bool IsRestart>
 PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
                                     StackVal* sp, JSObject* envChain,
                                     Value* ret, jsbytecode* pc,
-                                    ImmutableScriptData* isd) {
+                                    ImmutableScriptData* isd,
+                                    BaselineFrame* restartFrame,
+                                    StackVal* restartEntryFrame,
+                                    PBIResult restartCode) {
+#define RESTART(code)                                                         \
+  if (!IsRestart) {                                                           \
+    return PortableBaselineInterpret<true>(ctx.frameMgr.cxForLocalUseOnly(),  \
+                                           state, stack, sp, envChain, ret,   \
+                                           pc, isd, frame, entryFrame, code); \
+  }
+
 #define OPCODE_LABEL(op, ...) LABEL(op),
 #define TRAILING_LABEL(v) LABEL(default),
 
@@ -3371,26 +3383,34 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 #undef OPCODE_LABEL
 #undef TRAILING_LABEL
 
-  PUSHNATIVE(StackValNative(nullptr));  // Fake return address.
-  BaselineFrame* frame = stack.pushFrame(sp, cx_, envChain);
-  MOZ_ASSERT(frame);  // safety: stack margin.
-  sp = reinterpret_cast<StackVal*>(frame);
+  BaselineFrame* frame = restartFrame;
+  StackVal* entryFrame = restartEntryFrame;
 
-  // Save the entry frame so that when unwinding, we know when to
-  // return from this C++ frame.
-  StackVal* entryFrame = sp;
+  if (!IsRestart) {
+    PUSHNATIVE(StackValNative(nullptr));  // Fake return address.
+    frame = stack.pushFrame(sp, cx_, envChain);
+    MOZ_ASSERT(frame);  // safety: stack margin.
+    sp = reinterpret_cast<StackVal*>(frame);
+    // Save the entry frame so that when unwinding, we know when to
+    // return from this C++ frame.
+    entryFrame = sp;
+  }
 
   RootedScript script(cx_, frame->script());
   bool from_unwind = false;
   PBIResult ic_result = PBIResult::Ok;
-
   ICCtx ctx(cx_, frame, state, stack);
 
-  AutoCheckRecursionLimit recursion(ctx.frameMgr.cxForLocalUseOnly());
-  if (!recursion.checkDontReport(ctx.frameMgr.cxForLocalUseOnly())) {
-    PUSH_EXIT_FRAME();
-    ReportOverRecursed(ctx.frameMgr.cxForLocalUseOnly());
-    return PBIResult::Error;
+  if (IsRestart) {
+    ic_result = restartCode;
+    goto ic_fail;
+  } else {
+    AutoCheckRecursionLimit recursion(ctx.frameMgr.cxForLocalUseOnly());
+    if (!recursion.checkDontReport(ctx.frameMgr.cxForLocalUseOnly())) {
+      PUSH_EXIT_FRAME();
+      ReportOverRecursed(ctx.frameMgr.cxForLocalUseOnly());
+      return PBIResult::Error;
+    }
   }
 
   // Check max stack depth once, so we don't need to check it
@@ -3402,8 +3422,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
     return PBIResult::Error;
   }
 
-  uint32_t nfixed = script->nfixed();
-  for (uint32_t i = 0; i < nfixed; i++) {
+  for (uint32_t i = 0; i < script->nfixed(); i++) {
     PUSH(StackVal(UndefinedValue()));
   }
   ret->setUndefined();
@@ -5605,8 +5624,8 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 
         i = uint32_t(i) - uint32_t(low);
         if ((uint32_t(i) < uint32_t(high - low + 1))) {
-          len = isd->tableSwitchCaseOffset(pc, uint32_t(i)) -
-                isd->pcToOffset(pc);
+          len =
+              isd->tableSwitchCaseOffset(pc, uint32_t(i)) - isd->pcToOffset(pc);
         }
         ADVANCE(len);
         DISPATCH();
@@ -6487,8 +6506,9 @@ bool PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   JSScript* script = ScriptFromCalleeToken(calleeToken);
   jsbytecode* pc = script->code();
   ImmutableScriptData* isd = script->immutableScriptData();
-  switch (PortableBaselineInterpret(cx, state, stack, sp, envChain, result, pc,
-                                    isd)) {
+  switch (PortableBaselineInterpret<false>(cx, state, stack, sp, envChain,
+                                           result, pc, isd, nullptr, nullptr,
+                                           PBIResult::Ok)) {
     case PBIResult::Ok:
     case PBIResult::UnwindRet:
       TRACE_PRINTF("PBI returned Ok/UnwindRet with result %" PRIx64 "\n",

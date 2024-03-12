@@ -517,6 +517,12 @@ bool BaselineCodeGen<Handler>::emitOutOfLinePostBarrierSlot() {
 
   masm.bind(&postBarrierSlot_);
 
+#if defined(JS_CODEGEN_WASM32)
+  masm.wasmPrintMsg(
+      "NYI: Calling OutOfLinePostBarrierSlot is under construction.");
+  masm.unreachable();
+#endif
+
 #ifdef JS_USE_LINK_REGISTER
   masm.pushReturnAddress();
 #endif
@@ -646,7 +652,27 @@ bool BaselineCompilerCodeGen::emitNextIC() {
   masm.loadPtr(Address(ICStubReg, firstStubOffset), ICStubReg);
 
   CodeOffset returnOffset;
+
+#if defined(JS_CODEGEN_WASM32)
+  mozilla::Maybe<uint32_t> indexOfICStub;
+  const auto icCallsiteKey = ICCallSite{pcOffset, script};
+  if (auto iter = icStubToItsCode.find(icCallsiteKey);
+      iter != icStubToItsCode.end()) {
+    void* icCodePtr = iter->second;
+    MOZ_RELEASE_ASSERT(icCodeToFunctionIndex.find(icCodePtr) !=
+                       icCodeToFunctionIndex.end());
+    indexOfICStub = mozilla::Some(icCodeToFunctionIndex[icCodePtr]);
+  }
+
+  if (indexOfICStub) {
+    functionIndexToCallSites[*indexOfICStub].push_back(icCallsiteKey);
+    EmitDirectCallIC(masm, *indexOfICStub, &returnOffset);
+  } else {
+    EmitCallIC(masm, &returnOffset);
+  }
+#else
   EmitCallIC(masm, &returnOffset);
+#endif
 
   RetAddrEntry::Kind kind = RetAddrEntry::Kind::IC;
   if (!handler.retAddrEntries().emplaceBack(pcOffset, kind, returnOffset)) {
@@ -5271,6 +5297,22 @@ template <>
 void BaselineCompilerCodeGen::emitTableSwitchJump(Register key,
                                                   Register scratch1,
                                                   Register scratch2) {
+#if defined(JS_CODEGEN_WASM32)
+  jsbytecode* pc = handler.pc();
+  int32_t low = GET_JUMP_OFFSET(pc + TableSwitchOpLowOffset);
+  int32_t high = GET_JUMP_OFFSET(pc + TableSwitchOpHighOffset);
+  int32_t length = high - low + 1;
+
+  // Add an edge from the switch dispatch block to all cases.
+  for (auto i = 0; i < length; ++i) {
+    auto* caseLabel =
+        handler.labelOf(handler.script()->tableSwitchCasePC(pc, i));
+    MOZ_RELEASE_ASSERT(!caseLabel->bound());
+    masm.recordLabelForSwitch(caseLabel);
+  }
+
+  masm.jump(key);
+#else
   // Jump to resumeEntries[firstResumeIndex + key].
 
   // Note: BytecodeEmitter::allocateResumeIndex static_asserts
@@ -5282,6 +5324,7 @@ void BaselineCompilerCodeGen::emitTableSwitchJump(Register key,
                          firstResumeIndex * sizeof(uintptr_t)),
                scratch1);
   masm.jump(scratch1);
+#endif
 }
 
 template <>

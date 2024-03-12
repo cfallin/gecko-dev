@@ -479,7 +479,16 @@ static void MaybeTransition(JSContext* cx, BaselineFrame* frame,
                               SpewContext::Transition);
       }
 #endif
+
+#if defined(JS_CODEGEN_WASM32)
+      // We delay this operation because we can't discard stubs at runtime
+      // because some of them could be inlined in some code.
+      pendingICStubs[icEntry] =
+          ICStubAction{DiscardStubs{frame->script(), stub}};
+      jitCandidates.insert(frame->script());
+#else
       stub->discardStubs(cx->zone(), icEntry);
+#endif
     }
   }
 }
@@ -1885,6 +1894,9 @@ bool FallbackICCodeCompiler::emitCall(bool isSpread, bool isConstructing) {
     masm.bind(&skipThisReplace);
   }
 
+#if defined(JS_CODEGEN_WASM32)
+  masm.wasmPushI64(JSReturnOperand.scratchReg());
+#endif
   EmitReturnFromIC(masm);
   return true;
 }

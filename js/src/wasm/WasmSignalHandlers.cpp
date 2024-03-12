@@ -43,7 +43,7 @@ using namespace js::wasm;
 
 using mozilla::DebugOnly;
 
-#if !defined(JS_CODEGEN_NONE)
+#if !defined(JS_CODEGEN_NONE) && !defined(JS_CODEGEN_WASM32)
 
 // =============================================================================
 // This following pile of macros and includes defines the ToRegisterState() and
@@ -810,10 +810,10 @@ struct InstallState {
 static ExclusiveData<InstallState> sEagerInstallState(
     mutexid::WasmSignalInstallState);
 
-#endif  // !(JS_CODEGEN_NONE)
+#endif  // !(JS_CODEGEN_NONE) && !(JS_CODEGEN_WASM32)
 
 void wasm::EnsureEagerProcessSignalHandlers() {
-#ifdef JS_CODEGEN_NONE
+#if defined(JS_CODEGEN_NONE) || defined(JS_CODEGEN_WASM32)
   // If there is no JIT, then there should be no Wasm signal handlers.
   return;
 #else
@@ -888,7 +888,7 @@ void wasm::EnsureEagerProcessSignalHandlers() {
 #endif
 }
 
-#ifndef JS_CODEGEN_NONE
+#if !defined(JS_CODEGEN_NONE) && !defined(JS_CODEGEN_WASM32)
 static ExclusiveData<InstallState> sLazyInstallState(
     mutexid::WasmSignalInstallState);
 
@@ -928,10 +928,10 @@ static bool EnsureLazyProcessSignalHandlers() {
   lazyInstallState->success = true;
   return true;
 }
-#endif  // JS_CODEGEN_NONE
+#endif  // !JS_CODEGEN_NONE && !JS_CODEGEN_WASM32
 
 bool wasm::EnsureFullSignalHandlers(JSContext* cx) {
-#ifdef JS_CODEGEN_NONE
+#if defined(JS_CODEGEN_NONE) || defined(JS_CODEGEN_WASM32)
   return false;
 #else
   if (cx->wasm().triedToInstallSignalHandlers) {
@@ -980,7 +980,7 @@ bool wasm::EnsureFullSignalHandlers(JSContext* cx) {
 
 bool wasm::MemoryAccessTraps(const RegisterState& regs, uint8_t* addr,
                              uint32_t numBytes, uint8_t** newPC) {
-#ifdef JS_CODEGEN_NONE
+#if defined(JS_CODEGEN_NONE) || defined(JS_CODEGEN_WASM32)
   return false;
 #else
   const wasm::CodeSegment* codeSegment = wasm::LookupCodeSegment(regs.pc);
@@ -1048,7 +1048,7 @@ bool wasm::MemoryAccessTraps(const RegisterState& regs, uint8_t* addr,
 
 bool wasm::HandleIllegalInstruction(const RegisterState& regs,
                                     uint8_t** newPC) {
-#ifdef JS_CODEGEN_NONE
+#if defined(JS_CODEGEN_NONE) || defined(JS_CODEGEN_WASM32)
   return false;
 #else
   const wasm::CodeSegment* codeSegment = wasm::LookupCodeSegment(regs.pc);

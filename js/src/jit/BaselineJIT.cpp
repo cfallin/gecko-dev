@@ -329,6 +329,13 @@ static MethodStatus CanEnterBaselineJIT(JSContext* cx, HandleScript script,
   // Debugger.Frame.prototype.eval.
   bool forceDebugInstrumentation =
       osrSourceFrame && osrSourceFrame.isDebuggee();
+
+#if defined(JS_CODEGEN_WASM32)
+  jitCandidates.insert(script);
+  CompileCallbackForTests();
+  return Method_Skipped;
+#endif
+
   return BaselineCompile(cx, script, forceDebugInstrumentation);
 }
 
@@ -386,6 +393,11 @@ static MethodStatus CanEnterBaselineInterpreter(JSContext* cx,
                                                 JSScript* script) {
   MOZ_ASSERT(IsBaselineInterpreterEnabled());
 
+#if defined(JS_CODEGEN_WASM32)
+  // We don't want to use BaselineInt for now.
+  return Method_Skipped;
+#endif
+
   if (script->hasJitScript()) {
     return Method_Compiled;
   }
@@ -419,6 +431,10 @@ static MethodStatus CanEnterBaselineInterpreter(JSContext* cx,
 
 MethodStatus jit::CanEnterBaselineInterpreterAtBranch(JSContext* cx,
                                                       InterpreterFrame* fp) {
+#if defined(JS_CODEGEN_WASM32)
+  return Method_CantCompile;
+#endif
+
   if (!CheckFrame(fp)) {
     return Method_CantCompile;
   }
@@ -997,6 +1013,10 @@ uint8_t* BaselineInterpreter::retAddrForIC(JSOp op) const {
 
 bool jit::GenerateBaselineInterpreter(JSContext* cx,
                                       BaselineInterpreter& interpreter) {
+#if defined(JS_CODEGEN_WASM32)
+  return true;
+#endif
+
   if (IsBaselineInterpreterEnabled()) {
     TempAllocator temp(&cx->tempLifoAlloc());
     BaselineInterpreterGenerator generator(cx, temp);

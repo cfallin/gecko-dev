@@ -1917,6 +1917,11 @@ bool BaselineCacheIRCompiler::emitReturnFromIC() {
   if (JitOptions.enableICFramePointers) {
     PopICFrameRegs(masm);
   }
+
+#if defined(JS_CODEGEN_WASM32)
+  masm.wasmPushI64(JSReturnOperand.scratchReg());
+#endif
+
   EmitReturnFromIC(masm);
   return true;
 }
@@ -2372,7 +2377,14 @@ bool js::jit::TryFoldingStubs(JSContext* cx, ICFallbackStub* fallback,
   }
 
   // Replace the existing stubs with the new folded stub.
+#if defined(JS_CODEGEN_WASM32)
+  // See comment about that in BaselineIC.cpp.
+  pendingICStubs[icEntry] = ICStubAction{DiscardStubs{script, fallback}};
+  jitCandidates.insert(script);
+  CompileCallbackForTests();
+#else
   fallback->discardStubs(cx->zone(), icEntry);
+#endif
 
   ICAttachResult result = AttachBaselineCacheIRStub(
       cx, writer, cacheKind, script, icScript, fallback, "StubFold");
@@ -2508,6 +2520,13 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
     JSContext* cx, const CacheIRWriter& writer, CacheKind kind,
     JSScript* outerScript, ICScript* icScript, ICFallbackStub* stub,
     const char* name) {
+#if defined(JS_CODEGEN_WASM32)
+  if (pendingICStubs.find(icScript->icEntryForStub(stub)) !=
+      pendingICStubs.end()) {
+    return ICAttachResult::Attached;
+  }
+#endif
+
   // We shouldn't GC or report OOM (or any other exception) here.
   AutoAssertNoPendingException aanpe(cx);
   JS::AutoCheckCannotGC nogc;
@@ -2684,7 +2703,19 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
   auto newStub = new (newStubMem) ICCacheIRStub(code, stubInfo);
   writer.copyStubData(newStub->stubDataStart());
   newStub->setTypeData(writer.typeData());
+
+#if defined(JS_CODEGEN_WASM32)
+  pendingICStubs[icEntry] =
+      ICStubAction{AttachNew{ICStubInfo{newStub, stub, code}}};
+  icStubToItsCode[ICCallSite{stub->pcOffset(), outerScript}] =
+      static_cast<void*>(code);
+
+  // Trigger recompilation to inline IC calls.
+  jitCandidates.insert(outerScript);
+  CompileCallbackForTests();
+#else
   stub->addNewStub(icEntry, newStub);
+#endif
 
   JSScript* owningScript = icScript->isInlined()
                                ? icScript->inliningRoot()->owningScript()

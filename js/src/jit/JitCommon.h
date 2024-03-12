@@ -37,8 +37,23 @@
                                          3, intptr_t(p0), intptr_t(p1),        \
                                          intptr_t(p2)))
 
-#else
+#elif defined(JS_CODEGEN_WASM32)
 
+// For wasm32 we can't call generated code from memory directly, we have to
+// load index of function from WebAssembly.Table first.
+
+#  define CODE_PTR_TO_INDEX(codePtr) \
+    (reinterpret_cast<EnterJitCode>(*reinterpret_cast<uint32_t*>(codePtr)))
+
+#  define CALL_GENERATED_CODE(entry, p0, p1, p2, p3, p4, p5, p6, p7) \
+    CODE_PTR_TO_INDEX(entry)(p0, p1, p2, p3, p4, p5, p6, p7)
+
+#  define CALL_GENERATED_0(entry) entry()
+#  define CALL_GENERATED_1(entry, p0) entry(p0)
+#  define CALL_GENERATED_2(entry, p0, p1) entry(p0, p1)
+#  define CALL_GENERATED_3(entry, p0, p1, p2) entry(p0, p1, p2)
+
+#else
 // Call into jitted code by following the ABI of the native architecture.
 #  define CALL_GENERATED_CODE(entry, p0, p1, p2, p3, p4, p5, p6, p7) \
     entry(p0, p1, p2, p3, p4, p5, p6, p7)

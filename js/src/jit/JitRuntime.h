@@ -161,6 +161,10 @@ class JitRuntime {
   WriteOnceData<uint32_t> shapePreBarrierOffset_{0};
   WriteOnceData<uint32_t> wasmAnyRefPreBarrierOffset_{0};
 
+#if defined(JS_CODEGEN_WASM32)
+  WriteOnceData<uint32_t> postBarrierOffset_{0};
+#endif
+
   // Thunk to call malloc/free.
   WriteOnceData<uint32_t> freeStubOffset_{0};
 
@@ -258,6 +262,9 @@ class JitRuntime {
   void generateInvalidator(MacroAssembler& masm, Label* bailoutTail);
   uint32_t generatePreBarrier(JSContext* cx, MacroAssembler& masm,
                               MIRType type);
+#if defined(JS_CODEGEN_WASM32)
+  uint32_t generatePostBarrier(JSContext* cx, MacroAssembler& masm);
+#endif
   void generateFreeStub(MacroAssembler& masm);
   void generateIonGenericCallStub(MacroAssembler& masm,
                                   IonGenericCallKind kind);
@@ -400,6 +407,12 @@ class JitRuntime {
         MOZ_CRASH();
     }
   }
+
+#if defined(JS_CODEGEN_WASM32)
+  TrampolinePtr postBarrier() const {
+    return trampolineCode(postBarrierOffset_);
+  }
+#endif
 
   TrampolinePtr freeStub() const { return trampolineCode(freeStubOffset_); }
 

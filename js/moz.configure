@@ -241,6 +241,7 @@ def jit_default(target, enable_record_tuple, enable_portable_baseline_interp):
         "mips32",
         "mips64",
         "loongarch64",
+        "wasm32",
     ):
         return True
     return False

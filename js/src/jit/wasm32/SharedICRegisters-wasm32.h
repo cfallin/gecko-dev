@@ -11,26 +11,25 @@
 #include "jit/RegisterSets.h"
 #include "jit/wasm32/MacroAssembler-wasm32.h"
 
-namespace js::jit {
+namespace js {
+namespace jit {
 
-static constexpr Register BaselineStackReg = StackPointer;
-static constexpr Register BaselineFrameReg = FramePointer;
+// ValueOperands R0, R1, and R2
+static constexpr ValueOperand R0(InvalidReg, wcx);
+static constexpr ValueOperand R1(InvalidReg, wax);
+static constexpr ValueOperand R2(InvalidReg, wsi);
 
-static constexpr ValueOperand R0 = JSReturnOperand;
-static constexpr ValueOperand R1 = JSReturnOperand;
-static constexpr ValueOperand R2 = JSReturnOperand;
+// ICTailCallReg and ICStubReg reuse
+// registers from R2.
+static constexpr Register ICTailCallReg = wsi;
+static constexpr Register ICStubReg = wdi;
 
-static constexpr Register ICTailCallReg{Registers::invalid_reg};
-static constexpr Register ICStubReg{Registers::invalid_reg};
+static constexpr FloatRegister FloatReg0 = d0;
+static constexpr FloatRegister FloatReg1 = d1;
+static constexpr FloatRegister FloatReg2 = d2;
+static constexpr FloatRegister FloatReg3 = d3;
 
-static constexpr Register ExtractTemp0{Registers::invalid_reg};
-static constexpr Register ExtractTemp1{Registers::invalid_reg};
-
-static constexpr FloatRegister FloatReg0 = {FloatRegisters::invalid_reg};
-static constexpr FloatRegister FloatReg1 = {FloatRegisters::invalid_reg};
-static constexpr FloatRegister FloatReg2 = {FloatRegisters::invalid_reg};
-static constexpr FloatRegister FloatReg3 = {FloatRegisters::invalid_reg};
-
-}  // namespace js::jit
+}  // namespace jit
+}  // namespace js
 
 #endif /* jit_wasm32_SharedICRegisters_wasm32_h */

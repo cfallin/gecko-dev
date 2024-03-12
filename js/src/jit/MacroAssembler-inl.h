@@ -153,6 +153,13 @@ void MacroAssembler::callWithABI(DynFn fun, ABIType result,
 
 template <typename Sig, Sig fun>
 void MacroAssembler::callWithABI(ABIType result, CheckUnsafeCallWithABI check) {
+#if defined(JS_CODEGEN_WASM32)
+  if (!lastRuntimeCallFunctionSignatureIndex_) {
+    lastRuntimeCallFunctionSignatureIndex_ =
+        mozilla::Some(getSignatureForRuntimeCall<Sig>());
+  }
+#endif
+
   ABIFunction<Sig, fun> abiFun;
   AutoProfilerCallInstrumentation profiler(*this);
   callWithABINoProfiler(abiFun.address(), result, check);

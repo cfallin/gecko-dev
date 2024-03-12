@@ -185,6 +185,16 @@ enum class RhsDestOp { True = true };
 #  define RABALDR_PIN_INSTANCE
 #endif
 
+#ifdef JS_CODEGEN_WASM32
+// Easier this way
+#  define RABALDR_HAS_HEAPREG
+#endif
+
+#ifdef JS_CODEGEN_NONE
+// Easier this way
+#  define RABALDR_HAS_HEAPREG
+#endif
+
 // Max number of pushes onto the value stack for any opcode or emitter that
 // does not push a variable, unbounded amount (anything with multiple
 // results).  This includes also intermediate pushes such as values pushed as

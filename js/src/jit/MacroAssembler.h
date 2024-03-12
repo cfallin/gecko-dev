@@ -595,7 +595,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
   // Move the stack pointer to the specified position. It assumes the SP
   // register is not valid -- it uses FP to set the position.
   void freeStackTo(uint32_t framePushed)
-      DEFINED_ON(x86_shared, arm, arm64, loong64, mips64, riscv64);
+      DEFINED_ON(x86_shared, arm, arm64, loong64, mips64, riscv64, wasm32);
 
   // Warning: This method does not update the framePushed() counter.
   void freeStack(Register amount);
@@ -1593,7 +1593,8 @@ class MacroAssembler : public MacroAssemblerSpecific {
                                Label* label)
       DEFINED_ON(arm, arm64, mips_shared, x86, x64, loong64, riscv64, wasm32);
   void branchPtrInNurseryChunk(Condition cond, const Address& address,
-                               Register temp, Label* label) DEFINED_ON(x86);
+                               Register temp, Label* label)
+      DEFINED_ON(x86, wasm32);
   void branchValueIsNurseryCell(Condition cond, const Address& address,
                                 Register temp, Label* label) PER_ARCH;
   void branchValueIsNurseryCell(Condition cond, ValueOperand value,
@@ -2050,7 +2051,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
       DEFINED_ON(x86_shared);
 
   void branchPtrInNurseryChunkImpl(Condition cond, Register ptr, Label* label)
-      DEFINED_ON(x86);
+      DEFINED_ON(x86, wasm32);
   template <typename T>
   void branchValueIsNurseryCellImpl(Condition cond, const T& value,
                                     Register temp, Label* label)
@@ -2064,10 +2065,10 @@ class MacroAssembler : public MacroAssemblerSpecific {
       DEFINED_ON(arm, arm64, x86_shared);
   template <typename T>
   inline void branchTestDoubleImpl(Condition cond, const T& t, Label* label)
-      DEFINED_ON(arm, arm64, x86_shared);
+      DEFINED_ON(arm, arm64, x86_shared, wasm32);
   template <typename T>
   inline void branchTestNumberImpl(Condition cond, const T& t, Label* label)
-      DEFINED_ON(arm, arm64, x86_shared);
+      DEFINED_ON(arm, arm64, x86_shared, wasm32);
   template <typename T>
   inline void branchTestBooleanImpl(Condition cond, const T& t, Label* label)
       DEFINED_ON(arm, arm64, x86_shared);
@@ -2091,7 +2092,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
                                     Label* label) PER_SHARED_ARCH;
   template <typename T>
   inline void branchTestPrimitiveImpl(Condition cond, const T& t, Label* label)
-      DEFINED_ON(arm, arm64, x86_shared);
+      DEFINED_ON(arm, arm64, x86_shared, wasm32);
   template <typename T, class L>
   inline void branchTestMagicImpl(Condition cond, const T& t, L label)
       DEFINED_ON(arm, arm64, x86_shared);
@@ -5180,7 +5181,11 @@ class MacroAssembler : public MacroAssemblerSpecific {
 
     TrampolinePtr preBarrier = preBarrierTrampoline(type);
 
+#if defined(JS_CODEGEN_WASM32)
+    MacroAssemblerWasm32::callPreBarrier(preBarrier);
+#else
     call(preBarrier);
+#endif
     Pop(PreBarrierReg);
     // On arm64, SP may be < PSP now (that's OK).
     // eg testcase: tests/auto-regress/bug702915.js

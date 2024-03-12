@@ -255,7 +255,13 @@ elif CONFIG["JS_CODEGEN_RISCV64"]:
         UNIFIED_SOURCES += ["riscv64/Simulator-riscv64.cpp"]
 elif CONFIG["JS_CODEGEN_WASM32"]:
     UNIFIED_SOURCES += [
+        "wasm32/Architecture-wasm32.cpp",
+        "wasm32/Assembler-wasm32.cpp",
+        "wasm32/codegen/Codegen.cpp",
+        "wasm32/codegen/WasmEmitter.cpp",
+        "wasm32/codegen/WasmModuleBuilder.cpp",
         "wasm32/CodeGenerator-wasm32.cpp",
+        "wasm32/ir/IR.cpp",
         "wasm32/MacroAssembler-wasm32.cpp",
         "wasm32/Trampoline-wasm32.cpp",
     ]

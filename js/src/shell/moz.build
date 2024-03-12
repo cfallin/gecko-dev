@@ -24,6 +24,9 @@ UNIFIED_SOURCES += [
     "WasmTesting.cpp",
 ]
 
+if CONFIG["JS_CODEGEN_WASM32"]:
+    UNIFIED_SOURCES += ["wasmshellcommon.cpp"]
+
 if CONFIG["FUZZING_INTERFACES"]:
     UNIFIED_SOURCES += ["jsrtfuzzing/jsrtfuzzing.cpp"]
     USE_LIBS += [
@@ -55,5 +58,12 @@ OBJDIR_FILES.js.src += ["!/dist/bin/js%s" % CONFIG["BIN_SUFFIX"]]
 # Increase the default stack size (64KB) to 1MB.
 # Also make the stack grow towards 0 so that if SpiderMonkey's stack limiter is buggy, overflow will likely trap.
 if CONFIG["OS_ARCH"] == "WASI":
-    LDFLAGS += ["-Wl,-z,stack-size=1048576", "-Wl,--stack-first"]
+    LDFLAGS += [
+        "-Wl,-z,stack-size=1048576",
+        "-Wl,--stack-first",
+        "-Wl,--growable-table",
+        "-Wl,--export-table",
+        "-mexec-model=reactor",
+        "-Wl,--export=__stack_pointer",
+    ]
     OS_LIBS += ["wasi-emulated-process-clocks", "wasi-emulated-getpid"]

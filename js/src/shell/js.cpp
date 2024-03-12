@@ -213,6 +213,10 @@
 #include "vm/Realm-inl.h"
 #include "vm/Stack-inl.h"
 
+#if defined(JS_CODEGEN_WASM32)
+#  include "shell/wasmshellcommon.h"
+#endif
+
 using namespace js;
 using namespace js::cli;
 using namespace js::shell;
@@ -322,6 +326,12 @@ extern "C" void __sanitizer_cov_trace_pc_guard(uint32_t* guard) {
   *guard = 0;
 }
 #endif /* FUZZING_JS_FUZZILLI */
+
+#if defined(JS_CODEGEN_WASM32)
+namespace js::jit {
+std::set<JSScript*> jitCandidates;
+}
+#endif
 
 enum JSShellExitCode {
   EXITCODE_RUNTIME_ERROR = 3,
@@ -11167,6 +11177,10 @@ ShellContext::~ShellContext() {
 }
 
 static int Shell(JSContext* cx, OptionParser* op) {
+#if defined(JS_CODEGEN_WASM32)
+  currentCtx = cx;
+#endif
+
 #ifdef JS_STRUCTURED_SPEW
   cx->spewer().enableSpewing();
 #endif
@@ -11225,6 +11239,10 @@ static int Shell(JSContext* cx, OptionParser* op) {
     if (!glob) {
       return 1;
     }
+
+#if defined(JS_CODEGEN_WASM32)
+    currentGlobal = glob.get();
+#endif
 
     JSAutoRealm ar(cx, glob);
 
@@ -11571,6 +11589,9 @@ static bool SetGCParameterFromArg(JSContext* cx, char* arg) {
   return true;
 }
 
+#if defined(JS_CODEGEN_WASM32)
+EXPORT("main")
+#endif
 int main(int argc, char** argv) {
   PreInit();
 

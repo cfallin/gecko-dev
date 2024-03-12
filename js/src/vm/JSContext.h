@@ -9,6 +9,15 @@
 #ifndef vm_JSContext_h
 #define vm_JSContext_h
 
+#if defined(JS_CODEGEN_WASM32)
+#  include <functional>
+#  include <set>
+#  include <unordered_map>
+#  include <utility>
+#  include <variant>
+#  include <vector>
+#endif
+
 #include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
 
@@ -52,6 +61,62 @@ class ICScript;
 class JitActivation;
 class JitContext;
 class DebugModeOSRVolatileJitFrameIter;
+
+#if defined(JS_CODEGEN_WASM32)
+// For WASM32 we use an async codegeneration model so
+// jitCandidates stores targets for the future compilation.
+extern std::set<JSScript*> jitCandidates;
+
+struct ICStubInfo {
+  void* newStub;
+  void* fallbackStub;
+  void* jitCode;
+};
+
+struct AttachNew {
+  ICStubInfo stubInfo;
+};
+
+struct DiscardStubs {
+  JSScript* script;
+  void* fallbackStub;
+};
+
+using ICStubAction = std::variant<AttachNew, DiscardStubs>;
+
+struct ICCallSite {
+  uint32_t pcOffset;
+  JSScript* script;
+
+  bool operator==(const ICCallSite& other) const {
+    return pcOffset == other.pcOffset && script == other.script;
+  }
+};
+
+struct ICCallSiteHash {
+  std::size_t operator()(ICCallSite const& callSite) const noexcept {
+    std::size_t h1 = std::hash<uint32_t>{}(callSite.pcOffset);
+    std::size_t h2 = std::hash<void*>{}(callSite.script);
+    return h1 ^ (h2 << 1);
+  }
+};
+
+inline std::unordered_map<void*, ICStubAction> pendingICStubs;
+inline std::unordered_map<ICCallSite, void*, ICCallSiteHash> icStubToItsCode;
+inline std::unordered_map<void*, uint32_t> icCodeToFunctionIndex;
+
+// Reverse mapping to maintain inlined functions for the next rounds of
+// compilation.
+inline std::unordered_map<uint32_t, std::vector<ICCallSite>>
+    functionIndexToCallSites;
+inline std::unordered_map<ICCallSite, ICStubInfo, ICCallSiteHash>
+    callSiteToItsStub;
+
+__attribute__((import_module("env"),
+               import_name("CompileCallbackForTests"))) void
+CompileCallbackForTests(void);
+#endif
+
 }  // namespace jit
 
 /* Detects cycles when traversing an object graph. */

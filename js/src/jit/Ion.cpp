@@ -210,10 +210,17 @@ bool JitRuntime::generateTrampolines(JSContext* cx) {
   shapePreBarrierOffset_ = generatePreBarrier(cx, masm, MIRType::Shape);
   rangeRecorder.recordOffset("Trampoline: PreBarrier Shape");
 
+#if defined(JS_CODEGEN_WASM32)
+  postBarrierOffset_ = generatePostBarrier(cx, masm);
+  rangeRecorder.recordOffset("Trampoline: Post barrier");
+#endif
+
+#if !defined(JS_CODEGEN_WASM32)
   JitSpew(JitSpew_Codegen, "# Emitting Pre Barrier for WasmAnyRef");
   wasmAnyRefPreBarrierOffset_ =
       generatePreBarrier(cx, masm, MIRType::WasmAnyRef);
   rangeRecorder.recordOffset("Trampoline: PreBarrier WasmAnyRef");
+#endif
 
   JitSpew(JitSpew_Codegen, "# Emitting free stub");
   generateFreeStub(masm);
@@ -223,9 +230,11 @@ bool JitRuntime::generateTrampolines(JSContext* cx) {
   generateLazyLinkStub(masm);
   rangeRecorder.recordOffset("Trampoline: LazyLinkStub");
 
+#if !defined(JS_CODEGEN_WASM32)
   JitSpew(JitSpew_Codegen, "# Emitting interpreter stub");
   generateInterpreterStub(masm);
   rangeRecorder.recordOffset("Trampoline: Interpreter");
+#endif
 
   JitSpew(JitSpew_Codegen, "# Emitting double-to-int32-value stub");
   generateDoubleToInt32ValueStub(masm);
@@ -241,6 +250,7 @@ bool JitRuntime::generateTrampolines(JSContext* cx) {
   generateProfilerExitFrameTailStub(masm, &profilerExitTail);
   rangeRecorder.recordOffset("Trampoline: ProfilerExitFrameTailStub");
 
+#if !defined(JS_CODEGEN_WASM32)
   JitSpew(JitSpew_Codegen, "# Emitting exception tail stub");
   generateExceptionTailStub(masm, &profilerExitTail, &bailoutTail);
   rangeRecorder.recordOffset("Trampoline: ExceptionTailStub");
@@ -252,6 +262,7 @@ bool JitRuntime::generateTrampolines(JSContext* cx) {
   JitSpew(JitSpew_Codegen, "# Emitting Ion generic construct stub");
   generateIonGenericCallStub(masm, IonGenericCallKind::Construct);
   rangeRecorder.recordOffset("Trampoline: IonGenericConstruct");
+#endif
 
   Linker linker(masm);
   trampolineCode_ = linker.newCode(cx, CodeKind::Other);

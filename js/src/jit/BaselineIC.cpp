@@ -491,6 +491,12 @@ static void MaybeTransition(JSContext* cx, BaselineFrame* frame,
 template <typename IRGenerator, typename... Args>
 static void TryAttachStub(const char* name, JSContext* cx, BaselineFrame* frame,
                           ICFallbackStub* stub, Args&&... args) {
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  if (frame->script()->getWarmUpCount() <=
+      JitOptions.portableBaselineInterpreterAttachThreshold) {
+    return;
+  }
+#endif
   MaybeTransition(cx, frame, stub);
 
   if (stub->state().canAttachStub()) {

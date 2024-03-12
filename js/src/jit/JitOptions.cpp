@@ -192,6 +192,7 @@ DefaultJitOptions::DefaultJitOptions() {
   // How many invocations are needed before functions enter the
   // Portable Baseline Interpreter.
   SET_DEFAULT(portableBaselineInterpreterWarmUpThreshold, 10);
+  SET_DEFAULT(portableBaselineInterpreterAttachThreshold, 10);
 #endif
 
   // How many invocations or loop iterations are needed before functions

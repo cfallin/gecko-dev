@@ -332,11 +332,18 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
                                     StackVal* sp, JSObject* envChain,
                                     Value* ret, jsbytecode* pc,
                                     ImmutableScriptData* isd,
+                                    jsbytecode* restartEntryPC,
                                     jit::BaselineFrame* restartFrame,
                                     StackVal* restartEntryFrame,
                                     PBIResult restartCode);
 
 uint8_t* GetPortableFallbackStub(jit::BaselineICFallbackKind kind);
+
+#ifdef ENABLE_JS_PBL_WEVAL
+// Register the existence of a JSScript, in case PBL may have a way to
+// accelerate it (e.g., register a weval specialization request).
+void EnqueueSpecialization(JSScript* script);
+#endif
 
 } /* namespace pbl */
 } /* namespace js */

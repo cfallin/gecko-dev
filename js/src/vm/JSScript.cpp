@@ -2506,6 +2506,10 @@ bool JSScript::fullyInitFromStencil(
     }
   }
 
+#ifdef ENABLE_JS_PBL_WEVAL
+  pbl::EnqueueSpecialization(script);
+#endif
+
   return true;
 }
 

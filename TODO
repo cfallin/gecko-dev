@@ -15,12 +15,12 @@
 - (x) incorporate wevaled main function bodies
   - specialization-mode template parameters
 
+- (x) separate warmup count for TryAttachStub attempts (otherwise in
+  wevaled builds with force-PBL we will attach in every cold path)
+
 - build functionality to dump all weval'ing requests after running, save them,
   and pre-weval later
   - generate a function that somehow does a hashtable lookup?
-
-- separate warmup count for TryAttachStub attempts (otherwise in
-  wevaled builds with force-PBL we will attach in every cold path)
 
 - weval IC bodies
 

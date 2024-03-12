@@ -10,14 +10,17 @@
 
 - (x) update weval to have a "symbolic memory at this ptr, len" abstraction
 
-- import latest weval header and Weval abstraction built around it
+- (x) import latest weval header and Weval abstraction built around it
 
-- incorporate wevaled main function bodies
+- (x) incorporate wevaled main function bodies
   - specialization-mode template parameters
 
 - build functionality to dump all weval'ing requests after running, save them,
   and pre-weval later
   - generate a function that somehow does a hashtable lookup?
+
+- separate warmup count for TryAttachStub attempts (otherwise in
+  wevaled builds with force-PBL we will attach in every cold path)
 
 - weval IC bodies
 

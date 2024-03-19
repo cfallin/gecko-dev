@@ -29,6 +29,10 @@ class FixedLengthTypedArrayObject;
 class TypedArrayObject;
 enum class UnaryMathFunction : uint8_t;
 
+#ifdef ENABLE_JS_PBL_WEVAL
+struct Weval;
+#endif
+
 namespace jit {
 
 class BaselineCacheIRCompiler;
@@ -1321,18 +1325,12 @@ class CacheIRStubInfo {
   uint8_t stubDataOffset_;
   bool makesGCCalls_;
 
+#ifdef ENABLE_JS_PBL_WEVAL
+  UniquePtr<Weval> weval_ = {};
+#endif
+
   CacheIRStubInfo(CacheKind kind, ICStubEngine engine, bool makesGCCalls,
-                  uint32_t stubDataOffset, uint32_t codeLength)
-      : codeLength_(codeLength),
-        kind_(kind),
-        engine_(engine),
-        stubDataOffset_(stubDataOffset),
-        makesGCCalls_(makesGCCalls) {
-    MOZ_ASSERT(kind_ == kind, "Kind must fit in bitfield");
-    MOZ_ASSERT(engine_ == engine, "Engine must fit in bitfield");
-    MOZ_ASSERT(stubDataOffset_ == stubDataOffset,
-               "stubDataOffset must fit in uint8_t");
-  }
+                  uint32_t stubDataOffset, uint32_t codeLength);
 
   CacheIRStubInfo(const CacheIRStubInfo&) = delete;
   CacheIRStubInfo& operator=(const CacheIRStubInfo&) = delete;
@@ -1405,6 +1403,11 @@ class CacheIRStubInfo {
 
   void replaceStubRawWord(uint8_t* stubData, uint32_t offset, uintptr_t oldWord,
                           uintptr_t newWord) const;
+
+#ifdef ENABLE_JS_PBL_WEVAL
+  bool hasWeval() const { return weval_.get() != nullptr; }
+  Weval& weval();
+#endif
 };
 
 template <typename T>

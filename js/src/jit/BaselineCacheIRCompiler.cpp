@@ -23,6 +23,7 @@
 #include "proxy/DeadObjectProxy.h"
 #include "proxy/Proxy.h"
 #include "util/Unicode.h"
+#include "vm/PortableBaselineInterpret.h"
 #include "vm/StaticStrings.h"
 
 #include "jit/JitScript-inl.h"
@@ -2651,6 +2652,11 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
     }
     return ICAttachResult::Attached;
   }
+
+#ifdef ENABLE_JS_PBL_WEVAL
+    // Register for weval specialization, if enabled.
+    js::pbl::EnqueueICStubSpecialization(stubInfo);
+#endif
 
   // Time to allocate and attach a new stub.
 

@@ -6588,7 +6588,8 @@ bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
 }
 
 #ifdef ENABLE_JS_PBL_WEVAL
-void EnqueueSpecialization(JSScript* script) {
+
+void EnqueueScriptSpecialization(JSScript* script) {
   Weval& weval = script->weval();
   if (!weval.req) {
     using weval::Runtime;
@@ -6610,6 +6611,10 @@ void EnqueueSpecialization(JSScript* script) {
         Runtime<PBIResult>());
   }
 }
+
+void EnqueueICStubSpecialization(CacheIRStubInfo* stubInfo) {
+}
+  
 #endif // ENABLE_JS_PBL_WEVAL
 
 }  // namespace pbl

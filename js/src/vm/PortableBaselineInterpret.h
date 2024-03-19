@@ -342,7 +342,10 @@ uint8_t* GetPortableFallbackStub(jit::BaselineICFallbackKind kind);
 #ifdef ENABLE_JS_PBL_WEVAL
 // Register the existence of a JSScript, in case PBL may have a way to
 // accelerate it (e.g., register a weval specialization request).
-void EnqueueSpecialization(JSScript* script);
+void EnqueueScriptSpecialization(JSScript* script);
+// Register the existence of an ICScript, in case PBL may have a way
+// to accelerate it (e.g., register a weval specialization request).
+void EnqueueICStubSpecialization(jit::CacheIRStubInfo* stub);
 #endif
 
 } /* namespace pbl */

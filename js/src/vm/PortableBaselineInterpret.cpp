@@ -451,13 +451,13 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
 
 #define CALL_IC(ctx, stub, result)                                        \
   do {                                                                    \
-    if (stub->isFallback()) {                                             \
+    if (stub->rawJitCode()) {                                             \
       ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
       result = func(ctx, stub, nullptr, nullptr);                         \
     } else {                                                              \
       ICCacheIRStub* cstub = stub->toCacheIRStub();                       \
-      result = ICInterpretOps(ctx, stub, cstub->stubInfo(),               \
-                              cstub->stubInfo()->code());                 \
+      result = ICInterpretOps<false>(ctx, stub, cstub->stubInfo(),        \
+                                     cstub->stubInfo()->code());          \
     }                                                                     \
   } while (0)
 
@@ -481,6 +481,7 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
 #endif
 
 // Interpreter for CacheIR.
+template <bool Specialized>
 PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
                                           const CacheIRStubInfo* stubInfo,
                                           const uint8_t* code) {
@@ -517,6 +518,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 
 #  define DISPATCH_CACHEOP()          \
     cacheop = cacheIRReader.readOp(); \
+    WEVAL_UPDATE_IC_CTX();            \
     goto dispatch;
 
 #endif  // __wasi__
@@ -553,20 +555,41 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 #define BOUNDSCHECK(resultId) \
   if (resultId.id() >= ICRegs::kMaxICVals) FAIL_IC();
 
-#define PREDICT_NEXT(name)                       \
-  if (cacheIRReader.peekOp() == CacheOp::name) { \
-    cacheIRReader.readOp();                      \
-    goto cacheop_##name;                         \
+#define PREDICT_NEXT(name)                                       \
+  if (!Specialized && cacheIRReader.peekOp() == CacheOp::name) { \
+    cacheIRReader.readOp();                                      \
+    goto cacheop_##name;                                         \
   }
 
-#define PREDICT_RETURN()                                 \
-  if (cacheIRReader.peekOp() == CacheOp::ReturnFromIC) { \
-    TRACE_PRINTF("stub successful, predicted return\n"); \
-    return PBIResult::Ok;                                \
+#define PREDICT_RETURN()                                                 \
+  if (!Specialized && cacheIRReader.peekOp() == CacheOp::ReturnFromIC) { \
+    TRACE_PRINTF("stub successful, predicted return\n");                 \
+    return PBIResult::Ok;                                                \
   }
 
-#define READ_REG(reg) ctx.icregs.icVals[(reg)]
-#define WRITE_REG(reg, value) ctx.icregs.icVals[(reg)] = (value)
+#ifdef ENABLE_JS_PBL_WEVAL
+
+#  define READ_REG(reg) \
+    (Specialized ? weval_read_reg((reg)) : ctx.icregs.icVals[(reg)])
+#  define WRITE_REG(reg, value)           \
+    if (Specialized) {                    \
+      weval_write_reg((reg), (value));    \
+    } else {                              \
+      ctx.icregs.icVals[(reg)] = (value); \
+    }
+
+#  define WEVAL_UPDATE_IC_CTX()                                         \
+    if (Specialized) {                                                  \
+      weval::update_context(                                            \
+          reinterpret_cast<uint32_t>(cacheIRReader.currentPosition())); \
+    }
+
+#else  // ENABLE_JS_PBL_WEVAL
+
+#  define READ_REG(reg) ctx.icregs.icVals[(reg)]
+#  define WRITE_REG(reg, value) ctx.icregs.icVals[(reg)] = (value)
+
+#endif  // !ENABLE_JS_PBL_WEVAL
 
   uint64_t inputs[3];
   CacheOp cacheop;
@@ -575,6 +598,16 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
   inputs[0] = ctx.icregs.icVals[0];
   inputs[1] = ctx.icregs.icVals[1];
   inputs[2] = ctx.icregs.icVals[2];
+
+#ifdef ENABLE_JS_PBL_WEVAL
+  weval::push_context(
+      reinterpret_cast<uint32_t>(cacheIRReader.currentPosition()));
+  if (Specialized) {
+    WRITE_REG(0, ctx.icregs.icVals[0]);
+    WRITE_REG(1, ctx.icregs.icVals[1]);
+    WRITE_REG(2, ctx.icregs.icVals[2]);
+  }
+#endif
 
   DISPATCH_CACHEOP();
 
@@ -6613,9 +6646,23 @@ void EnqueueScriptSpecialization(JSScript* script) {
 }
 
 void EnqueueICStubSpecialization(CacheIRStubInfo* stubInfo) {
+  Weval& weval = stubInfo->weval();
+  if (!weval.req) {
+    using weval::Runtime;
+    using weval::SpecializeMemory;
+
+    uint32_t len = sizeof(CacheIRStubInfo) + stubInfo->codeLength();
+
+    weval.req = weval::weval(reinterpret_cast<ICStubFunc*>(&weval.func),
+                             &ICInterpretOps<true>, Runtime<ICCtx&>(),
+                             Runtime<ICStub*>(),
+                             SpecializeMemory<CacheIRStubInfo*>(stubInfo, len),
+                             SpecializeMemory<const uint8_t*>(
+                                 stubInfo->code(), stubInfo->codeLength()));
+  }
 }
-  
-#endif // ENABLE_JS_PBL_WEVAL
+
+#endif  // ENABLE_JS_PBL_WEVAL
 
 }  // namespace pbl
 }  // namespace js

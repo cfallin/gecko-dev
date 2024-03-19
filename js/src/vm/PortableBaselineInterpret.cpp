@@ -6622,6 +6622,13 @@ bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
 
 #ifdef ENABLE_JS_PBL_WEVAL
 
+// IDs for interpreter bodies that we weval, so that we can stably
+// associate collected request bodies with interpreters even when
+// SpiderMonkey is relinked and actual function pointer values may
+// change.
+static const uint32_t WEVAL_JSOP_ID = 1;
+static const uint32_t WEVAL_IC_ID = 2;
+
 void EnqueueScriptSpecialization(JSScript* script) {
   Weval& weval = script->weval();
   if (!weval.req) {
@@ -6635,9 +6642,9 @@ void EnqueueScriptSpecialization(JSScript* script) {
 
     weval.req = weval::weval(
         reinterpret_cast<PBIFunc*>(&weval.func),
-        &PortableBaselineInterpret<false, false, true>, Runtime<JSContext*>(),
-        Runtime<State&>(), Runtime<Stack&>(), Runtime<StackVal*>(),
-        Runtime<JSObject*>(), Runtime<Value*>(),
+        &PortableBaselineInterpret<false, false, true>, WEVAL_JSOP_ID,
+        Runtime<JSContext*>(), Runtime<State&>(), Runtime<Stack&>(),
+        Runtime<StackVal*>(), Runtime<JSObject*>(), Runtime<Value*>(),
         SpecializeMemory<jsbytecode*>(pc, pc_len),
         SpecializeMemory<ImmutableScriptData*>(isd, isd_len),
         Runtime<jsbytecode*>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),
@@ -6654,8 +6661,8 @@ void EnqueueICStubSpecialization(CacheIRStubInfo* stubInfo) {
     uint32_t len = sizeof(CacheIRStubInfo) + stubInfo->codeLength();
 
     weval.req = weval::weval(reinterpret_cast<ICStubFunc*>(&weval.func),
-                             &ICInterpretOps<true>, Runtime<ICCtx&>(),
-                             Runtime<ICStub*>(),
+                             &ICInterpretOps<true>, WEVAL_IC_ID,
+                             Runtime<ICCtx&>(), Runtime<ICStub*>(),
                              SpecializeMemory<CacheIRStubInfo*>(stubInfo, len),
                              SpecializeMemory<const uint8_t*>(
                                  stubInfo->code(), stubInfo->codeLength()));

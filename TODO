@@ -22,6 +22,15 @@
   and pre-weval later
   - generate a function that somehow does a hashtable lookup?
 
+  - in weval.h:
+    - helper that returns false initially and try after wevaling
+      (use a global)
+    - in `weval_request`, don't enqueue anymore (and skip the logic
+      one level up too) after wevaling; but do look at pre-wevaled
+      table
+    - create a global as a head pointer for pre-wevaled table;
+      append memory with this sorted request->funcptr table.
+
 - weval IC bodies
 
 - "fast IC invocation" mechanism: typed funcref table, fixed indices

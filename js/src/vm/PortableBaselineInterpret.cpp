@@ -58,7 +58,7 @@
 #include "vm/PlainObject-inl.h"
 
 #ifdef ENABLE_JS_PBL_WEVAL
-WEVAL_DEFINE_REQ_LIST()
+WEVAL_DEFINE_GLOBALS()
 #endif
 
 namespace js {

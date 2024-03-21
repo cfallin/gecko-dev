@@ -188,26 +188,27 @@ extern "C" {
 #define WEVAL_WASM_IMPORT(name) \
   __attribute__((__import_module__("weval"), __import_name__(name)))
 
-const void* weval_assume_const_memory(const void* p)
-    WEVAL_WASM_IMPORT("assume.const.memory");
-const void* weval_assume_const_memory_transitive(const void* p)
-    WEVAL_WASM_IMPORT("assume.const.memory.transitive");
+/* Core intrinsics for interpreter loops: contexts, registers, value
+ * specialization */
+    
 void weval_push_context(uint32_t pc) WEVAL_WASM_IMPORT("push.context");
 void weval_pop_context() WEVAL_WASM_IMPORT("pop.context");
 void weval_update_context(uint32_t pc) WEVAL_WASM_IMPORT("update.context");
 uint64_t weval_read_reg(uint64_t idx) WEVAL_WASM_IMPORT("read.reg");
 void weval_write_reg(uint64_t idx, uint64_t value)
     WEVAL_WASM_IMPORT("write.reg");
+uint32_t weval_specialize_value(uint32_t value, uint32_t lo, uint32_t hi)
+    WEVAL_WASM_IMPORT("specialize.value");
+
+/* Debugging and stats intrinsics */
+    
 void weval_trace_line(uint32_t line_number) WEVAL_WASM_IMPORT("trace.line");
 void weval_abort_specialization(uint32_t line_number, uint32_t fatal)
     WEVAL_WASM_IMPORT("abort.specialization");
 void weval_assert_const32(uint32_t value, uint32_t line_no)
     WEVAL_WASM_IMPORT("assert.const32");
-uint32_t weval_specialize_value(uint32_t value, uint32_t lo, uint32_t hi)
-    WEVAL_WASM_IMPORT("specialize.value");
 void weval_print(const char* message, uint32_t line, uint32_t val)
     WEVAL_WASM_IMPORT("print");
-
 void weval_context_bucket(uint32_t bucket) WEVAL_WASM_IMPORT("context.bucket");
 
 #undef WEVAL_WASM_IMPORT

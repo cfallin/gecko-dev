@@ -193,6 +193,7 @@ DefaultJitOptions::DefaultJitOptions() {
 #ifdef ENABLE_PORTABLE_BASELINE_INTERP_FORCE
   SET_DEFAULT(portableBaselineInterpreter, true);
   SET_DEFAULT(portableBaselineInterpreterWarmUpThreshold, 0);
+  SET_DEFAULT(portableBaselineInterpreterAttachThreshold, 0);
 #endif
 
   // How many invocations or loop iterations are needed before functions

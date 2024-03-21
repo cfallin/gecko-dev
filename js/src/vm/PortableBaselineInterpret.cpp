@@ -606,6 +606,8 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 #  define READ_REG(reg) ctx.icregs.icVals[(reg)]
 #  define WRITE_REG(reg, value) ctx.icregs.icVals[(reg)] = (value)
 
+#  define WEVAL_UPDATE_IC_CTX() ;
+
 #endif  // !ENABLE_JS_PBL_WEVAL
 
   uint64_t inputs[3];

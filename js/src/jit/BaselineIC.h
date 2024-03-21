@@ -203,6 +203,7 @@ class ICStub {
   JitCode* jitCode() { return nullptr; }
   bool hasJitCode() { return false; }
   uint8_t* rawJitCode() const { return stubCode_; }
+  void updateRawJitCode(uint8_t* ptr) { stubCode_ = ptr; }
 #endif
 
   uint32_t enteredCount() const { return enteredCount_; }

@@ -490,6 +490,19 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
   jsbytecode* pc = ctx.pc;
   StackVal* sp = ctx.sp;
 
+#ifdef ENABLE_JS_PBL_WEVAL
+  if (!Specialized) {
+    CacheIRStubInfo* s = const_cast<CacheIRStubInfo*>(stubInfo);
+    // Lazily propagate function pointer from weval request to stub.
+    if (s->hasWeval() && s->weval().func) {
+      stub->updateRawJitCode(reinterpret_cast<uint8_t*>(s->weval().func));
+      PBIResult result;
+      CALL_IC(ctx, stub, result);
+      return result;
+    }
+  }
+#endif
+
   // dispatch logic: non-WASI version does direct threading; WASI
   // version uses a conventional switch (because Wasm lowers to
   // this anyway, and it makes following transforms easier).
@@ -6629,6 +6642,9 @@ bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
 static const uint32_t WEVAL_JSOP_ID = 1;
 static const uint32_t WEVAL_IC_ID = 2;
 
+WEVAL_DEFINE_TARGET(1, (PortableBaselineInterpret<false, false, true>));
+WEVAL_DEFINE_TARGET(2, (ICInterpretOps<true>));
+
 void EnqueueScriptSpecialization(JSScript* script) {
   Weval& weval = script->weval();
   if (!weval.req) {
@@ -6658,7 +6674,9 @@ void EnqueueICStubSpecialization(CacheIRStubInfo* stubInfo) {
     using weval::Runtime;
     using weval::SpecializeMemory;
 
-    uint32_t len = sizeof(CacheIRStubInfo) + stubInfo->codeLength();
+    // StubInfo length: do not include the `Weval` object pointer, as
+    // it is nondeterministic.
+    uint32_t len = sizeof(CacheIRStubInfo) - sizeof(void*);
 
     weval.req = weval::weval(reinterpret_cast<ICStubFunc*>(&weval.func),
                              &ICInterpretOps<true>, WEVAL_IC_ID,

@@ -3363,6 +3363,7 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 #  define PREDICT_NEXT(op)
 #endif
 
+#ifndef __wasi__
 #define COUNT_COVERAGE_PC(PC)                        \
   if (script->hasScriptCounts()) {                   \
     PCCounts* counts = script->maybeGetPCCounts(PC); \
@@ -3374,6 +3375,10 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     jsbytecode* main = script->main();                               \
     if (!BytecodeIsJumpTarget(JSOp(*main))) COUNT_COVERAGE_PC(main); \
   }
+#else
+#define COUNT_COVERAGE_PC(PC) ;
+#define COUNT_COVERAGE_MAIN() ;
+#endif
 
 #define NEXT_IC() frame->interpreterICEntry()++;
 

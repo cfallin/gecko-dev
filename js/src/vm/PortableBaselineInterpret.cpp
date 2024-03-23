@@ -6677,7 +6677,7 @@ void EnqueueScriptSpecialization(JSScript* script) {
 
     weval.req = weval::weval(
         reinterpret_cast<PBIFunc*>(&weval.func),
-        &PortableBaselineInterpret<false, false, true>, WEVAL_JSOP_ID,
+        &PortableBaselineInterpret<false, false, kHybridICs>, WEVAL_JSOP_ID,
         Runtime<JSContext*>(), Runtime<State&>(), Runtime<Stack&>(),
         Runtime<StackVal*>(), Runtime<JSObject*>(), Runtime<Value*>(),
         SpecializeMemory<jsbytecode*>(pc, pc_len),

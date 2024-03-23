@@ -3433,6 +3433,7 @@ PBIResult PortableBaselineInterpret(
   PBIResult ic_result = PBIResult::Ok;
   uint64_t ic_arg0 = 0, ic_arg1 = 0, ic_arg2 = 0, ic_ret = 0;
   ICCtx ctx(cx_, frame, state, stack);
+  auto* icEntries = frame->icScript()->icEntries();
 
   if (IsRestart) {
     ic_result = restartCode;
@@ -3516,7 +3517,8 @@ PBIResult PortableBaselineInterpret(
   weval::push_context(reinterpret_cast<uint32_t>(pc));
 #endif
 
-  while (true) {
+  while (true)
+  {
     DEBUG_CHECK();
 
   dispatch:
@@ -5259,6 +5261,7 @@ PBIResult PortableBaselineInterpret(
             frame = newFrame;
             ctx.frameMgr.switchToFrame(frame);
             ctx.frame = frame;
+            icEntries = frame->icScript()->icEntries();
             // 6. Set up PC and SP for callee.
             sp = reinterpret_cast<StackVal*>(frame);
             pc = calleeScript->code();
@@ -5634,13 +5637,13 @@ PBIResult PortableBaselineInterpret(
 
       CASE(JumpTarget) {
         int32_t icIndex = GET_INT32(pc);
-        frame->interpreterICEntry() = frame->icScript()->icEntries() + icIndex;
+        frame->interpreterICEntry() = icEntries + icIndex;
         COUNT_COVERAGE_PC(pc);
         END_OP(JumpTarget);
       }
       CASE(LoopHead) {
         int32_t icIndex = GET_INT32(pc);
-        frame->interpreterICEntry() = frame->icScript()->icEntries() + icIndex;
+        frame->interpreterICEntry() = icEntries + icIndex;
 #ifndef __wasi__
         if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
           PUSH_EXIT_FRAME();
@@ -5654,7 +5657,7 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(AfterYield) {
         int32_t icIndex = GET_INT32(pc);
-        frame->interpreterICEntry() = frame->icScript()->icEntries() + icIndex;
+        frame->interpreterICEntry() = icEntries + icIndex;
         if (script->isDebuggee()) {
           TRACE_PRINTF("doing DebugAfterYield\n");
           PUSH_EXIT_FRAME();
@@ -5788,6 +5791,7 @@ PBIResult PortableBaselineInterpret(
                        frame);
           ctx.frameMgr.switchToFrame(frame);
           ctx.frame = frame;
+          icEntries = frame->icScript()->icEntries();
           pc = frame->interpreterPC();
           script.set(frame->script());
           entryPC = script->code();
@@ -6510,6 +6514,7 @@ unwind:
   TRACE_PRINTF(" -> setting sp to %p, frame to %p\n", sp, frame);
   ctx.frameMgr.switchToFrame(frame);
   ctx.frame = frame;
+  icEntries = frame->icScript()->icEntries();
   pc = frame->interpreterPC();
   script.set(frame->script());
   DISPATCH();
@@ -6530,6 +6535,7 @@ unwind_error:
   TRACE_PRINTF(" -> setting sp to %p, frame to %p\n", sp, frame);
   ctx.frameMgr.switchToFrame(frame);
   ctx.frame = frame;
+  icEntries = frame->icScript()->icEntries();
   pc = frame->interpreterPC();
   script.set(frame->script());
   goto error;
@@ -6551,6 +6557,7 @@ unwind_ret:
   TRACE_PRINTF(" -> setting sp to %p, frame to %p\n", sp, frame);
   ctx.frameMgr.switchToFrame(frame);
   ctx.frame = frame;
+  icEntries = frame->icScript()->icEntries();
   pc = frame->interpreterPC();
   script.set(frame->script());
   from_unwind = true;

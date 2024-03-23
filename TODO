@@ -28,11 +28,17 @@
     - get line-number marks in weval'd wasm
     - get profiler to provide line-number info
     - put opcode in weval context / basic-block names?
-  - hybrid ICs still a thing?
+  - (x) hybrid ICs still a thing?
   - make sure SP is in a register and not constantly reloaded
   - debuggee checks
   - profiling counts?
   - extra pointer-chain indirections when updating e.g. IC pointer
+  - pass IC args as registers (avoid some memory traffic)
+  - avoid conditional at IC site; always indirect call
+  - run with no-sig-check, no-stack-limit, no-null-check,
+    no-table-bounds-check wasmtime
+  - make LoopHeader and JumpTarget much more efficient (keep ICEntries
+    in a local; also cache interpreterICEntry?)
 
 - "fast IC invocation" mechanism: typed funcref table, fixed indices
   in wevaled body, return updated funcref? or set it separately when

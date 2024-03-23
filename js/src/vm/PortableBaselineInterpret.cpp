@@ -291,7 +291,6 @@ struct Stack {
 struct ICRegs {
   static const int kMaxICVals = 16;
   uint64_t icVals[kMaxICVals];
-  uint64_t icResult;
   int extraArgs;
 
   ICRegs() {}
@@ -444,21 +443,23 @@ struct ICCtx {
 // Universal signature for an IC stub function.
 typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
                                 const CacheIRStubInfo* stubInfo,
-                                const uint8_t* code);
+                                const uint8_t* code, uint64_t arg0,
+                                uint64_t arg1, uint64_t arg2, uint64_t* ret);
 
 // TODO(weval): Actually store a pointer to either the IC interpreter
 // or a weval'd body in stub->jitCode().
 
-#define CALL_IC(ctx, stub, result)                                        \
-  do {                                                                    \
-    if (stub->rawJitCode()) {                                             \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
-      result = func(ctx, stub, nullptr, nullptr);                         \
-    } else {                                                              \
-      ICCacheIRStub* cstub = stub->toCacheIRStub();                       \
-      result = ICInterpretOps<false>(ctx, stub, cstub->stubInfo(),        \
-                                     cstub->stubInfo()->code());          \
-    }                                                                     \
+#define CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret)                   \
+  do {                                                                      \
+    if (stub->rawJitCode()) {                                               \
+      ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode());   \
+      result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2, ret);    \
+    } else {                                                                \
+      ICCacheIRStub* cstub = stub->toCacheIRStub();                         \
+      result = ICInterpretOps<false>(ctx, stub, cstub->stubInfo(),          \
+                                     cstub->stubInfo()->code(), arg0, arg1, \
+                                     arg2, ret);                            \
+    }                                                                       \
   } while (0)
 
 typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
@@ -484,7 +485,11 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
 template <bool Specialized>
 PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
                                           const CacheIRStubInfo* stubInfo,
-                                          const uint8_t* code) {
+                                          const uint8_t* code,
+                                          uint64_t arg0,
+                                          uint64_t arg1,
+                                          uint64_t arg2,
+                                          uint64_t* ret) {
   CacheIRReader cacheIRReader(code, nullptr);
   ICCacheIRStub* cstub = stub->toCacheIRStub();
   jsbytecode* pc = ctx.pc;
@@ -497,7 +502,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
     if (s->hasWeval() && s->weval().func) {
       stub->updateRawJitCode(reinterpret_cast<uint8_t*>(s->weval().func));
       PBIResult result;
-      CALL_IC(ctx, stub, result);
+      CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret);
       return result;
     }
   }
@@ -552,12 +557,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
                cstub);
 
 #define FAIL_IC()                     \
-  do {                                \
-    ctx.icregs.icVals[0] = inputs[0]; \
-    ctx.icregs.icVals[1] = inputs[1]; \
-    ctx.icregs.icVals[2] = inputs[2]; \
-    goto next_ic;                     \
-  } while (0)
+    goto next_ic;
 
 // We set a fixed bound on the number of icVals which is smaller than what IC
 // generators may use. As a result we can't evaluate an IC if it defines too
@@ -606,23 +606,16 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 
 #endif  // !ENABLE_JS_PBL_WEVAL
 
-  uint64_t inputs[3];
   CacheOp cacheop;
-
-  // Save inputs so a stub failure can restore them.
-  inputs[0] = ctx.icregs.icVals[0];
-  inputs[1] = ctx.icregs.icVals[1];
-  inputs[2] = ctx.icregs.icVals[2];
 
 #ifdef ENABLE_JS_PBL_WEVAL
   weval::push_context(
       reinterpret_cast<uint32_t>(cacheIRReader.currentPosition()));
-  if (Specialized) {
-    WRITE_REG(0, ctx.icregs.icVals[0]);
-    WRITE_REG(1, ctx.icregs.icVals[1]);
-    WRITE_REG(2, ctx.icregs.icVals[2]);
-  }
 #endif
+
+  WRITE_REG(0, arg0);
+  WRITE_REG(1, arg1);
+  WRITE_REG(2, arg2);
 
   DISPATCH_CACHEOP();
 
@@ -1021,7 +1014,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
         JSClass* clasp = reinterpret_cast<JSClass*>(
             cstub->stubInfo()->getStubRawWord(cstub, claspOffset));
-        ctx.icregs.icResult =
+        *ret =
             BooleanValue(obj->getClass() == clasp).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -1605,7 +1598,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
                 &result)) {
           FAIL_IC();
         }
-        ctx.icregs.icResult = result.asRawBits();
+        *ret = result.asRawBits();
         DISPATCH_CACHEOP();
       }
 
@@ -1622,7 +1615,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
                                               obj, nullptr, values)) {
           FAIL_IC();
         }
-        ctx.icregs.icResult = values[1].asRawBits();
+        *ret = values[1].asRawBits();
         DISPATCH_CACHEOP();
       }
 
@@ -1833,7 +1826,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         aobj->setDenseInitializedLength(initLength + 1);
         aobj->setLength(initLength + 1);
         aobj->initDenseElement(initLength, rhs);
-        ctx.icregs.icResult = Int32Value(initLength + 1).asRawBits();
+        *ret = Int32Value(initLength + 1).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -1841,7 +1834,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE(IsObjectResult) {
         ValOperandId inputId = cacheIRReader.valOperandId();
         Value val = Value::fromRawBits(READ_REG(inputId.id()));
-        ctx.icregs.icResult = BooleanValue(val.isObject()).asRawBits();
+        *ret = BooleanValue(val.isObject()).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2038,7 +2031,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
             if (!success) {
               return PBIResult::Error;
             }
-            ctx.icregs.icResult = args[0].asRawBits();
+            *ret = args[0].asRawBits();
           } else {
             PUSHNATIVE(StackValNative(
                 MakeFrameDescriptorForJitCall(FrameType::BaselineStub, argc)));
@@ -2050,7 +2043,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
             INVOKE_PBI(result, script,
                        (PortableBaselineInterpret<false, true, kHybridICs>), cx,
                        ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-                       reinterpret_cast<Value*>(&ctx.icregs.icResult), pc, isd,
+                       reinterpret_cast<Value*>(&*ret), pc, isd,
                        nullptr, nullptr, nullptr, PBIResult::Ok);
             if (result != PBIResult::Ok) {
               return result;
@@ -2084,7 +2077,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
             "LoadFixedSlotResult: obj %p offsetOffset %d offset %d slotPtr %p "
             "slot %" PRIx64 "\n",
             nobj, int(offsetOffset), int(offset), slot, slot->asRawBits());
-        ctx.icregs.icResult = slot->asRawBits();
+        *ret = slot->asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2097,7 +2090,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         NativeObject* nobj =
             reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
         HeapSlot* slots = nobj->getSlotsUnchecked();
-        ctx.icregs.icResult = slots[offset / sizeof(Value)].get().asRawBits();
+        *ret = slots[offset / sizeof(Value)].get().asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2117,7 +2110,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         if (val.isMagic()) {
           FAIL_IC();
         }
-        ctx.icregs.icResult = val.asRawBits();
+        *ret = val.asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2130,7 +2123,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         if (length > uint32_t(INT32_MAX)) {
           FAIL_IC();
         }
-        ctx.icregs.icResult = Int32Value(length).asRawBits();
+        *ret = Int32Value(length).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2161,7 +2154,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         if (args->argIsForwarded(index)) {
           FAIL_IC();
         }
-        ctx.icregs.icResult = args->arg(index).asRawBits();
+        *ret = args->arg(index).asRawBits();
         DISPATCH_CACHEOP();
       }
 
@@ -2219,7 +2212,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
             }
           }
         }
-        ctx.icregs.icResult = StringValue(result).asRawBits();
+        *ret = StringValue(result).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2246,7 +2239,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
           MOZ_ALWAYS_TRUE(str->getChar(/* cx = */ nullptr, index, &c));
           result = Int32Value(c);
         }
-        ctx.icregs.icResult = result.asRawBits();
+        *ret = result.asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2258,14 +2251,14 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         if (length > size_t(INT32_MAX)) {
           FAIL_IC();
         }
-        ctx.icregs.icResult = Int32Value(length).asRawBits();
+        *ret = Int32Value(length).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(LoadObjectResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();
-        ctx.icregs.icResult =
+        *ret =
             ObjectValue(*reinterpret_cast<JSObject*>(READ_REG(objId.id())))
                 .asRawBits();
         PREDICT_RETURN();
@@ -2274,7 +2267,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 
       CACHEOP_CASE(LoadStringResult) {
         StringOperandId strId = cacheIRReader.stringOperandId();
-        ctx.icregs.icResult =
+        *ret =
             StringValue(reinterpret_cast<JSString*>(READ_REG(strId.id())))
                 .asRawBits();
         PREDICT_RETURN();
@@ -2283,7 +2276,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 
       CACHEOP_CASE(LoadSymbolResult) {
         SymbolOperandId symId = cacheIRReader.symbolOperandId();
-        ctx.icregs.icResult =
+        *ret =
             SymbolValue(reinterpret_cast<JS::Symbol*>(READ_REG(symId.id())))
                 .asRawBits();
         PREDICT_RETURN();
@@ -2292,7 +2285,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 
       CACHEOP_CASE(LoadInt32Result) {
         Int32OperandId valId = cacheIRReader.int32OperandId();
-        ctx.icregs.icResult = Int32Value(READ_REG(valId.id())).asRawBits();
+        *ret = Int32Value(READ_REG(valId.id())).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2303,14 +2296,14 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         if (val.isInt32()) {
           val = DoubleValue(val.toInt32());
         }
-        ctx.icregs.icResult = val.asRawBits();
+        *ret = val.asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(LoadBigIntResult) {
         BigIntOperandId valId = cacheIRReader.bigIntOperandId();
-        ctx.icregs.icResult =
+        *ret =
             BigIntValue(reinterpret_cast<JS::BigInt*>(READ_REG(valId.id())))
                 .asRawBits();
         PREDICT_RETURN();
@@ -2319,7 +2312,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 
       CACHEOP_CASE(LoadBooleanResult) {
         bool val = cacheIRReader.readBool();
-        ctx.icregs.icResult = BooleanValue(val).asRawBits();
+        *ret = BooleanValue(val).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2337,7 +2330,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         uint32_t strOffset = cacheIRReader.stubOffset();
         JSString* str = reinterpret_cast<JSString*>(
             cstub->stubInfo()->getStubRawWord(cstub, strOffset));
-        ctx.icregs.icResult = StringValue(str).asRawBits();
+        *ret = StringValue(str).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2353,7 +2346,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
     if (result < INT32_MIN || result > INT32_MAX) {                \
       FAIL_IC();                                                   \
     }                                                              \
-    ctx.icregs.icResult = Int32Value(int32_t(result)).asRawBits(); \
+    *ret = Int32Value(int32_t(result)).asRawBits(); \
     PREDICT_RETURN();                                              \
     DISPATCH_CACHEOP();                                            \
   }
@@ -2424,7 +2417,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
           }
         }
 
-        ctx.icregs.icResult = Int32Value(int32_t(result)).asRawBits();
+        *ret = Int32Value(int32_t(result)).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2436,7 +2429,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         if (value > INT32_MAX) {
           FAIL_IC();
         }
-        ctx.icregs.icResult = Int32Value(int32_t(value)).asRawBits();
+        *ret = Int32Value(int32_t(value)).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2444,7 +2437,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE(LoadInt32TruthyResult) {
         ValOperandId inputId = cacheIRReader.valOperandId();
         int32_t val = int32_t(READ_REG(inputId.id()));
-        ctx.icregs.icResult = BooleanValue(val != 0).asRawBits();
+        *ret = BooleanValue(val != 0).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2452,7 +2445,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE(LoadStringTruthyResult) {
         StringOperandId strId = cacheIRReader.stringOperandId();
         JSString* str = reinterpret_cast<JSLinearString*>(READ_REG(strId.id()));
-        ctx.icregs.icResult = BooleanValue(str->length() > 0).asRawBits();
+        *ret = BooleanValue(str->length() > 0).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2464,7 +2457,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         if (cls->isProxyObject()) {
           FAIL_IC();
         }
-        ctx.icregs.icResult =
+        *ret =
             BooleanValue(!cls->emulatesUndefined()).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -2472,7 +2465,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 
       CACHEOP_CASE(LoadValueResult) {
         uint32_t valOffset = cacheIRReader.stubOffset();
-        ctx.icregs.icResult =
+        *ret =
             cstub->stubInfo()->getStubRawInt64(cstub, valOffset);
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -2480,7 +2473,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 
       CACHEOP_CASE(LoadOperandResult) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        ctx.icregs.icResult = READ_REG(inputId.id());
+        *ret = READ_REG(inputId.id());
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2497,7 +2490,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         JSString* result =
             ConcatStrings<NoGC>(ctx.frameMgr.cxForLocalUseOnly(), lhs, rhs);
         if (result) {
-          ctx.icregs.icResult = StringValue(result).asRawBits();
+          *ret = StringValue(result).asRawBits();
         } else {
           FAIL_IC();
         }
@@ -2582,7 +2575,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
                 MOZ_CRASH("bad opcode");
             }
           }
-          ctx.icregs.icResult = BooleanValue(result).asRawBits();
+          *ret = BooleanValue(result).asRawBits();
         }
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -2621,7 +2614,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
           default:
             MOZ_CRASH("Unexpected opcode");
         }
-        ctx.icregs.icResult = BooleanValue(result).asRawBits();
+        *ret = BooleanValue(result).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2656,7 +2649,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
           default:
             MOZ_CRASH("bad opcode");
         }
-        ctx.icregs.icResult = BooleanValue(result).asRawBits();
+        *ret = BooleanValue(result).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2956,7 +2949,7 @@ next_ic:
   stub = stub->maybeNext();
   MOZ_ASSERT(stub);
   PBIResult result;
-  CALL_IC(ctx, stub, result);
+  CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret);
   return result;
 }
 
@@ -2966,35 +2959,37 @@ next_ic:
  * -----------------------------------------------
  */
 
-#define DEFINE_IC(kind, arity, fallback_body)                    \
-  static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(          \
-      ICCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo, \
-      const uint8_t* code) {                                     \
-    jsbytecode* pc = ctx.pc;                                     \
-    StackVal* sp = ctx.sp;                                       \
-    ICFallbackStub* fallback = stub->toFallbackStub();           \
-    fallback_body;                                               \
-    ctx.icregs.icResult = ctx.state.res.asRawBits();             \
-    ctx.state.res = UndefinedValue();                            \
-    return PBIResult::Ok;                                        \
-  error:                                                         \
-    return PBIResult::Error;                                     \
+#define DEFINE_IC(kind, arity, fallback_body)                           \
+  static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(                 \
+      ICCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo,        \
+      const uint8_t* code, uint64_t arg0, uint64_t arg1, uint64_t arg2, \
+      uint64_t* ret) {                                                  \
+    jsbytecode* pc = ctx.pc;                                            \
+    StackVal* sp = ctx.sp;                                              \
+    ICFallbackStub* fallback = stub->toFallbackStub();                  \
+    fallback_body;                                                      \
+    *ret = ctx.state.res.asRawBits();                                   \
+    ctx.state.res = UndefinedValue();                                   \
+    return PBIResult::Ok;                                               \
+  error:                                                                \
+    return PBIResult::Error;                                            \
   }
 
-#define DEFINE_IC_ALIAS(kind, target)                            \
-  static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(          \
-      ICCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo, \
-      const uint8_t* code) {                                     \
-    return IC##target##Fallback(ctx, stub, stubInfo, code);      \
+#define DEFINE_IC_ALIAS(kind, target)                                        \
+  static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(                      \
+      ICCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo,             \
+      const uint8_t* code, uint64_t arg0, uint64_t arg1, uint64_t arg2,      \
+      uint64_t* ret) {                                                       \
+    return IC##target##Fallback(ctx, stub, stubInfo, code, arg0, arg1, arg2, \
+                                ret);                                        \
   }
 
-#define IC_LOAD_VAL(state_elem, index) \
-  ReservedRooted<Value> state_elem(    \
-      &ctx.state.state_elem, Value::fromRawBits(ctx.icregs.icVals[(index)]))
+#define IC_LOAD_VAL(state_elem, index)                    \
+  ReservedRooted<Value> state_elem(&ctx.state.state_elem, \
+                                   Value::fromRawBits(arg##index))
 #define IC_LOAD_OBJ(state_elem, index)  \
   ReservedRooted<JSObject*> state_elem( \
-      &ctx.state.state_elem,            \
-      reinterpret_cast<JSObject*>(ctx.icregs.icVals[(index)]))
+      &ctx.state.state_elem, reinterpret_cast<JSObject*>(arg##index))
 
 DEFINE_IC(TypeOf, 1, {
   IC_LOAD_VAL(value0, 0);
@@ -3013,7 +3008,7 @@ DEFINE_IC(GetName, 1, {
 });
 
 DEFINE_IC(Call, 1, {
-  uint32_t argc = uint32_t(ctx.icregs.icVals[0]);
+  uint32_t argc = uint32_t(arg0);
   uint32_t totalArgs =
       argc + ctx.icregs.extraArgs;  // this, callee, (constructing?), func args
   Value* args = reinterpret_cast<Value*>(&ctx.sp[0]);
@@ -3033,7 +3028,7 @@ DEFINE_IC(Call, 1, {
 DEFINE_IC_ALIAS(CallConstructing, Call);
 
 DEFINE_IC(SpreadCall, 1, {
-  uint32_t argc = uint32_t(ctx.icregs.icVals[0]);
+  uint32_t argc = uint32_t(arg0);
   uint32_t totalArgs =
       argc + ctx.icregs.extraArgs;  // this, callee, (constructing?), func args
   Value* args = reinterpret_cast<Value*>(&ctx.sp[0]);
@@ -3341,13 +3336,14 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 #define END_OP(op) ADVANCE_AND_DISPATCH(JSOpLength_##op);
 
 #define IC_SET_ARG_FROM_STACK(index, stack_index) \
-  ctx.icregs.icVals[(index)] = sp[(stack_index)].asUInt64();
-#define IC_POP_ARG(index) ctx.icregs.icVals[(index)] = (*sp++).asUInt64();
+  ic_arg##index = sp[(stack_index)].asUInt64();
+#define IC_POP_ARG(index) ic_arg##index = (*sp++).asUInt64();
 #define IC_SET_VAL_ARG(index, expr) \
-  ctx.icregs.icVals[(index)] = (expr).asRawBits();
+  ic_arg##index = (expr).asRawBits();
 #define IC_SET_OBJ_ARG(index, expr) \
-  ctx.icregs.icVals[(index)] = reinterpret_cast<uint64_t>(expr);
-#define IC_PUSH_RESULT() PUSH(StackVal(ctx.icregs.icResult));
+  ic_arg##index = reinterpret_cast<uint64_t>(expr);
+#define IC_ZERO_ARG(index) ic_arg##index = 0;
+#define IC_PUSH_RESULT() PUSH(StackVal(ic_ret));
 
 #if !defined(TRACE_INTERP)
 #  define PREDICT_NEXT(op)       \
@@ -3378,13 +3374,14 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 
 #define NEXT_IC() frame->interpreterICEntry()++;
 
-#define INVOKE_IC(kind)                                              \
-  ctx.pc = pc;                                                       \
-  ctx.sp = sp;                                                       \
-  CALL_IC(ctx, frame->interpreterICEntry()->firstStub(), ic_result); \
-  if (ic_result != PBIResult::Ok) {                                  \
-    goto ic_fail;                                                    \
-  }                                                                  \
+#define INVOKE_IC(kind)                                                      \
+  ctx.pc = pc;                                                               \
+  ctx.sp = sp;                                                               \
+  CALL_IC(ctx, frame->interpreterICEntry()->firstStub(), ic_result, ic_arg0, \
+          ic_arg1, ic_arg2, &ic_ret);                                        \
+  if (ic_result != PBIResult::Ok) {                                          \
+    goto ic_fail;                                                            \
+  }                                                                          \
   NEXT_IC();
 
 template <bool IsRestart, bool InlineCalls, bool HybridICs>
@@ -3434,6 +3431,7 @@ PBIResult PortableBaselineInterpret(
   RootedScript script(cx_, frame->script());
   bool from_unwind = false;
   PBIResult ic_result = PBIResult::Ok;
+  uint64_t ic_arg0 = 0, ic_arg1 = 0, ic_arg2 = 0, ic_ret = 0;
   ICCtx ctx(cx_, frame, state, stack);
 
   if (IsRestart) {
@@ -3621,6 +3619,8 @@ PBIResult PortableBaselineInterpret(
           NEXT_IC();
         } else {
           IC_POP_ARG(0);
+          IC_ZERO_ARG(1);
+          IC_ZERO_ARG(2);
           INVOKE_IC(Typeof);
           IC_PUSH_RESULT();
         }
@@ -3721,6 +3721,8 @@ PBIResult PortableBaselineInterpret(
       static_assert(JSOpLength_Pos == JSOpLength_Dec);
       static_assert(JSOpLength_Pos == JSOpLength_ToNumeric);
       IC_POP_ARG(0);
+      IC_ZERO_ARG(1);
+      IC_ZERO_ARG(2);
       INVOKE_IC(UnaryArith);
       IC_PUSH_RESULT();
       END_OP(Pos);
@@ -3732,9 +3734,11 @@ PBIResult PortableBaselineInterpret(
           NEXT_IC();
         } else {
           IC_POP_ARG(0);
+          IC_ZERO_ARG(1);
+          IC_ZERO_ARG(2);
           INVOKE_IC(ToBool);
           PUSH(StackVal(BooleanValue(
-              !Value::fromRawBits(ctx.icregs.icResult).toBoolean())));
+              !Value::fromRawBits(ic_ret).toBoolean())));
         }
         END_OP(Not);
       }
@@ -3746,8 +3750,10 @@ PBIResult PortableBaselineInterpret(
           NEXT_IC();
         } else {
           IC_SET_ARG_FROM_STACK(0, 0);
+          IC_ZERO_ARG(1);
+          IC_ZERO_ARG(2);
           INVOKE_IC(ToBool);
-          result = Value::fromRawBits(ctx.icregs.icResult).toBoolean();
+          result = Value::fromRawBits(ic_ret).toBoolean();
         }
         int32_t jumpOffset = GET_JUMP_OFFSET(pc);
         if (!result) {
@@ -3766,8 +3772,10 @@ PBIResult PortableBaselineInterpret(
           NEXT_IC();
         } else {
           IC_SET_ARG_FROM_STACK(0, 0);
+          IC_ZERO_ARG(1);
+          IC_ZERO_ARG(2);
           INVOKE_IC(ToBool);
-          result = Value::fromRawBits(ctx.icregs.icResult).toBoolean();
+          result = Value::fromRawBits(ic_ret).toBoolean();
         }
         int32_t jumpOffset = GET_JUMP_OFFSET(pc);
         if (result) {
@@ -3787,8 +3795,10 @@ PBIResult PortableBaselineInterpret(
           NEXT_IC();
         } else {
           IC_POP_ARG(0);
+          IC_ZERO_ARG(1);
+          IC_ZERO_ARG(2);
           INVOKE_IC(ToBool);
-          result = Value::fromRawBits(ctx.icregs.icResult).toBoolean();
+          result = Value::fromRawBits(ic_ret).toBoolean();
         }
         int32_t jumpOffset = GET_JUMP_OFFSET(pc);
         if (result) {
@@ -3808,8 +3818,10 @@ PBIResult PortableBaselineInterpret(
           NEXT_IC();
         } else {
           IC_POP_ARG(0);
+          IC_ZERO_ARG(1);
+          IC_ZERO_ARG(2);
           INVOKE_IC(ToBool);
-          result = Value::fromRawBits(ctx.icregs.icResult).toBoolean();
+          result = Value::fromRawBits(ic_ret).toBoolean();
         }
         int32_t jumpOffset = GET_JUMP_OFFSET(pc);
         if (!result) {
@@ -4129,6 +4141,7 @@ PBIResult PortableBaselineInterpret(
       static_assert(JSOpLength_BitOr == JSOpLength_Pow);
       IC_POP_ARG(1);
       IC_POP_ARG(0);
+      IC_ZERO_ARG(2);
       INVOKE_IC(BinaryArith);
       IC_PUSH_RESULT();
       END_OP(Div);
@@ -4331,6 +4344,7 @@ PBIResult PortableBaselineInterpret(
       static_assert(JSOpLength_Eq == JSOpLength_Ge);
       IC_POP_ARG(1);
       IC_POP_ARG(0);
+      IC_ZERO_ARG(2);
       INVOKE_IC(Compare);
       IC_PUSH_RESULT();
       END_OP(Eq);
@@ -4339,6 +4353,7 @@ PBIResult PortableBaselineInterpret(
       CASE(Instanceof) {
         IC_POP_ARG(1);
         IC_POP_ARG(0);
+        IC_ZERO_ARG(2);
         INVOKE_IC(InstanceOf);
         IC_PUSH_RESULT();
         END_OP(Instanceof);
@@ -4347,6 +4362,7 @@ PBIResult PortableBaselineInterpret(
       CASE(In) {
         IC_POP_ARG(1);
         IC_POP_ARG(0);
+        IC_ZERO_ARG(2);
         INVOKE_IC(In);
         IC_PUSH_RESULT();
         END_OP(In);
@@ -4354,6 +4370,8 @@ PBIResult PortableBaselineInterpret(
 
       CASE(ToPropertyKey) {
         IC_POP_ARG(0);
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(ToPropertyKey);
         IC_PUSH_RESULT();
         END_OP(ToPropertyKey);
@@ -4461,6 +4479,9 @@ PBIResult PortableBaselineInterpret(
           NEXT_IC();
           END_OP(NewInit);
         } else {
+          IC_ZERO_ARG(0);
+          IC_ZERO_ARG(1);
+          IC_ZERO_ARG(2);
           INVOKE_IC(NewObject);
           IC_PUSH_RESULT();
           END_OP(NewInit);
@@ -4480,6 +4501,9 @@ PBIResult PortableBaselineInterpret(
           NEXT_IC();
           END_OP(NewObject);
         } else {
+          IC_ZERO_ARG(0);
+          IC_ZERO_ARG(1);
+          IC_ZERO_ARG(2);
           INVOKE_IC(NewObject);
           IC_PUSH_RESULT();
           END_OP(NewObject);
@@ -4526,7 +4550,7 @@ PBIResult PortableBaselineInterpret(
         INVOKE_IC(SetElem);
         if (JSOp(*pc) == JSOp::InitElemInc) {
           PUSH(StackVal(Int32Value(
-              Value::fromRawBits(ctx.icregs.icVals[1]).toInt32() + 1)));
+              Value::fromRawBits(ic_arg1).toInt32() + 1)));
         }
         END_OP(InitElem);
       }
@@ -4587,6 +4611,8 @@ PBIResult PortableBaselineInterpret(
       CASE(GetBoundName) {
         static_assert(JSOpLength_GetProp == JSOpLength_GetBoundName);
         IC_POP_ARG(0);
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(GetProp);
         IC_PUSH_RESULT();
         END_OP(GetProp);
@@ -4594,6 +4620,7 @@ PBIResult PortableBaselineInterpret(
       CASE(GetPropSuper) {
         IC_POP_ARG(0);
         IC_POP_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(GetPropSuper);
         IC_PUSH_RESULT();
         END_OP(GetPropSuper);
@@ -4634,6 +4661,7 @@ PBIResult PortableBaselineInterpret(
 
         IC_POP_ARG(1);
         IC_POP_ARG(0);
+        IC_ZERO_ARG(2);
         INVOKE_IC(GetElem);
         IC_PUSH_RESULT();
         END_OP(GetElem);
@@ -4717,6 +4745,7 @@ PBIResult PortableBaselineInterpret(
       CASE(HasOwn) {
         IC_POP_ARG(1);
         IC_POP_ARG(0);
+        IC_ZERO_ARG(2);
         INVOKE_IC(HasOwn);
         IC_PUSH_RESULT();
         END_OP(HasOwn);
@@ -4725,6 +4754,7 @@ PBIResult PortableBaselineInterpret(
       CASE(CheckPrivateField) {
         IC_SET_ARG_FROM_STACK(1, 0);
         IC_SET_ARG_FROM_STACK(0, 1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(CheckPrivateField);
         IC_PUSH_RESULT();
         END_OP(CheckPrivateField);
@@ -4812,6 +4842,8 @@ PBIResult PortableBaselineInterpret(
 
       CASE(Iter) {
         IC_POP_ARG(0);
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(GetIterator);
         IC_PUSH_RESULT();
         END_OP(Iter);
@@ -4840,6 +4872,8 @@ PBIResult PortableBaselineInterpret(
 
       CASE(CloseIter) {
         IC_SET_OBJ_ARG(0, &POP().asValue().toObject());
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(CloseIter);
         END_OP(CloseIter);
       }
@@ -4918,6 +4952,9 @@ PBIResult PortableBaselineInterpret(
           NEXT_IC();
           END_OP(NewArray);
         } else {
+          IC_ZERO_ARG(0);
+          IC_ZERO_ARG(1);
+          IC_ZERO_ARG(2);
           INVOKE_IC(NewArray);
           IC_PUSH_RESULT();
           END_OP(NewArray);
@@ -5286,11 +5323,13 @@ PBIResult PortableBaselineInterpret(
         } while (0);
 
         // Slow path: use the IC!
-        ctx.icregs.icVals[0] = argc;
+        ic_arg0 = argc;
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         ctx.icregs.extraArgs = 2 + constructing;
         INVOKE_IC(Call);
         POPN(argc + 2 + constructing);
-        PUSH(StackVal(Value::fromRawBits(ctx.icregs.icResult)));
+        PUSH(StackVal(Value::fromRawBits(ic_ret)));
         END_OP(Call);
       }
 
@@ -5299,27 +5338,33 @@ PBIResult PortableBaselineInterpret(
       CASE(StrictSpreadEval) {
         static_assert(JSOpLength_SpreadCall == JSOpLength_SpreadEval);
         static_assert(JSOpLength_SpreadCall == JSOpLength_StrictSpreadEval);
-        ctx.icregs.icVals[0] = 1;
+        ic_arg0 = 1;
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         ctx.icregs.extraArgs = 2;
         INVOKE_IC(SpreadCall);
         POPN(3);
-        PUSH(StackVal(Value::fromRawBits(ctx.icregs.icResult)));
+        PUSH(StackVal(Value::fromRawBits(ic_ret)));
         END_OP(SpreadCall);
       }
 
       CASE(SpreadSuperCall)
       CASE(SpreadNew) {
         static_assert(JSOpLength_SpreadSuperCall == JSOpLength_SpreadNew);
-        ctx.icregs.icVals[0] = 1;
+        ic_arg0 = 1;
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         ctx.icregs.extraArgs = 3;
         INVOKE_IC(SpreadCall);
         POPN(4);
-        PUSH(StackVal(Value::fromRawBits(ctx.icregs.icResult)));
+        PUSH(StackVal(Value::fromRawBits(ic_ret)));
         END_OP(SpreadSuperCall);
       }
 
       CASE(OptimizeSpreadCall) {
         IC_POP_ARG(0);
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(OptimizeSpreadCall);
         IC_PUSH_RESULT();
         END_OP(OptimizeSpreadCall);
@@ -5327,6 +5372,8 @@ PBIResult PortableBaselineInterpret(
 
       CASE(OptimizeGetIterator) {
         IC_POP_ARG(0);
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(OptimizeGetIterator);
         IC_PUSH_RESULT();
         END_OP(OptimizeGetIterator);
@@ -5928,12 +5975,16 @@ PBIResult PortableBaselineInterpret(
         IC_SET_OBJ_ARG(
             0,
             &ctx.frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(BindName);
         IC_PUSH_RESULT();
         END_OP(BindGName);
       }
       CASE(BindName) {
         IC_SET_OBJ_ARG(0, frame->environmentChain());
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(BindName);
         IC_PUSH_RESULT();
         END_OP(BindName);
@@ -5942,12 +5993,16 @@ PBIResult PortableBaselineInterpret(
         IC_SET_OBJ_ARG(
             0,
             &ctx.frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(GetName);
         IC_PUSH_RESULT();
         END_OP(GetGName);
       }
       CASE(GetName) {
         IC_SET_OBJ_ARG(0, frame->environmentChain());
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(GetName);
         IC_PUSH_RESULT();
         END_OP(GetName);
@@ -6015,6 +6070,9 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(GetIntrinsic) {
+        IC_ZERO_ARG(0);
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(GetIntrinsic);
         IC_PUSH_RESULT();
         END_OP(GetIntrinsic);
@@ -6048,7 +6106,8 @@ PBIResult PortableBaselineInterpret(
         static_assert(JSOpLength_SetProp == JSOpLength_StrictSetGName);
         IC_POP_ARG(1);
         IC_POP_ARG(0);
-        PUSH(StackVal(ctx.icregs.icVals[1]));
+        IC_ZERO_ARG(2);
+        PUSH(StackVal(ic_arg1));
         INVOKE_IC(SetProp);
         END_OP(SetProp);
       }
@@ -6060,6 +6119,7 @@ PBIResult PortableBaselineInterpret(
         static_assert(JSOpLength_InitProp == JSOpLength_InitLockedProp);
         IC_POP_ARG(1);
         IC_SET_ARG_FROM_STACK(0, 0);
+        IC_ZERO_ARG(2);
         INVOKE_IC(SetProp);
         END_OP(InitProp);
       }
@@ -6068,6 +6128,8 @@ PBIResult PortableBaselineInterpret(
         IC_SET_OBJ_ARG(
             0,
             &ctx.frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(SetProp);
         END_OP(InitGLexical);
       }
@@ -6268,6 +6330,9 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Rest) {
+        IC_ZERO_ARG(0);
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
         INVOKE_IC(Rest);
         IC_PUSH_RESULT();
         END_OP(Rest);

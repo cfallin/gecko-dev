@@ -18,20 +18,21 @@
 - (x) separate warmup count for TryAttachStub attempts (otherwise in
   wevaled builds with force-PBL we will attach in every cold path)
 
-- build functionality to dump all weval'ing requests after running, save them,
-  and pre-weval later
-  - generate a function that somehow does a hashtable lookup?
+- (x) build functionality to dump all weval'ing requests after
+  running, save them, and pre-weval later
 
-  - in weval.h:
-    - helper that returns false initially and try after wevaling
-      (use a global)
-    - in `weval_request`, don't enqueue anymore (and skip the logic
-      one level up too) after wevaling; but do look at pre-wevaled
-      table
-    - create a global as a head pointer for pre-wevaled table;
-      append memory with this sorted request->funcptr table.
+- (x) weval IC bodies
 
-- weval IC bodies
+- trim out unneeded logic in weval'd bodies:
+  - observability
+    - get line-number marks in weval'd wasm
+    - get profiler to provide line-number info
+    - put opcode in weval context / basic-block names?
+  - hybrid ICs still a thing?
+  - make sure SP is in a register and not constantly reloaded
+  - debuggee checks
+  - profiling counts?
+  - extra pointer-chain indirections when updating e.g. IC pointer
 
 - "fast IC invocation" mechanism: typed funcref table, fixed indices
   in wevaled body, return updated funcref? or set it separately when

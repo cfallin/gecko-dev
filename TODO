@@ -39,6 +39,7 @@
     no-table-bounds-check wasmtime
   - (x) make LoopHeader and JumpTarget much more efficient (keep
     ICEntries in a local; also cache interpreterICEntry?)
+  - stack push/pop logic? pc/sp updates? current-IC pointer in frame?
 
 - "fast IC invocation" mechanism: typed funcref table, fixed indices
   in wevaled body, return updated funcref? or set it separately when

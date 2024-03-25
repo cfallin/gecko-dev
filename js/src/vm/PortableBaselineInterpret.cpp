@@ -370,9 +370,10 @@ class VMFrame {
   void* prevSavedStack;
 
  public:
-  VMFrame(VMFrameManager& mgr, Stack& stack_, StackVal* sp, jsbytecode* pc)
+  VMFrame(VMFrameManager& mgr, Stack& stack_, StackVal* sp, jsbytecode* pc, ICEntry* icEntry)
       : cx(mgr.cx), stack(stack_) {
     mgr.frame->interpreterPC() = pc;
+    mgr.frame->interpreterICEntry() = icEntry;
     exitFP = stack.pushExitFrame(sp, mgr.frame);
     if (!exitFP) {
       return;
@@ -399,7 +400,7 @@ class VMFrame {
 };
 
 #define PUSH_EXIT_FRAME_OR_RET(value)                           \
-  VMFrame cx(ctx.frameMgr, ctx.stack, sp, pc);                  \
+  VMFrame cx(ctx.frameMgr, ctx.stack, sp, pc, icEntry);         \
   if (!cx.success()) {                                          \
     return value;                                               \
   }                                                             \
@@ -428,6 +429,7 @@ struct ICCtx {
 
   jsbytecode* pc;
   StackVal* sp;
+  ICEntry* icEntry;
   BaselineFrame* frame;
 
   ICCtx(JSContext* cx, BaselineFrame* frame_, State& state_, Stack& stack_)
@@ -437,6 +439,7 @@ struct ICCtx {
         icregs(),
         pc(nullptr),
         sp(nullptr),
+        icEntry(nullptr),
         frame(frame_) {}
 };
 
@@ -516,6 +519,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
   CacheIRReader cacheIRReader(code, nullptr);
   jsbytecode* pc = ctx.pc;
   StackVal* sp = ctx.sp;
+  ICEntry* icEntry = ctx.icEntry;
 
   // dispatch logic: non-WASI version does direct threading; WASI
   // version uses a conventional switch (because Wasm lowers to
@@ -2970,6 +2974,7 @@ next_ic:
       uint64_t* ret) {                                                  \
     jsbytecode* pc = ctx.pc;                                            \
     StackVal* sp = ctx.sp;                                              \
+    ICEntry* icEntry = ctx.icEntry; \
     ICFallbackStub* fallback = stub->toFallbackStub();                  \
     fallback_body;                                                      \
     *ret = ctx.state.res.asRawBits();                                   \
@@ -3382,12 +3387,13 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 #  define COUNT_COVERAGE_MAIN() ;
 #endif
 
-#define NEXT_IC() frame->interpreterICEntry()++;
+#define NEXT_IC() icEntry++
 
 #define INVOKE_IC(kind)                                                      \
   ctx.pc = pc;                                                               \
   ctx.sp = sp;                                                               \
-  CALL_IC(ctx, frame->interpreterICEntry()->firstStub(), ic_result, ic_arg0, \
+  ctx.icEntry = icEntry;                                                     \
+  CALL_IC(ctx, icEntry->firstStub(), ic_result, ic_arg0,                     \
           ic_arg1, ic_arg2, &ic_ret);                                        \
   if (ic_result != PBIResult::Ok) {                                          \
     WEVAL_POP_CONTEXT();                                                     \
@@ -3445,6 +3451,7 @@ PBIResult PortableBaselineInterpret(
   uint64_t ic_arg0 = 0, ic_arg1 = 0, ic_arg2 = 0, ic_ret = 0;
   ICCtx ctx(cx_, frame, state, stack);
   auto* icEntries = frame->icScript()->icEntries();
+  auto* icEntry = icEntries;
 
   if (IsRestart) {
     ic_result = restartCode;
@@ -3539,7 +3546,7 @@ PBIResult PortableBaselineInterpret(
            sp[0].asUInt64(), sp[1].asUInt64(), sp[2].asUInt64());
     printf("script = %p pc = %p: %s (ic %d) pending = %d\n", script.get(), pc,
            CodeName(op),
-           (int)(frame->interpreterICEntry() -
+           (int)(icEntry -
                  script->jitScript()->icScript()->icEntries()),
            ctx.frameMgr.cxForLocalUseOnly()->isExceptionPending());
     printf("sp = %p fp = %p\n", sp, ctx.stack.fp);
@@ -5229,9 +5236,10 @@ PBIResult PortableBaselineInterpret(
               }
             }
 
-            // 0. Save current PC in current frame, so we can retrieve
-            // it later.
+            // 0. Save current PC and interpreter IC pointer in
+            // current frame, so we can retrieve them later.
             frame->interpreterPC() = pc;
+            frame->interpreterICEntry() = icEntry;
 
             // 1. Push a baseline stub frame. Don't use the frame manager
             // -- we don't want the frame to be auto-freed when we leave
@@ -5270,6 +5278,7 @@ PBIResult PortableBaselineInterpret(
             ctx.frameMgr.switchToFrame(frame);
             ctx.frame = frame;
             icEntries = frame->icScript()->icEntries();
+            icEntry = frame->interpreterICEntry();
             // 6. Set up PC and SP for callee.
             sp = reinterpret_cast<StackVal*>(frame);
             pc = calleeScript->code();
@@ -5645,13 +5654,13 @@ PBIResult PortableBaselineInterpret(
 
       CASE(JumpTarget) {
         int32_t icIndex = GET_INT32(pc);
-        frame->interpreterICEntry() = icEntries + icIndex;
+        icEntry = icEntries + icIndex;
         COUNT_COVERAGE_PC(pc);
         END_OP(JumpTarget);
       }
       CASE(LoopHead) {
         int32_t icIndex = GET_INT32(pc);
-        frame->interpreterICEntry() = icEntries + icIndex;
+        icEntry = icEntries + icIndex;
 #ifndef __wasi__
         if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
           PUSH_EXIT_FRAME();
@@ -5665,7 +5674,7 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(AfterYield) {
         int32_t icIndex = GET_INT32(pc);
-        frame->interpreterICEntry() = icEntries + icIndex;
+        icEntry = icEntries + icIndex;
         if (script->isDebuggee()) {
           TRACE_PRINTF("doing DebugAfterYield\n");
           PUSH_EXIT_FRAME();
@@ -5800,6 +5809,7 @@ PBIResult PortableBaselineInterpret(
           ctx.frameMgr.switchToFrame(frame);
           ctx.frame = frame;
           icEntries = frame->icScript()->icEntries();
+          icEntry = frame->interpreterICEntry();
           pc = frame->interpreterPC();
           script.set(frame->script());
           entryPC = script->code();
@@ -6522,6 +6532,7 @@ unwind:
   ctx.frameMgr.switchToFrame(frame);
   ctx.frame = frame;
   icEntries = frame->icScript()->icEntries();
+  icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
   script.set(frame->script());
   DISPATCH();
@@ -6543,6 +6554,7 @@ unwind_error:
   ctx.frameMgr.switchToFrame(frame);
   ctx.frame = frame;
   icEntries = frame->icScript()->icEntries();
+  icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
   script.set(frame->script());
   goto error;
@@ -6565,6 +6577,7 @@ unwind_ret:
   ctx.frameMgr.switchToFrame(frame);
   ctx.frame = frame;
   icEntries = frame->icScript()->icEntries();
+  icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
   script.set(frame->script());
   from_unwind = true;

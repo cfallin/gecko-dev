@@ -33,12 +33,12 @@
   - debuggee checks
   - profiling counts?
   - extra pointer-chain indirections when updating e.g. IC pointer
-  - pass IC args as registers (avoid some memory traffic)
+  - (x) pass IC args as registers (avoid some memory traffic)
   - avoid conditional at IC site; always indirect call
-  - run with no-sig-check, no-stack-limit, no-null-check,
+  - (x) run with no-sig-check, no-stack-limit, no-null-check,
     no-table-bounds-check wasmtime
-  - make LoopHeader and JumpTarget much more efficient (keep ICEntries
-    in a local; also cache interpreterICEntry?)
+  - (x) make LoopHeader and JumpTarget much more efficient (keep
+    ICEntries in a local; also cache interpreterICEntry?)
 
 - "fast IC invocation" mechanism: typed funcref table, fixed indices
   in wevaled body, return updated funcref? or set it separately when

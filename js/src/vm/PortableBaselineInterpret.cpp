@@ -450,11 +450,24 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
                                 const uint8_t* code, uint64_t arg0,
                                 uint64_t arg1, uint64_t arg2, uint64_t* ret);
 
-#define CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret)               \
-  do {                                                                  \
-    ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
-    result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2, ret);  \
-  } while (0)
+#ifdef ENABLE_JS_PBL_WEVAL
+#  define CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret)               \
+    do {                                                                  \
+      ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
+      result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2, ret);  \
+    } while (0)
+#else
+#  define CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret)                 \
+    do {                                                                    \
+      if (stub->isFallback()) {                                             \
+        ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
+        result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2, ret);  \
+      } else {                                                              \
+        result = ICInterpretOps<false>(ctx, stub, nullptr, nullptr, arg0,   \
+                                       arg1, arg2, ret);                    \
+      }                                                                     \
+    } while (0)
+#endif
 
 typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
                              StackVal* sp, JSObject* envChain, Value* ret,

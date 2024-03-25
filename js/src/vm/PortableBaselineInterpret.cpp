@@ -6118,7 +6118,6 @@ PBIResult PortableBaselineInterpret(
         IC_SET_OBJ_ARG(
             0,
             &ctx.frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
-        IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
         INVOKE_IC(SetProp);
         END_OP(InitGLexical);

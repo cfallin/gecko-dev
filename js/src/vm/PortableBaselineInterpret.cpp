@@ -2951,6 +2951,9 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
   }
 
 next_ic:
+#ifdef ENABLE_JS_PBL_WEVAL
+  weval::pop_context();
+#endif
   stub = stub->maybeNext();
   MOZ_ASSERT(stub);
   PBIResult result;

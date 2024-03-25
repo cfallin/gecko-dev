@@ -3300,8 +3300,11 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 #ifdef ENABLE_JS_PBL_WEVAL
 #  define WEVAL_UPDATE_CONTEXT() \
     weval::update_context(reinterpret_cast<uint32_t>(pc));
+#  define WEVAL_POP_CONTEXT() \
+    weval::pop_context();
 #else
 #  define WEVAL_UPDATE_CONTEXT() ;
+#  define WEVAL_POP_CONTEXT() ;
 #endif
 
 #define LABEL(op) (&&label_##op)
@@ -3369,6 +3372,7 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
   CALL_IC(ctx, frame->interpreterICEntry()->firstStub(), ic_result, ic_arg0, \
           ic_arg1, ic_arg2, &ic_ret);                                        \
   if (ic_result != PBIResult::Ok) {                                          \
+    WEVAL_POP_CONTEXT();                                                     \
     goto ic_fail;                                                            \
   }                                                                          \
   NEXT_IC();

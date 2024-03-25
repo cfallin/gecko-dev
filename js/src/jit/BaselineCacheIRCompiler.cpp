@@ -2692,6 +2692,14 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
   newStub->setTypeData(writer.typeData());
   stub->addNewStub(icEntry, newStub);
 
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  // Always initialize `code` to the IC interpreter; it will lazily
+  // set the pointer to a weval-specialized version of compiled stub
+  // code if available. We can't do this above because this is not a
+  // `JitCode` object.
+  newStub->updateRawJitCode(pbl::GetICInterpreter());
+#endif
+
   JSScript* owningScript = icScript->isInlined()
                                ? icScript->inliningRoot()->owningScript()
                                : outerScript;

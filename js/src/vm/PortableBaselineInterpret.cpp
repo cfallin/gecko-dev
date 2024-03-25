@@ -446,20 +446,10 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
                                 const uint8_t* code, uint64_t arg0,
                                 uint64_t arg1, uint64_t arg2, uint64_t* ret);
 
-// TODO(weval): Actually store a pointer to either the IC interpreter
-// or a weval'd body in stub->jitCode().
-
-#define CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret)                   \
-  do {                                                                      \
-    if (stub->rawJitCode()) {                                               \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode());   \
-      result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2, ret);    \
-    } else {                                                                \
-      ICCacheIRStub* cstub = stub->toCacheIRStub();                         \
-      result = ICInterpretOps<false>(ctx, stub, cstub->stubInfo(),          \
-                                     cstub->stubInfo()->code(), arg0, arg1, \
-                                     arg2, ret);                            \
-    }                                                                       \
+#define CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret)               \
+  do {                                                                  \
+    ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
+    result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2, ret);  \
   } while (0)
 
 typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
@@ -488,10 +478,14 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
                                           const uint8_t* code, uint64_t arg0,
                                           uint64_t arg1, uint64_t arg2,
                                           uint64_t* ret) {
-  CacheIRReader cacheIRReader(code, nullptr);
   ICCacheIRStub* cstub = stub->toCacheIRStub();
-  jsbytecode* pc = ctx.pc;
-  StackVal* sp = ctx.sp;
+
+  if (!Specialized) {
+    // Set `stubInfo` and `code`, which will have been `nullptr` in
+    // the initial call.
+    stubInfo = cstub->stubInfo();
+    code = stubInfo->code();
+  }
 
 #ifdef ENABLE_JS_PBL_WEVAL
   if (!Specialized) {
@@ -505,6 +499,10 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
     }
   }
 #endif
+
+  CacheIRReader cacheIRReader(code, nullptr);
+  jsbytecode* pc = ctx.pc;
+  StackVal* sp = ctx.sp;
 
   // dispatch logic: non-WASI version does direct threading; WASI
   // version uses a conventional switch (because Wasm lowers to
@@ -3260,6 +3258,10 @@ uint8_t* GetPortableFallbackStub(BaselineICFallbackKind kind) {
     case BaselineICFallbackKind::Count:
       MOZ_CRASH("Invalid kind");
   }
+}
+
+uint8_t* GetICInterpreter() {
+  return reinterpret_cast<uint8_t*>(&ICInterpretOps<false>);
 }
 
 /*

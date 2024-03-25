@@ -40,6 +40,10 @@
   - (x) make LoopHeader and JumpTarget much more efficient (keep
     ICEntries in a local; also cache interpreterICEntry?)
   - stack push/pop logic? pc/sp updates? current-IC pointer in frame?
+  - GOT loads: treat a load of any non-zero-index global as a load of
+    constant memory, and optimize it as such
+  - stack primitives?
+  - tweak calling conv in wasmtime to have more args?
 
 - "fast IC invocation" mechanism: typed funcref table, fixed indices
   in wevaled body, return updated funcref? or set it separately when

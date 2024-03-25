@@ -335,6 +335,7 @@ PBIResult PortableBaselineInterpret(
     StackVal* restartEntryFrame, PBIResult restartCode);
 
 uint8_t* GetPortableFallbackStub(jit::BaselineICFallbackKind kind);
+uint8_t* GetICInterpreter();
 
 #ifdef ENABLE_JS_PBL_WEVAL
 // Register the existence of a JSScript, in case PBL may have a way to

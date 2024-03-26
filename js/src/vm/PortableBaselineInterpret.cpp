@@ -88,7 +88,7 @@ using namespace js::jit;
 // Whether we are using the "hybrid" strategy for ICs (see the [SMDOC]
 // in PortableBaselineInterpret.h for more). This is currently a
 // constant, but may become configurable in the future.
-static const bool kHybridICs = false;
+static const bool kHybridICs = true;
 
 /*
  * -----------------------------------------------

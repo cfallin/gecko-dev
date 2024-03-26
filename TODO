@@ -48,6 +48,10 @@
   - stack primitives?
   - tweak calling conv in wasmtime to have more args?
 
+- collect ICs from Octane (script to do this)
+- ensure Octane works (resolve unset-register-3 issue?)
+- build cached-weval (incremental compilation) approach
+
 - "fast IC invocation" mechanism: typed funcref table, fixed indices
   in wevaled body, return updated funcref? or set it separately when
   setting IC head?

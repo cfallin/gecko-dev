@@ -517,9 +517,9 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
 #endif
 
   CacheIRReader cacheIRReader(code, nullptr);
-  jsbytecode* pc = ctx.pc;
-  StackVal* sp = ctx.sp;
-  ICEntry* icEntry = ctx.icEntry;
+  jsbytecode*& pc = ctx.pc;
+  StackVal*& sp = ctx.sp;
+  ICEntry*& icEntry = ctx.icEntry;
 
   // dispatch logic: non-WASI version does direct threading; WASI
   // version uses a conventional switch (because Wasm lowers to

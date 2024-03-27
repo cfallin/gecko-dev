@@ -2181,9 +2181,8 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
         JSString* str = reinterpret_cast<JSLinearString*>(READ_REG(strId.id()));
         (void)indexId;
 
-        if (!str->isRope()) {
-          WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str));
-        } else {
+        WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str));
+        if (str->isRope()) {
           PUSH_IC_FRAME();
           JSLinearString* result = LinearizeForCharAccess(cx, str);
           if (!result) {

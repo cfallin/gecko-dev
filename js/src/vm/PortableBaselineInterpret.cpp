@@ -3753,7 +3753,10 @@ PBIResult PortableBaselineInterpret(
 
       CASE(And) {
         bool result;
-        if (HybridICs) {
+        if (sp[0].asValue().isBoolean()) {
+          result = sp[0].asValue().toBoolean();
+          NEXT_IC();
+        } else if (HybridICs) {
           result = ToBoolean(Stack::handle(sp));
           NEXT_IC();
         } else {
@@ -3775,7 +3778,10 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Or) {
         bool result;
-        if (HybridICs) {
+        if (sp[0].asValue().isBoolean()) {
+          result = sp[0].asValue().toBoolean();
+          NEXT_IC();
+        } else if (HybridICs) {
           result = ToBoolean(Stack::handle(sp));
           NEXT_IC();
         } else {
@@ -3797,7 +3803,11 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(JumpIfTrue) {
         bool result;
-        if (HybridICs) {
+        if (sp[0].asValue().isBoolean()) {
+          result = sp[0].asValue().toBoolean();
+          POP();
+          NEXT_IC();
+        } else if (HybridICs) {
           result = ToBoolean(Stack::handle(sp));
           POP();
           NEXT_IC();
@@ -3820,7 +3830,11 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(JumpIfFalse) {
         bool result;
-        if (HybridICs) {
+        if (sp[0].asValue().isBoolean()) {
+          result = sp[0].asValue().toBoolean();
+          POP();
+          NEXT_IC();
+        } else if (HybridICs) {
           result = ToBoolean(Stack::handle(sp));
           POP();
           NEXT_IC();

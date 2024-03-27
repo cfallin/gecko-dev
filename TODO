@@ -46,7 +46,11 @@
     body?
   - bad regalloc -- give stack args proper constraints, and don't load
   - stack primitives for loading ("write-through cache")?
-  - SIMD to pass args in regs?
+  - SIMD to pass args in regs and return ic result without
+    intermediate memory access
+  - fast IC (typed funcrefs) to remove a few levels of indirection --
+    no fetch of raw code pointer from ICEntry (heap)-> firstStub
+    (heap)-> rawJitCode, instead a load from table[constant]
 
 - collect ICs from Octane (script to do this)
 - ensure Octane works (resolve unset-register-3 issue?)

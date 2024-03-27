@@ -3387,6 +3387,16 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
   }                                                                       \
   NEXT_IC();
 
+#define INVOKE_IC_AND_PUSH(kind)                                          \
+  CALL_IC(ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, ic_arg1, \
+          ic_arg2, reinterpret_cast<uint64_t*>(&sp[-1]));                 \
+  if (ic_result != PBIResult::Ok) {                                       \
+    WEVAL_POP_CONTEXT();                                                  \
+    goto ic_fail;                                                         \
+  }                                                                       \
+  sp--;                                                                   \
+  NEXT_IC();
+
 template <bool IsRestart, bool InlineCalls, bool HybridICs>
 PBIResult PortableBaselineInterpret(
     JSContext* cx_, State& state, Stack& stack, StackVal* sp,
@@ -3625,8 +3635,7 @@ PBIResult PortableBaselineInterpret(
           IC_POP_ARG(0);
           IC_ZERO_ARG(1);
           IC_ZERO_ARG(2);
-          INVOKE_IC(Typeof);
-          IC_PUSH_RESULT();
+          INVOKE_IC_AND_PUSH(Typeof);
         }
         END_OP(Typeof);
       }
@@ -3727,8 +3736,7 @@ PBIResult PortableBaselineInterpret(
       IC_POP_ARG(0);
       IC_ZERO_ARG(1);
       IC_ZERO_ARG(2);
-      INVOKE_IC(UnaryArith);
-      IC_PUSH_RESULT();
+      INVOKE_IC_AND_PUSH(UnaryArith);
       END_OP(Pos);
     }
 
@@ -4159,8 +4167,7 @@ PBIResult PortableBaselineInterpret(
       IC_POP_ARG(1);
       IC_POP_ARG(0);
       IC_ZERO_ARG(2);
-      INVOKE_IC(BinaryArith);
-      IC_PUSH_RESULT();
+      INVOKE_IC_AND_PUSH(BinaryArith);
       END_OP(Div);
     }
 
@@ -4362,8 +4369,7 @@ PBIResult PortableBaselineInterpret(
       IC_POP_ARG(1);
       IC_POP_ARG(0);
       IC_ZERO_ARG(2);
-      INVOKE_IC(Compare);
-      IC_PUSH_RESULT();
+      INVOKE_IC_AND_PUSH(Compare);
       END_OP(Eq);
     }
 
@@ -4371,8 +4377,7 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(1);
         IC_POP_ARG(0);
         IC_ZERO_ARG(2);
-        INVOKE_IC(InstanceOf);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(InstanceOf);
         END_OP(Instanceof);
       }
 
@@ -4380,8 +4385,7 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(1);
         IC_POP_ARG(0);
         IC_ZERO_ARG(2);
-        INVOKE_IC(In);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(In);
         END_OP(In);
       }
 
@@ -4389,8 +4393,7 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(0);
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(ToPropertyKey);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(ToPropertyKey);
         END_OP(ToPropertyKey);
       }
 
@@ -4499,8 +4502,7 @@ PBIResult PortableBaselineInterpret(
           IC_ZERO_ARG(0);
           IC_ZERO_ARG(1);
           IC_ZERO_ARG(2);
-          INVOKE_IC(NewObject);
-          IC_PUSH_RESULT();
+          INVOKE_IC_AND_PUSH(NewObject);
           END_OP(NewInit);
         }
       }
@@ -4521,8 +4523,7 @@ PBIResult PortableBaselineInterpret(
           IC_ZERO_ARG(0);
           IC_ZERO_ARG(1);
           IC_ZERO_ARG(2);
-          INVOKE_IC(NewObject);
-          IC_PUSH_RESULT();
+          INVOKE_IC_AND_PUSH(NewObject);
           END_OP(NewObject);
         }
       }
@@ -4629,16 +4630,14 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(0);
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(GetProp);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(GetProp);
         END_OP(GetProp);
       }
       CASE(GetPropSuper) {
         IC_POP_ARG(0);
         IC_POP_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(GetPropSuper);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(GetPropSuper);
         END_OP(GetPropSuper);
       }
 
@@ -4678,8 +4677,7 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(1);
         IC_POP_ARG(0);
         IC_ZERO_ARG(2);
-        INVOKE_IC(GetElem);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(GetElem);
         END_OP(GetElem);
       }
 
@@ -4690,8 +4688,7 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(1);
         IC_POP_ARG(2);
         IC_POP_ARG(0);
-        INVOKE_IC(GetElemSuper);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(GetElemSuper);
         END_OP(GetElemSuper);
       }
 
@@ -4762,8 +4759,7 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(1);
         IC_POP_ARG(0);
         IC_ZERO_ARG(2);
-        INVOKE_IC(HasOwn);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(HasOwn);
         END_OP(HasOwn);
       }
 
@@ -4771,8 +4767,7 @@ PBIResult PortableBaselineInterpret(
         IC_SET_ARG_FROM_STACK(1, 0);
         IC_SET_ARG_FROM_STACK(0, 1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(CheckPrivateField);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(CheckPrivateField);
         END_OP(CheckPrivateField);
       }
 
@@ -4860,8 +4855,7 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(0);
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(GetIterator);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(GetIterator);
         END_OP(Iter);
       }
 
@@ -4971,8 +4965,7 @@ PBIResult PortableBaselineInterpret(
           IC_ZERO_ARG(0);
           IC_ZERO_ARG(1);
           IC_ZERO_ARG(2);
-          INVOKE_IC(NewArray);
-          IC_PUSH_RESULT();
+          INVOKE_IC_AND_PUSH(NewArray);
           END_OP(NewArray);
         }
       }
@@ -5384,8 +5377,7 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(0);
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(OptimizeSpreadCall);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(OptimizeSpreadCall);
         END_OP(OptimizeSpreadCall);
       }
 
@@ -5393,8 +5385,7 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(0);
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(OptimizeGetIterator);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(OptimizeGetIterator);
         END_OP(OptimizeGetIterator);
       }
 
@@ -5998,16 +5989,14 @@ PBIResult PortableBaselineInterpret(
             &ctx.frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(BindName);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(BindName);
         END_OP(BindGName);
       }
       CASE(BindName) {
         IC_SET_OBJ_ARG(0, frame->environmentChain());
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(BindName);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(BindName);
         END_OP(BindName);
       }
       CASE(GetGName) {
@@ -6016,16 +6005,14 @@ PBIResult PortableBaselineInterpret(
             &ctx.frameMgr.cxForLocalUseOnly()->global()->lexicalEnvironment());
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(GetName);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(GetName);
         END_OP(GetGName);
       }
       CASE(GetName) {
         IC_SET_OBJ_ARG(0, frame->environmentChain());
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(GetName);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(GetName);
         END_OP(GetName);
       }
 
@@ -6094,8 +6081,7 @@ PBIResult PortableBaselineInterpret(
         IC_ZERO_ARG(0);
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(GetIntrinsic);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(GetIntrinsic);
         END_OP(GetIntrinsic);
       }
 
@@ -6353,8 +6339,7 @@ PBIResult PortableBaselineInterpret(
         IC_ZERO_ARG(0);
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
-        INVOKE_IC(Rest);
-        IC_PUSH_RESULT();
+        INVOKE_IC_AND_PUSH(Rest);
         END_OP(Rest);
       }
 

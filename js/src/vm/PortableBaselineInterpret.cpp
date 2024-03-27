@@ -370,10 +370,9 @@ class VMFrame {
   void* prevSavedStack;
 
  public:
-  VMFrame(VMFrameManager& mgr, Stack& stack_, StackVal* sp, jsbytecode* pc, ICEntry* icEntry)
+  VMFrame(VMFrameManager& mgr, Stack& stack_, StackVal* sp, jsbytecode* pc)
       : cx(mgr.cx), stack(stack_) {
     mgr.frame->interpreterPC() = pc;
-    mgr.frame->interpreterICEntry() = icEntry;
     exitFP = stack.pushExitFrame(sp, mgr.frame);
     if (!exitFP) {
       return;
@@ -400,7 +399,7 @@ class VMFrame {
 };
 
 #define PUSH_EXIT_FRAME_OR_RET(value)                           \
-  VMFrame cx(ctx.frameMgr, ctx.stack, sp, pc, icEntry);         \
+  VMFrame cx(ctx.frameMgr, ctx.stack, sp, pc);                  \
   if (!cx.success()) {                                          \
     return value;                                               \
   }                                                             \
@@ -427,9 +426,6 @@ struct ICCtx {
   VMFrameManager frameMgr;
   ICRegs icregs;
 
-  jsbytecode* pc;
-  StackVal* sp;
-  ICEntry* icEntry;
   BaselineFrame* frame;
 
   ICCtx(JSContext* cx, BaselineFrame* frame_, State& state_, Stack& stack_)
@@ -437,34 +433,34 @@ struct ICCtx {
         stack(stack_),
         frameMgr(cx, frame_),
         icregs(),
-        pc(nullptr),
-        sp(nullptr),
-        icEntry(nullptr),
         frame(frame_) {}
 };
 
 // Universal signature for an IC stub function.
 typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
                                 const CacheIRStubInfo* stubInfo,
-                                const uint8_t* code, uint64_t arg0,
-                                uint64_t arg1, uint64_t arg2, uint64_t* ret);
+                                const uint8_t* code, jsbytecode* pc,
+                                StackVal* sp, uint64_t arg0, uint64_t arg1,
+                                uint64_t arg2, uint64_t* ret);
 
 #ifdef ENABLE_JS_PBL_WEVAL
-#  define CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret)               \
-    do {                                                                  \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
-      result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2, ret);  \
+#  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)         \
+    do {                                                                    \
+      ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode());   \
+      result =                                                              \
+          func(ctx, stub, nullptr, nullptr, pc, sp, arg0, arg1, arg2, ret); \
     } while (0)
 #else
-#  define CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret)                 \
-    do {                                                                    \
-      if (stub->isFallback()) {                                             \
-        ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
-        result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2, ret);  \
-      } else {                                                              \
-        result = ICInterpretOps<false>(ctx, stub, nullptr, nullptr, arg0,   \
-                                       arg1, arg2, ret);                    \
-      }                                                                     \
+#  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)           \
+    do {                                                                      \
+      if (stub->isFallback()) {                                               \
+        ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode());   \
+        result =                                                              \
+            func(ctx, stub, nullptr, nullptr, pc, sp, arg0, arg1, arg2, ret); \
+      } else {                                                                \
+        result = ICInterpretOps<false>(ctx, stub, nullptr, nullptr, pc, sp,   \
+                                       arg0, arg1, arg2, ret);                \
+      }                                                                       \
     } while (0)
 #endif
 
@@ -491,7 +487,8 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
 template <bool Specialized>
 PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
                                           const CacheIRStubInfo* stubInfo,
-                                          const uint8_t* code, uint64_t arg0,
+                                          const uint8_t* code, jsbytecode* pc,
+                                          StackVal* sp, uint64_t arg0,
                                           uint64_t arg1, uint64_t arg2,
                                           uint64_t* ret) {
   ICCacheIRStub* cstub = stub->toCacheIRStub();
@@ -510,16 +507,13 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
     if (s->hasWeval() && s->weval().func) {
       stub->updateRawJitCode(reinterpret_cast<uint8_t*>(s->weval().func));
       PBIResult result;
-      CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret);
+      CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);
       return result;
     }
   }
 #endif
 
   CacheIRReader cacheIRReader(code, nullptr);
-  jsbytecode*& pc = ctx.pc;
-  StackVal*& sp = ctx.sp;
-  ICEntry*& icEntry = ctx.icEntry;
 
   // dispatch logic: non-WASI version does direct threading; WASI
   // version uses a conventional switch (because Wasm lowers to
@@ -2956,7 +2950,7 @@ next_ic:
   stub = stub->maybeNext();
   MOZ_ASSERT(stub);
   PBIResult result;
-  CALL_IC(ctx, stub, result, arg0, arg1, arg2, ret);
+  CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);
   return result;
 }
 
@@ -2969,11 +2963,8 @@ next_ic:
 #define DEFINE_IC(kind, arity, fallback_body)                           \
   static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(                 \
       ICCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo,        \
-      const uint8_t* code, uint64_t arg0, uint64_t arg1, uint64_t arg2, \
-      uint64_t* ret) {                                                  \
-    jsbytecode* pc = ctx.pc;                                            \
-    StackVal* sp = ctx.sp;                                              \
-    ICEntry* icEntry = ctx.icEntry; \
+      const uint8_t* code, jsbytecode* pc, StackVal* sp, uint64_t arg0, \
+      uint64_t arg1, uint64_t arg2, uint64_t* ret) {                    \
     ICFallbackStub* fallback = stub->toFallbackStub();                  \
     fallback_body;                                                      \
     *ret = ctx.state.res.asRawBits();                                   \
@@ -2983,13 +2974,13 @@ next_ic:
     return PBIResult::Error;                                            \
   }
 
-#define DEFINE_IC_ALIAS(kind, target)                                        \
-  static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(                      \
-      ICCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo,             \
-      const uint8_t* code, uint64_t arg0, uint64_t arg1, uint64_t arg2,      \
-      uint64_t* ret) {                                                       \
-    return IC##target##Fallback(ctx, stub, stubInfo, code, arg0, arg1, arg2, \
-                                ret);                                        \
+#define DEFINE_IC_ALIAS(kind, target)                                          \
+  static PBIResult MOZ_NEVER_INLINE IC##kind##Fallback(                        \
+      ICCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo,               \
+      const uint8_t* code, jsbytecode* pc, StackVal* sp, uint64_t arg0,        \
+      uint64_t arg1, uint64_t arg2, uint64_t* ret) {                           \
+    return IC##target##Fallback(ctx, stub, stubInfo, code, pc, sp, arg0, arg1, \
+                                arg2, ret);                                    \
   }
 
 #define IC_LOAD_VAL(state_elem, index)                    \
@@ -3019,7 +3010,7 @@ DEFINE_IC(Call, 1, {
   uint32_t argc = uint32_t(arg0);
   uint32_t totalArgs =
       argc + ctx.icregs.extraArgs;  // this, callee, (constructing?), func args
-  Value* args = reinterpret_cast<Value*>(&ctx.sp[0]);
+  Value* args = reinterpret_cast<Value*>(&sp[0]);
   TRACE_PRINTF("Call fallback: argc %d totalArgs %d args %p\n", argc, totalArgs,
                args);
   // Reverse values on the stack.
@@ -3039,7 +3030,7 @@ DEFINE_IC(SpreadCall, 1, {
   uint32_t argc = uint32_t(arg0);
   uint32_t totalArgs =
       argc + ctx.icregs.extraArgs;  // this, callee, (constructing?), func args
-  Value* args = reinterpret_cast<Value*>(&ctx.sp[0]);
+  Value* args = reinterpret_cast<Value*>(&sp[0]);
   TRACE_PRINTF("Call fallback: argc %d totalArgs %d args %p\n", argc, totalArgs,
                args);
   // Reverse values on the stack.
@@ -3322,8 +3313,7 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 #ifdef ENABLE_JS_PBL_WEVAL
 #  define WEVAL_UPDATE_CONTEXT() \
     weval::update_context(reinterpret_cast<uint32_t>(pc));
-#  define WEVAL_POP_CONTEXT() \
-    weval::pop_context();
+#  define WEVAL_POP_CONTEXT() weval::pop_context();
 #else
 #  define WEVAL_UPDATE_CONTEXT() ;
 #  define WEVAL_POP_CONTEXT() ;
@@ -3388,16 +3378,13 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 
 #define NEXT_IC() icEntry++
 
-#define INVOKE_IC(kind)                                                      \
-  ctx.pc = pc;                                                               \
-  ctx.sp = sp;                                                               \
-  ctx.icEntry = icEntry;                                                     \
-  CALL_IC(ctx, icEntry->firstStub(), ic_result, ic_arg0,                     \
-          ic_arg1, ic_arg2, &ic_ret);                                        \
-  if (ic_result != PBIResult::Ok) {                                          \
-    WEVAL_POP_CONTEXT();                                                     \
-    goto ic_fail;                                                            \
-  }                                                                          \
+#define INVOKE_IC(kind)                                                   \
+  CALL_IC(ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, ic_arg1, \
+          ic_arg2, &ic_ret);                                              \
+  if (ic_result != PBIResult::Ok) {                                       \
+    WEVAL_POP_CONTEXT();                                                  \
+    goto ic_fail;                                                         \
+  }                                                                       \
   NEXT_IC();
 
 template <bool IsRestart, bool InlineCalls, bool HybridICs>
@@ -3545,8 +3532,7 @@ PBIResult PortableBaselineInterpret(
            sp[0].asUInt64(), sp[1].asUInt64(), sp[2].asUInt64());
     printf("script = %p pc = %p: %s (ic %d) pending = %d\n", script.get(), pc,
            CodeName(op),
-           (int)(icEntry -
-                 script->jitScript()->icScript()->icEntries()),
+           (int)(icEntry - script->jitScript()->icScript()->icEntries()),
            ctx.frameMgr.cxForLocalUseOnly()->isExceptionPending());
     printf("sp = %p fp = %p\n", sp, ctx.stack.fp);
     printf("TOS tag: %d\n", int(sp[0].asValue().asRawBits() >> 47));

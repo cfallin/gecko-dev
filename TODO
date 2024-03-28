@@ -44,13 +44,27 @@
     of constant memory, and optimize it as such
   - (x) escape analysis on stack-pointer global, to remove it from IC
     body?
-  - bad regalloc -- give stack args proper constraints, and don't load
-  - stack primitives for loading ("write-through cache")?
-  - SIMD to pass args in regs and return ic result without
+  - (x) SIMD to pass args in regs and return ic result without
     intermediate memory access
-  - fast IC (typed funcrefs) to remove a few levels of indirection --
-    no fetch of raw code pointer from ICEntry (heap)-> firstStub
-    (heap)-> rawJitCode, instead a load from table[constant]
+
+  - fast IC (typed funcrefs)
+    - to remove a few levels of indirection -- no fetch of raw code
+      pointer from ICEntry (heap)-> firstStub (heap)-> rawJitCode,
+      instead a load from table[constant]
+  - packed IC return
+    - return IC result directly via packed XMM, not through memory;
+      use this when no need to go through Wasm stack (e.g. ToBool)
+  - renamed stack
+    - stack primitives for loading ("write-through cache")? Elide
+      push/pop with no calls between?
+    - basically the old "memory renaming", with flush on call
+    - JS locals?
+  - PortableBaselineInterpret prologue cleanup
+    - all unnecessary prologue from PBI (recursion limit, debug checks,
+      profiling counters, ...)
+
+  - optimize ICs more for specific benchmarks/cases
+    - take a look at NavierStokes?
 
 - collect ICs from Octane (script to do this)
 - ensure Octane works (resolve unset-register-3 issue?)

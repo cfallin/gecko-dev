@@ -57,6 +57,10 @@
 #include "vm/JSScript-inl.h"
 #include "vm/PlainObject-inl.h"
 
+#ifdef __wasi__
+#include <wasm_simd128.h>
+#endif
+
 #ifdef ENABLE_JS_PBL_WEVAL
 WEVAL_DEFINE_GLOBALS()
 #endif

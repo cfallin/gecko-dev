@@ -460,6 +460,7 @@ if CONFIG["ENABLE_PORTABLE_BASELINE_INTERP"]:
     SOURCES += [
         "vm/PortableBaselineInterpret.cpp",
     ]
+    CXXFLAGS += ["-msimd128"]
 
 if CONFIG["ENABLE_RECORD_TUPLE"]:
     UNIFIED_SOURCES += [

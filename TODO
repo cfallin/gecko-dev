@@ -46,14 +46,16 @@
     body?
   - (x) SIMD to pass args in regs and return ic result without
     intermediate memory access
+  - (x) packed IC return
+    - return IC result directly via packed XMM, not through memory;
+      use this when no need to go through Wasm stack (e.g. ToBool)
+    - (NO) actually a 5% slowdown -- saved as branch
+      cfallin/pbl-weval-2024-packed-ic-returns.
 
   - fast IC (typed funcrefs)
     - to remove a few levels of indirection -- no fetch of raw code
       pointer from ICEntry (heap)-> firstStub (heap)-> rawJitCode,
       instead a load from table[constant]
-  - packed IC return
-    - return IC result directly via packed XMM, not through memory;
-      use this when no need to go through Wasm stack (e.g. ToBool)
   - renamed stack
     - stack primitives for loading ("write-through cache")? Elide
       push/pop with no calls between?

@@ -113,17 +113,37 @@ void FallbackICSpew(JSContext* cx, ICFallbackStub* stub, const char* fmt, ...)
 class ICEntry {
   // A pointer to the first IC stub for this instruction.
   ICStub* firstStub_;
+  
+#ifdef ENABLE_JS_PBL_WEVAL
+  uint32_t dispatchPoint_;
+#endif
 
  public:
-  explicit ICEntry(ICStub* firstStub) : firstStub_(firstStub) {}
+  explicit ICEntry(ICStub* firstStub) : firstStub_(firstStub) {
+#ifdef ENABLE_JS_PBL_WEVAL
+    dispatchPoint_ = 0;
+#endif
+  }
 
   ICStub* firstStub() const {
     MOZ_ASSERT(firstStub_);
     return firstStub_;
   }
 
-  void setFirstStub(ICStub* stub) { firstStub_ = stub; }
+  void setFirstStub(ICStub* stub) {
+    firstStub_ = stub;
+#ifdef ENABLE_JS_PBL_WEVAL
+    updateDispatchPoint(stub);
+#endif
+  }
 
+#ifdef ENABLE_JS_PBL_WEVAL
+  void setDispatchPoint(uint32_t dispatchPoint) {
+    dispatchPoint_ = dispatchPoint;
+  }
+  void updateDispatchPoint(ICStub* stub);
+#endif
+  
   static constexpr size_t offsetOfFirstStub() {
     return offsetof(ICEntry, firstStub_);
   }

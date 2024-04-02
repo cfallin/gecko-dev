@@ -28,7 +28,7 @@ struct weval_req_t {
   uint8_t* argbuf;
   uint32_t arglen;
   weval_func_t* specialized;
-  weval_dispatch_func_t specialized_dispatch;
+  weval_dispatch_func_t* specialized_dispatch;
 };
 
 typedef enum {
@@ -222,13 +222,13 @@ weval_dispatch_point_t weval_dispatch_point(void* func_with_sig)
  * funcref). */
 void* weval_dispatch_point_get_func(weval_dispatch_point_t pt,
                                     void* func_with_sig)
-    WEVAL_WASM_IMPOIRT("dispatch.point.get.func");
+    WEVAL_WASM_IMPORT("dispatch.point.get.func");
 /* Sets a new function for a dispatch point, using the ID given as a
  * result of a weval request. */
 void weval_dispatch_point_set_func(weval_dispatch_point_t pt,
                                    void* func_with_sig,
                                    weval_dispatch_func_t func)
-    WEVAL_WASM_IMPOIRT("dispatch.point.set.func");
+    WEVAL_WASM_IMPORT("dispatch.point.set.func");
 
 /* Debugging and stats intrinsics */
     
@@ -491,6 +491,7 @@ struct StoreArgs<RuntimeArg<T>, Rest...> {
 
 template <typename Ret, typename... Args, typename... WrappedArgs>
 weval_req_t* weval(impl::FuncPtr<Ret, Args...>* dest,
+                   weval_dispatch_func_t* dispatch_dest,
                    impl::FuncPtr<Ret, Args...> generic, uint32_t func_id,
                    WrappedArgs... args) {
   weval_req_t* req = (weval_req_t*)malloc(sizeof(weval_req_t));
@@ -507,6 +508,7 @@ weval_req_t* weval(impl::FuncPtr<Ret, Args...>* dest,
   req->arglen = writer.len;
   req->argbuf = writer.take();
   req->specialized = (weval_func_t*)dest;
+  req->specialized_dispatch = dispatch_dest;
 
   weval_request(req);
 

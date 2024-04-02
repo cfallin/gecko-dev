@@ -17,13 +17,15 @@ namespace js {
 
 struct Weval {
   weval_func_t func;
+  weval_dispatch_func_t dispatch_func;
   weval_req_t* req;
 
  public:
-  Weval() : func(nullptr), req(nullptr) {}
+  Weval() : func(nullptr), dispatch_func(0), req(nullptr) {}
   ~Weval() {
     if (req) {
       weval_free(req);
+      dispatch_func = 0;
       req = nullptr;
     }
   }

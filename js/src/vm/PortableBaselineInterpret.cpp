@@ -484,6 +484,26 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
       result = func(ctx, stub, nullptr, nullptr,                          \
                     ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));     \
     } while (0)
+#  define CALL_IC_DISPATCH(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)   \
+    do {                                                                       \
+      if (Specialized) {                                                       \
+        void* func_for_sig = reinterpret_cast<void*>(&(ICInterpretOps<true>)); \
+        weval_dispatch_point_t pt = weval_dispatch_point(func_for_sig);        \
+        ICStubFunc fastFunc = reinterpret_cast<ICStubFunc>(                    \
+            weval_dispatch_point_get_func(pt, func_for_sig));                  \
+        if (fastFunc) {                                                        \
+          result = fastFunc(ctx, stub, nullptr, nullptr,                       \
+                            ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));  \
+        } else {                                                               \
+          icEntry->setDispatchPoint(pt);                                       \
+          icEntry->updateDispatchPoint(stub);                                  \
+          CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);           \
+        }                                                                      \
+      } else {                                                                 \
+        CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);             \
+      }                                                                        \
+    } while (0)
+
 #else
 #  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)         \
     do {                                                                    \
@@ -497,6 +517,8 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
             ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));               \
       }                                                                     \
     } while (0)
+  #define CALL_IC_DISPATCH(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)       \
+    CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)
 #endif
 
 typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
@@ -2078,11 +2100,12 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
             jsbytecode* pc = script->code();
             ImmutableScriptData* isd = script->immutableScriptData();
             PBIResult result;
-            INVOKE_PBI(result, script,
-                       (PortableBaselineInterpret<false, true, kHybridICs>), cx,
-                       ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-                       reinterpret_cast<Value*>(&*ret), pc, isd, nullptr,
-                       nullptr, nullptr, PBIResult::Ok);
+            INVOKE_PBI(
+                result, script,
+                (PortableBaselineInterpret<false, true, kHybridICs, true>), cx,
+                ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
+                reinterpret_cast<Value*>(&*ret), pc, isd, nullptr, nullptr,
+                nullptr, PBIResult::Ok);
             if (result != PBIResult::Ok) {
               return result;
             }
@@ -3411,25 +3434,25 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 #define NEXT_IC() icEntry++
 
 #define INVOKE_IC(kind)                                                   \
-  CALL_IC(ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, ic_arg1, \
-          ic_arg2, &ic_ret);                                              \
+  CALL_IC_DISPATCH(ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, \
+                   ic_arg1, ic_arg2, &ic_ret);                            \
   if (ic_result != PBIResult::Ok) {                                       \
     WEVAL_POP_CONTEXT();                                                  \
     goto ic_fail;                                                         \
   }                                                                       \
   NEXT_IC();
 
-#define INVOKE_IC_AND_PUSH(kind)                                          \
-  CALL_IC(ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, ic_arg1, \
-          ic_arg2, reinterpret_cast<uint64_t*>(&sp[-1]));                 \
-  if (ic_result != PBIResult::Ok) {                                       \
-    WEVAL_POP_CONTEXT();                                                  \
-    goto ic_fail;                                                         \
-  }                                                                       \
-  sp--;                                                                   \
+#define INVOKE_IC_AND_PUSH(kind)                                            \
+  CALL_IC_DISPATCH(ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0,   \
+                   ic_arg1, ic_arg2, reinterpret_cast<uint64_t*>(&sp[-1])); \
+  if (ic_result != PBIResult::Ok) {                                         \
+    WEVAL_POP_CONTEXT();                                                    \
+    goto ic_fail;                                                           \
+  }                                                                         \
+  sp--;                                                                     \
   NEXT_IC();
 
-template <bool IsRestart, bool InlineCalls, bool HybridICs>
+template <bool IsRestart, bool InlineCalls, bool HybridICs, bool Specialized>
 PBIResult PortableBaselineInterpret(
     JSContext* cx_, State& state, Stack& stack, StackVal* sp,
     JSObject* envChain, Value* ret, jsbytecode* pc, ImmutableScriptData* isd,
@@ -3437,7 +3460,7 @@ PBIResult PortableBaselineInterpret(
     StackVal* restartEntryFrame, PBIResult restartCode) {
 #define RESTART(code)                                                          \
   if (!IsRestart) {                                                            \
-    return PortableBaselineInterpret<true, true, HybridICs>(                   \
+    return PortableBaselineInterpret<true, true, HybridICs, false>(            \
         ctx.frameMgr.cxForLocalUseOnly(), state, stack, sp, envChain, ret, pc, \
         isd, entryPC, frame, entryFrame, code);                                \
   }
@@ -6677,8 +6700,9 @@ bool PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   jsbytecode* pc = script->code();
   ImmutableScriptData* isd = script->immutableScriptData();
   PBIResult ret;
-  INVOKE_PBI(ret, script, (PortableBaselineInterpret<false, true, kHybridICs>),
-             cx, state, stack, sp, envChain, result, pc, isd, nullptr, nullptr,
+  INVOKE_PBI(ret, script,
+             (PortableBaselineInterpret<false, true, kHybridICs, false>), cx,
+             state, stack, sp, envChain, result, pc, isd, nullptr, nullptr,
              nullptr, PBIResult::Ok);
   switch (ret) {
     case PBIResult::Ok:
@@ -6757,7 +6781,7 @@ bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
 static const uint32_t WEVAL_JSOP_ID = 1;
 static const uint32_t WEVAL_IC_ID = 2;
 
-WEVAL_DEFINE_TARGET(1, (PortableBaselineInterpret<false, false, true>));
+WEVAL_DEFINE_TARGET(1, (PortableBaselineInterpret<false, false, true, true>));
 WEVAL_DEFINE_TARGET(2, (ICInterpretOps<true>));
 
 void EnqueueScriptSpecialization(JSScript* script) {
@@ -6772,11 +6796,11 @@ void EnqueueScriptSpecialization(JSScript* script) {
     uint32_t isd_len = isd->immutableData().Length();
 
     weval.req = weval::weval(
-        reinterpret_cast<PBIFunc*>(&weval.func),
-        &PortableBaselineInterpret<false, false, kHybridICs>, WEVAL_JSOP_ID,
-        Runtime<JSContext*>(), Runtime<State&>(), Runtime<Stack&>(),
-        Runtime<StackVal*>(), Runtime<JSObject*>(), Runtime<Value*>(),
-        SpecializeMemory<jsbytecode*>(pc, pc_len),
+        reinterpret_cast<PBIFunc*>(&weval.func), nullptr,
+        &PortableBaselineInterpret<false, false, kHybridICs, true>,
+        WEVAL_JSOP_ID, Runtime<JSContext*>(), Runtime<State&>(),
+        Runtime<Stack&>(), Runtime<StackVal*>(), Runtime<JSObject*>(),
+        Runtime<Value*>(), SpecializeMemory<jsbytecode*>(pc, pc_len),
         SpecializeMemory<ImmutableScriptData*>(isd, isd_len),
         Runtime<jsbytecode*>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),
         Runtime<PBIResult>());
@@ -6794,6 +6818,7 @@ void EnqueueICStubSpecialization(CacheIRStubInfo* stubInfo) {
     uint32_t len = sizeof(CacheIRStubInfo) - sizeof(void*);
 
     weval.req = weval::weval(reinterpret_cast<ICStubFunc*>(&weval.func),
+                             &weval.dispatch_func,
                              &ICInterpretOps<true>, WEVAL_IC_ID,
                              Runtime<ICCtx&>(), Runtime<ICStub*>(),
                              SpecializeMemory<CacheIRStubInfo*>(stubInfo, len),

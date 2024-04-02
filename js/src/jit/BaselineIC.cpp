@@ -33,6 +33,7 @@
 #include "vm/JSScript.h"
 #include "vm/Opcodes.h"
 #include "vm/PortableBaselineInterpret.h"
+#include "vm/Weval.h"
 #ifdef MOZ_VTUNE
 #  include "vtune/VTuneWrapper.h"
 #endif
@@ -178,6 +179,19 @@ void ICEntry::trace(JSTracer* trc) {
   // Fallback stubs use runtime-wide trampoline code we don't need to trace.
   MOZ_ASSERT(stub->usesTrampolineCode());
 }
+
+#ifdef ENABLE_JS_PBL_WEVAL
+void ICEntry::updateDispatchPoint(ICStub* stub) {
+  weval_dispatch_func_t func = 0;
+  if (!stub->isFallback()) {
+    func = const_cast<CacheIRStubInfo*>(stub->toCacheIRStub()->stubInfo())->weval().dispatch_func;
+  }
+  if (dispatchPoint_) {
+    weval_dispatch_point_set_func(
+        dispatchPoint_, reinterpret_cast<void*>(pbl::GetICInterpreter()), func);
+  }
+}
+#endif
 
 inline ICFallbackStub* GetFallbackStub(ICEntry* entry) {
   ICStub* stub = entry->firstStub();

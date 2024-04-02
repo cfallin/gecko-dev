@@ -15,6 +15,9 @@ typedef struct weval_req_arg_t weval_req_arg_t;
 typedef struct weval_lookup_entry_t weval_lookup_entry_t;
 typedef struct weval_lookup_t weval_lookup_t;
 
+typedef uint32_t weval_dispatch_point_t;
+typedef uint32_t weval_dispatch_func_t;
+
 struct weval_req_t {
   weval_req_t* next;
   weval_req_t* prev;
@@ -25,6 +28,7 @@ struct weval_req_t {
   uint8_t* argbuf;
   uint32_t arglen;
   weval_func_t* specialized;
+  weval_dispatch_func_t specialized_dispatch;
 };
 
 typedef enum {
@@ -68,6 +72,7 @@ struct weval_lookup_entry_t {
   const uint8_t* argbuf;
   uint32_t arglen;
   weval_func_t specialized;
+  weval_dispatch_func_t specialized_dispatch;
 };
 
 extern weval_req_t* weval_req_pending_head;
@@ -150,7 +155,12 @@ static inline void weval_request(weval_req_t* req) {
   if (weval_is_wevaled) {
     weval_lookup_entry_t* entry = __weval_find(req);
     if (entry) {
-      *req->specialized = entry->specialized;
+      if (req->specialized) {
+        *req->specialized = entry->specialized;
+      }
+      if (req->specialized_dispatch) {
+        *req->specialized_dispatch = entry->specialized_dispatch;
+      }
     }
   } else {
     req->next = weval_req_pending_head;
@@ -199,6 +209,23 @@ void weval_write_reg(uint64_t idx, uint64_t value)
     WEVAL_WASM_IMPORT("write.reg");
 uint32_t weval_specialize_value(uint32_t value, uint32_t lo, uint32_t hi)
     WEVAL_WASM_IMPORT("specialize.value");
+
+/* "Fast dispatch points": typed-funcref-based IC heads */
+
+/* Returns a non-zero ID, fixed for this program point, if the feature
+ * is activated. */
+weval_dispatch_point_t weval_dispatch_point()
+    WEVAL_WASM_IMPORT("dispatch.point");
+/* Returns a function pointer if one is set for this program point. If
+ * directly invoked or null-tested, retains is "fast" form (a typed
+ * funcref). */
+void* weval_dispatch_point_get_func(weval_dispatch_point_t pt)
+    WEVAL_WASM_IMPOIRT("dispatch.point.get.func");
+/* Sets a new function for a dispatch point, using the ID given as a
+ * result of a weval request. */
+void weval_dispatch_point_set_func(weval_dispatch_point_t pt,
+                                   weval_dispatch_func_t func)
+    WEVAL_WASM_IMPOIRT("dispatch.point.set.func");
 
 /* Debugging and stats intrinsics */
     

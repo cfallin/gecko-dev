@@ -172,6 +172,19 @@ class JS_PUBLIC_API RealmCreationOptions {
   bool getCoopAndCoepEnabled() const;
   RealmCreationOptions& setCoopAndCoepEnabled(bool flag);
 
+  bool getStreamsEnabled() const { return streams_; }
+  RealmCreationOptions& setStreamsEnabled(bool flag) {
+#ifdef MOZ_JS_STREAMS
+#  ifdef MOZ_DOM_STREAMS
+#    error "JS and DOM streams shouldn't be simultaneously configured"
+#  endif
+    streams_ = flag;
+#else
+    MOZ_ASSERT(!streams_);
+#endif
+    return *this;
+  }
+
   bool getToSourceEnabled() const { return toSource_; }
   RealmCreationOptions& setToSourceEnabled(bool flag) {
     toSource_ = flag;
@@ -245,6 +258,7 @@ class JS_PUBLIC_API RealmCreationOptions {
   bool sharedMemoryAndAtomics_ = false;
   bool defineSharedArrayBufferConstructor_ = true;
   bool coopAndCoep_ = false;
+  bool streams_ = false;
   bool toSource_ = false;
 #ifdef ENABLE_JSON_PARSE_WITH_SOURCE
   bool jsonParseWithSource = false;

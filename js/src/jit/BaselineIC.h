@@ -122,7 +122,16 @@ class ICEntry {
     return firstStub_;
   }
 
-  void setFirstStub(ICStub* stub) { firstStub_ = stub; }
+  void setFirstStub(ICStub* stub) {
+    firstStub_ = stub;
+#ifdef ENABLE_JS_PBL_WEVAL
+    updateFirstStubForPBL(stub);
+#endif
+  }
+
+#ifdef ENABLE_JS_PBL_WEVAL
+  void updateFirstStubForPBL(ICStub* stub);
+#endif
 
   static constexpr size_t offsetOfFirstStub() {
     return offsetof(ICEntry, firstStub_);

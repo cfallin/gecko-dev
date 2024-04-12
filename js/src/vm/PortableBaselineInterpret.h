@@ -344,6 +344,10 @@ void EnqueueScriptSpecialization(JSScript* script);
 // Register the existence of an ICScript, in case PBL may have a way
 // to accelerate it (e.g., register a weval specialization request).
 void EnqueueICStubSpecialization(jit::CacheIRStubInfo* stub);
+// Update any metadata that helps to accelerate dispatch to an accelerated stub
+// when the head stub is changed.
+void UpdateICStubHeadForSpecialization(jit::ICEntry* icEntry,
+                                       const jit::CacheIRStubInfo* stubInfo);
 #endif
 
 } /* namespace pbl */

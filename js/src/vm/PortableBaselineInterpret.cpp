@@ -63,6 +63,14 @@
 
 #ifdef ENABLE_JS_PBL_WEVAL
 WEVAL_DEFINE_GLOBALS()
+
+// IDs for interpreter bodies that we weval, so that we can stably
+// associate collected request bodies with interpreters even when
+// SpiderMonkey is relinked and actual function pointer values may
+// change.
+static const uint32_t WEVAL_JSOP_ID = 1;
+static const uint32_t WEVAL_IC_ID = 2;
+
 #endif
 
 namespace js {
@@ -480,24 +488,25 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
                                 const uint8_t* code, ICSTUB_ARGS);
 
 #ifdef ENABLE_JS_PBL_WEVAL
-#  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)       \
-    do {                                                                  \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
-      result = func(ctx, stub, nullptr, nullptr,                          \
-                    ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));     \
+#  define CALL_IC(icentry, ctx, stub, result, pc, sp, arg0, arg1, arg2, ret) \
+    do {                                                                     \
+      ICStubFunc func = reinterpret_cast<ICStubFunc>(                        \
+          weval_fast_dispatch(stub->rawJitCode(), (icentry), WEVAL_IC_ID));  \
+      result = func(ctx, stub, nullptr, nullptr,                             \
+                    ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));        \
     } while (0)
 #else
-#  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)         \
-    do {                                                                    \
-      if (stub->isFallback()) {                                             \
-        ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
-        result = func(ctx, stub, nullptr, nullptr,                          \
-                      ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));     \
-      } else {                                                              \
-        result = ICInterpretOps<false>(                                     \
-            ctx, stub, nullptr, nullptr,                                    \
-            ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));               \
-      }                                                                     \
+#  define CALL_IC(icentry, ctx, stub, result, pc, sp, arg0, arg1, arg2, ret) \
+    do {                                                                     \
+      if (stub->isFallback()) {                                              \
+        ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode());  \
+        result = func(ctx, stub, nullptr, nullptr,                           \
+                      ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));      \
+      } else {                                                               \
+        result = ICInterpretOps<false>(                                      \
+            ctx, stub, nullptr, nullptr,                                     \
+            ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));                \
+      }                                                                      \
     } while (0)
 #endif
 
@@ -542,7 +551,7 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
     if (s->hasWeval() && s->weval().func) {
       stub->updateRawJitCode(reinterpret_cast<uint8_t*>(s->weval().func));
       PBIResult result;
-      CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);
+      CALL_IC(nullptr, ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);
       return result;
     }
   }
@@ -2985,7 +2994,7 @@ next_ic:
   stub = stub->maybeNext();
   MOZ_ASSERT(stub);
   PBIResult result;
-  CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);
+  CALL_IC(nullptr, ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);
   return result;
 }
 
@@ -3413,8 +3422,8 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 #define NEXT_IC() icEntry++
 
 #define INVOKE_IC(kind)                                                   \
-  CALL_IC(ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, ic_arg1, \
-          ic_arg2, &ic_ret);                                              \
+  CALL_IC(icEntry, ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, \
+          ic_arg1, ic_arg2, &ic_ret);                                     \
   if (ic_result != PBIResult::Ok) {                                       \
     WEVAL_POP_CONTEXT();                                                  \
     goto ic_fail;                                                         \
@@ -3422,8 +3431,8 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
   NEXT_IC();
 
 #define INVOKE_IC_AND_PUSH(kind)                                          \
-  CALL_IC(ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, ic_arg1, \
-          ic_arg2, reinterpret_cast<uint64_t*>(&sp[-1]));                 \
+  CALL_IC(icEntry, ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, \
+          ic_arg1, ic_arg2, reinterpret_cast<uint64_t*>(&sp[-1]));        \
   if (ic_result != PBIResult::Ok) {                                       \
     WEVAL_POP_CONTEXT();                                                  \
     goto ic_fail;                                                         \
@@ -3568,7 +3577,7 @@ PBIResult PortableBaselineInterpret(
   while (true) {
     DEBUG_CHECK();
 
-  dispatch:
+  dispatch :
 #ifdef TRACE_INTERP
   {
     JSOp op = JSOp(*pc);
@@ -3761,7 +3770,7 @@ PBIResult PortableBaselineInterpret(
         END_OP(ToNumeric);
       }
 
-    generic_unary: {
+    generic_unary : {
       static_assert(JSOpLength_Pos == JSOpLength_Neg);
       static_assert(JSOpLength_Pos == JSOpLength_BitNot);
       static_assert(JSOpLength_Pos == JSOpLength_Inc);
@@ -4186,7 +4195,7 @@ PBIResult PortableBaselineInterpret(
         goto generic_binary;
       }
 
-    generic_binary: {
+    generic_binary : {
       static_assert(JSOpLength_BitOr == JSOpLength_BitXor);
       static_assert(JSOpLength_BitOr == JSOpLength_BitAnd);
       static_assert(JSOpLength_BitOr == JSOpLength_Lsh);
@@ -4392,7 +4401,7 @@ PBIResult PortableBaselineInterpret(
         }
       }
 
-    generic_cmp: {
+    generic_cmp : {
       static_assert(JSOpLength_Eq == JSOpLength_Ne);
       static_assert(JSOpLength_Eq == JSOpLength_StrictEq);
       static_assert(JSOpLength_Eq == JSOpLength_StrictNe);
@@ -6602,7 +6611,7 @@ unwind_ret:
   goto do_return;
 
 #ifndef __wasi__
-debug: {
+debug : {
   TRACE_PRINTF("hit debug point\n");
   PUSH_EXIT_FRAME();
   if (!HandleDebugTrap(cx, frame, pc)) {
@@ -6752,13 +6761,6 @@ bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
 
 #ifdef ENABLE_JS_PBL_WEVAL
 
-// IDs for interpreter bodies that we weval, so that we can stably
-// associate collected request bodies with interpreters even when
-// SpiderMonkey is relinked and actual function pointer values may
-// change.
-static const uint32_t WEVAL_JSOP_ID = 1;
-static const uint32_t WEVAL_IC_ID = 2;
-
 WEVAL_DEFINE_TARGET(1, (PortableBaselineInterpret<false, false, true>));
 WEVAL_DEFINE_TARGET(2, (ICInterpretOps<true>));
 
@@ -6801,6 +6803,18 @@ void EnqueueICStubSpecialization(CacheIRStubInfo* stubInfo) {
                              SpecializeMemory<CacheIRStubInfo*>(stubInfo, len),
                              SpecializeMemory<const uint8_t*>(
                                  stubInfo->code(), stubInfo->codeLength()));
+  }
+}
+
+void UpdateICStubHeadForSpecialization(ICEntry* icEntry,
+                                       const CacheIRStubInfo* stubInfo_) {
+  CacheIRStubInfo* stubInfo = const_cast<CacheIRStubInfo*>(stubInfo_);
+  if (stubInfo && stubInfo->hasWeval() && stubInfo->weval().func) {
+    weval_fast_dispatch_update(
+        icEntry, reinterpret_cast<uint8_t*>(stubInfo->weval().func),
+        WEVAL_IC_ID);
+  } else {
+    weval_fast_dispatch_clear(icEntry, WEVAL_IC_ID);
   }
 }
 

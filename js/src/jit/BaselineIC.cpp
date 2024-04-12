@@ -166,6 +166,13 @@ void FallbackICSpew(JSContext* cx, ICFallbackStub* stub, const char* fmt, ...) {
 }
 #endif  // JS_JITSPEW
 
+#ifdef ENABLE_JS_PBL_WEVAL
+void ICEntry::updateFirstStubForPBL(ICStub* stub) {
+  pbl::UpdateICStubHeadForSpecialization(
+      this, stub->isFallback() ? nullptr : stub->toCacheIRStub()->stubInfo());
+}
+#endif
+
 void ICEntry::trace(JSTracer* trc) {
   ICStub* stub = firstStub();
 

@@ -200,6 +200,12 @@ void weval_write_reg(uint64_t idx, uint64_t value)
 uint32_t weval_specialize_value(uint32_t value, uint32_t lo, uint32_t hi)
     WEVAL_WASM_IMPORT("specialize.value");
 
+/* Fast-dispatch intrinsics */
+void* weval_fast_dispatch(void* func, void* key)
+    WEVAL_WASM_IMPORT("fast.dispatch");
+void weval_fast_dispatch_update(void* key, void* new_func)
+    WEVAL_WASM_IMPORT("fast.dispatch.update");
+
 /* Debugging and stats intrinsics */
     
 void weval_trace_line(uint32_t line_number) WEVAL_WASM_IMPORT("trace.line");

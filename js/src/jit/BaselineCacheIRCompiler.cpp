@@ -25,6 +25,7 @@
 #include "util/Unicode.h"
 #include "vm/PortableBaselineInterpret.h"
 #include "vm/StaticStrings.h"
+#include "vm/Weval.h"
 
 #include "jit/JitScript-inl.h"
 #include "jit/MacroAssembler-inl.h"
@@ -2693,11 +2694,14 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
   stub->addNewStub(icEntry, newStub);
 
 #ifdef ENABLE_PORTABLE_BASELINE_INTERP
-  // Always initialize `code` to the IC interpreter; it will lazily
-  // set the pointer to a weval-specialized version of compiled stub
-  // code if available. We can't do this above because this is not a
-  // `JitCode` object.
+#ifdef ENABLE_JS_PBL_WEVAL
+  newStub->updateRawJitCode(
+      (stubInfo->hasWeval() && stubInfo->weval().func)
+          ? reinterpret_cast<uint8_t*>(stubInfo->weval().func)
+          : pbl::GetICInterpreter());
+#  else
   newStub->updateRawJitCode(pbl::GetICInterpreter());
+#  endif
 #endif
 
   JSScript* owningScript = icScript->isInlined()

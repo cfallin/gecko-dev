@@ -484,11 +484,12 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
                                 const uint8_t* code, ICSTUB_ARGS);
 
 #ifdef ENABLE_JS_PBL_WEVAL
-#  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)       \
-    do {                                                                  \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
-      result = func(ctx, stub, nullptr, nullptr,                          \
-                    ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));     \
+#  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)   \
+    do {                                                              \
+      ICStubFunc func = reinterpret_cast<ICStubFunc>(                 \
+          weval_fast_dispatch(stub->rawJitCode(), stub, 0));          \
+      result = func(ctx, stub, nullptr, nullptr,                      \
+                    ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret)); \
     } while (0)
 #else
 #  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)         \

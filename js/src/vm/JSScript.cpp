@@ -2507,7 +2507,7 @@ bool JSScript::fullyInitFromStencil(
   }
 
 #ifdef ENABLE_JS_PBL_WEVAL
-  pbl::EnqueueScriptSpecialization(script);
+  pbl::EnqueueScriptSpecialization(cx, script);
 #endif
 
   return true;

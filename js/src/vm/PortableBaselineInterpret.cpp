@@ -6765,12 +6765,20 @@ bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
 WEVAL_DEFINE_TARGET(1, (PortableBaselineInterpret<false, false, true>));
 WEVAL_DEFINE_TARGET(2, (ICInterpretOps<true>));
 
-void EnqueueScriptSpecialization(JSScript* script) {
+void EnqueueScriptSpecialization(JSContext* cx, JSScript* script) {
   Weval& weval = script->weval();
   if (!weval.req) {
     using weval::Runtime;
     using weval::Specialize;
     using weval::SpecializeMemory;
+
+    // Ensure this script has a JitScript so that we can specialize on
+    // the ICEntry addresses (bake them into fast-dispatch points).
+    AutoKeepJitScripts keepJitScript(cx);
+    if (!script->ensureHasJitScript(cx, keepJitScript)) {
+      // Ignore the error.
+      return;
+    }
 
     jsbytecode* pc = script->code();
     uint32_t pc_len = script->length();

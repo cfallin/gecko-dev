@@ -341,7 +341,7 @@ uint8_t* GetICInterpreter();
 #ifdef ENABLE_JS_PBL_WEVAL
 // Register the existence of a JSScript, in case PBL may have a way to
 // accelerate it (e.g., register a weval specialization request).
-void EnqueueScriptSpecialization(JSScript* script);
+void EnqueueScriptSpecialization(JSContext* cx, JSScript* script);
 // Register the existence of an ICScript, in case PBL may have a way
 // to accelerate it (e.g., register a weval specialization request).
 void EnqueueICStubSpecialization(jit::CacheIRStubInfo* stub);

@@ -146,6 +146,13 @@ void JSScript::maybeReleaseJitScript(JS::GCContext* gcx) {
     return;
   }
 
+#ifdef ENABLE_JS_PBL_WEVAL
+  // weval bakes in ICEntry addresses to fast-dispatch specialization,
+  // so as long as a JSScript exists, we want to keep the JitScript
+  // around.
+  return;
+#endif
+
   releaseJitScript(gcx);
 }
 

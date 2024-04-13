@@ -261,8 +261,15 @@ static inline void weval_fast_dispatch_update(void* key, uint8_t* new_func,
   }
 }
 
-void weval_fast_dispatch_clear(void* key, uint32_t func_id)
+void weval_fast_dispatch_clear_index(uint32_t index, uint32_t func_id)
     WEVAL_WASM_IMPORT("fast.dispatch.clear");
+
+static inline void weval_fast_dispatch_clear(void* key, uint32_t func_id) {
+  weval_dispatch_entry_t* entry = __weval_find_dispatch(func_id, key);
+  if (entry) {
+    weval_fast_dispatch_clear_index(entry->dispatch_index, func_id);
+  }
+}
 
 /* Debugging and stats intrinsics */
     

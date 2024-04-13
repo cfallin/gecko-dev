@@ -6760,7 +6760,7 @@ static const uint32_t WEVAL_JSOP_ID = 1;
 static const uint32_t WEVAL_IC_ID = 2;
 
 WEVAL_DEFINE_TARGET(1, (PortableBaselineInterpret<false, false, true>));
-WEVAL_DEFINE_TARGET(2, (ICInterpretOps<true>));
+WEVAL_DEFINE_FAST_DISPATCH_TARGET(2, (ICInterpretOps<true>));
 
 void EnqueueScriptSpecialization(JSScript* script) {
   Weval& weval = script->weval();

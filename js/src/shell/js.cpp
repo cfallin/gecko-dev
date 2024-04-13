@@ -1146,6 +1146,8 @@ enum class CompileUtf8 {
   int64_t t1 = PRMJ_Now();
   RootedScript script(cx);
 
+  if (!filename) filename = "-";
+
   {
     CompileOptions options(cx);
     options.setIntroductionType("js shell file")

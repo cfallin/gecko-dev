@@ -99,6 +99,16 @@ extern weval_lookup_t weval_lookup_table;
     return (weval_func_t) & (func);                  \
   }
 
+#define WEVAL_DEFINE_FAST_DISPATCH_TARGET(index, func)                      \
+  __attribute__((export_name("weval.func." #index)))                        \
+      weval_func_t __weval_func_##index() {                                 \
+    return (weval_func_t) & (func);                                         \
+  }                                                                         \
+  __attribute__((export_name("weval.dispatch.target" #index))) weval_func_t \
+  __weval_fast_dispatch_target() {                                          \
+    return (weval_func_t) & (func);                                         \
+  }
+
 /* Compare entry to req; return -1 for less than, 1 for greater than,
  * 0 for equal. */
 static inline int __weval_binsearch_cmp(weval_req_t* req, uint32_t idx) {

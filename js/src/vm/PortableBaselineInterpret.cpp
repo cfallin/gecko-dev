@@ -540,19 +540,6 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
     code = stubInfo->code();
   }
 
-#ifdef ENABLE_JS_PBL_WEVAL
-  if (!Specialized) {
-    CacheIRStubInfo* s = const_cast<CacheIRStubInfo*>(stubInfo);
-    // Lazily propagate function pointer from weval request to stub.
-    if (s->hasWeval() && s->weval().func) {
-      stub->updateRawJitCode(reinterpret_cast<uint8_t*>(s->weval().func));
-      PBIResult result;
-      CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);
-      return result;
-    }
-  }
-#endif
-
   CacheIRReader cacheIRReader(code, nullptr);
 
   // dispatch logic: non-WASI version does direct threading; WASI

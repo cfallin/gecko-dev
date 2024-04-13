@@ -56,6 +56,28 @@
     - to remove a few levels of indirection -- no fetch of raw code
       pointer from ICEntry (heap)-> firstStub (heap)-> rawJitCode,
       instead a load from table[constant]
+    - new mechanism:
+      - fast_dispatch intrinsic takes a "cache key" and funcptr; user
+        promises funcptr is same if cache key remains same. For ICs,
+        use ICStub pointer as cache key.
+      - in wevaled function bodies, alloc two globals per fast
+        dispatch site: last seen cache key, and typed funcref.
+      - this replaces:
+        - load icstub->stubinfo
+          - load stubinfo->jitcode
+            - load vmctx->table_base
+            - load table_base[jitcode]
+              - load anyfunc->code
+              - load anyfunc->calleectx
+      - with:
+        - load vmctx->last_icstub
+        - load vmctx->last_anyfunc
+          - load anyfunc->code
+          - load anyfunc->calleectx
+      - so 6->4 loads, and two levels of dependent-load removed
+      - note: generate a "clear all cached funcptrs" function too, and
+        call this (via intrinsic) in GC. otherwise stale ICStub keys
+        could have false positives.
   - renamed stack
     - stack primitives for loading ("write-through cache")? Elide
       push/pop with no calls between?

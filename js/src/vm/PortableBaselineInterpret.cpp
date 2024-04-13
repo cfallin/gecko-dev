@@ -513,7 +513,7 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
 typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
                              StackVal* sp, JSObject* envChain, Value* ret,
                              jsbytecode* pc, ImmutableScriptData* isd,
-                             jsbytecode* restartEntryPC,
+                             ICEntry* icEntries, jsbytecode* restartEntryPC,
                              BaselineFrame* restartFrame,
                              StackVal* restartEntryFrame,
                              PBIResult restartCode);
@@ -2088,12 +2088,13 @@ PBIResult MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
             JSScript* script = callee->nonLazyScript();
             jsbytecode* pc = script->code();
             ImmutableScriptData* isd = script->immutableScriptData();
+            ICEntry* icEntries = script->jitScript()->icScript()->icEntries();
             PBIResult result;
             INVOKE_PBI(result, script,
                        (PortableBaselineInterpret<false, true, kHybridICs>), cx,
                        ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-                       reinterpret_cast<Value*>(&*ret), pc, isd, nullptr,
-                       nullptr, nullptr, PBIResult::Ok);
+                       reinterpret_cast<Value*>(&*ret), pc, isd, icEntries,
+                       nullptr, nullptr, nullptr, PBIResult::Ok);
             if (result != PBIResult::Ok) {
               return result;
             }
@@ -3444,13 +3445,13 @@ template <bool IsRestart, bool InlineCalls, bool HybridICs>
 PBIResult PortableBaselineInterpret(
     JSContext* cx_, State& state, Stack& stack, StackVal* sp,
     JSObject* envChain, Value* ret, jsbytecode* pc, ImmutableScriptData* isd,
-    jsbytecode* restartEntryPC, BaselineFrame* restartFrame,
+    ICEntry* icEntries, jsbytecode* restartEntryPC, BaselineFrame* restartFrame,
     StackVal* restartEntryFrame, PBIResult restartCode) {
 #define RESTART(code)                                                          \
   if (!IsRestart) {                                                            \
     return PortableBaselineInterpret<true, true, HybridICs>(                   \
         ctx.frameMgr.cxForLocalUseOnly(), state, stack, sp, envChain, ret, pc, \
-        isd, entryPC, frame, entryFrame, code);                                \
+        isd, icEntries, entryPC, frame, entryFrame, code);                     \
   }
 #define GOTO_ERROR()           \
   do {                         \
@@ -3489,7 +3490,6 @@ PBIResult PortableBaselineInterpret(
   PBIResult ic_result = PBIResult::Ok;
   uint64_t ic_arg0 = 0, ic_arg1 = 0, ic_arg2 = 0, ic_ret = 0;
   ICCtx ctx(cx_, frame, state, stack);
-  auto* icEntries = frame->icScript()->icEntries();
   auto* icEntry = icEntries;
 
   if (IsRestart) {
@@ -3577,7 +3577,7 @@ PBIResult PortableBaselineInterpret(
   while (true) {
     DEBUG_CHECK();
 
-  dispatch :
+  dispatch:
 #ifdef TRACE_INTERP
   {
     JSOp op = JSOp(*pc);
@@ -3770,7 +3770,7 @@ PBIResult PortableBaselineInterpret(
         END_OP(ToNumeric);
       }
 
-    generic_unary : {
+    generic_unary: {
       static_assert(JSOpLength_Pos == JSOpLength_Neg);
       static_assert(JSOpLength_Pos == JSOpLength_BitNot);
       static_assert(JSOpLength_Pos == JSOpLength_Inc);
@@ -4195,7 +4195,7 @@ PBIResult PortableBaselineInterpret(
         goto generic_binary;
       }
 
-    generic_binary : {
+    generic_binary: {
       static_assert(JSOpLength_BitOr == JSOpLength_BitXor);
       static_assert(JSOpLength_BitOr == JSOpLength_BitAnd);
       static_assert(JSOpLength_BitOr == JSOpLength_Lsh);
@@ -4401,7 +4401,7 @@ PBIResult PortableBaselineInterpret(
         }
       }
 
-    generic_cmp : {
+    generic_cmp: {
       static_assert(JSOpLength_Eq == JSOpLength_Ne);
       static_assert(JSOpLength_Eq == JSOpLength_StrictEq);
       static_assert(JSOpLength_Eq == JSOpLength_StrictNe);
@@ -6611,7 +6611,7 @@ unwind_ret:
   goto do_return;
 
 #ifndef __wasi__
-debug : {
+debug: {
   TRACE_PRINTF("hit debug point\n");
   PUSH_EXIT_FRAME();
   if (!HandleDebugTrap(cx, frame, pc)) {
@@ -6687,10 +6687,11 @@ bool PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   JSScript* script = ScriptFromCalleeToken(calleeToken);
   jsbytecode* pc = script->code();
   ImmutableScriptData* isd = script->immutableScriptData();
+  ICEntry* icEntries = script->jitScript()->icScript()->icEntries();
   PBIResult ret;
   INVOKE_PBI(ret, script, (PortableBaselineInterpret<false, true, kHybridICs>),
-             cx, state, stack, sp, envChain, result, pc, isd, nullptr, nullptr,
-             nullptr, PBIResult::Ok);
+             cx, state, stack, sp, envChain, result, pc, isd, icEntries,
+             nullptr, nullptr, nullptr, PBIResult::Ok);
   switch (ret) {
     case PBIResult::Ok:
     case PBIResult::UnwindRet:
@@ -6768,11 +6769,13 @@ void EnqueueScriptSpecialization(JSScript* script) {
   Weval& weval = script->weval();
   if (!weval.req) {
     using weval::Runtime;
+    using weval::Specialize;
     using weval::SpecializeMemory;
 
     jsbytecode* pc = script->code();
     uint32_t pc_len = script->length();
     ImmutableScriptData* isd = script->immutableScriptData();
+    ICEntry* icEntries = script->jitScript()->icScript()->icEntries();
     uint32_t isd_len = isd->immutableData().Length();
 
     weval.req = weval::weval(
@@ -6782,8 +6785,8 @@ void EnqueueScriptSpecialization(JSScript* script) {
         Runtime<StackVal*>(), Runtime<JSObject*>(), Runtime<Value*>(),
         SpecializeMemory<jsbytecode*>(pc, pc_len),
         SpecializeMemory<ImmutableScriptData*>(isd, isd_len),
-        Runtime<jsbytecode*>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),
-        Runtime<PBIResult>());
+        Specialize<ICEntry*>(icEntries), Runtime<jsbytecode*>(),
+        Runtime<BaselineFrame*>(), Runtime<StackVal*>(), Runtime<PBIResult>());
   }
 }
 

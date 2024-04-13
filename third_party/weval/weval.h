@@ -99,14 +99,14 @@ extern weval_lookup_t weval_lookup_table;
     return (weval_func_t) & (func);                  \
   }
 
-#define WEVAL_DEFINE_FAST_DISPATCH_TARGET(index, func)                      \
-  __attribute__((export_name("weval.func." #index)))                        \
-      weval_func_t __weval_func_##index() {                                 \
-    return (weval_func_t) & (func);                                         \
-  }                                                                         \
-  __attribute__((export_name("weval.dispatch.target" #index))) weval_func_t \
-  __weval_fast_dispatch_target() {                                          \
-    return (weval_func_t) & (func);                                         \
+#define WEVAL_DEFINE_FAST_DISPATCH_TARGET(index, func)               \
+  __attribute__((export_name("weval.func." #index)))                 \
+      weval_func_t __weval_func_##index() {                          \
+    return (weval_func_t) & (func);                                  \
+  }                                                                  \
+  __attribute__((export_name("weval.dispatch.target"))) weval_func_t \
+  __weval_fast_dispatch_target() {                                   \
+    return (weval_func_t) & (func);                                  \
   }
 
 /* Compare entry to req; return -1 for less than, 1 for greater than,
@@ -209,6 +209,11 @@ void weval_write_reg(uint64_t idx, uint64_t value)
     WEVAL_WASM_IMPORT("write.reg");
 uint32_t weval_specialize_value(uint32_t value, uint32_t lo, uint32_t hi)
     WEVAL_WASM_IMPORT("specialize.value");
+
+/* Fast-dispatch intrinsics */
+
+uint8_t* weval_fast_dispatch(uint8_t* func, void* key, uint32_t epoch)
+    WEVAL_WASM_IMPORT("fast.dispatch");
 
 /* Debugging and stats intrinsics */
     

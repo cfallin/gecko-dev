@@ -79,7 +79,6 @@ struct weval_dispatch_t {
 };
 
 struct weval_dispatch_entry_t {
-    uint32_t func_id;
     void* key;
     uint32_t dispatch_index;
 };
@@ -117,6 +116,12 @@ extern weval_dispatch_t weval_dispatch_table;
   __attribute__((export_name("weval.func." #index))) \
       weval_func_t __weval_func_##index() {          \
     return (weval_func_t) & (func);                  \
+  }
+
+#define WEVAL_DEFINE_FAST_DISPATCH_TARGET(index, func)               \
+  __attribute__((export_name("weval.dispatch.target"))) weval_func_t \
+  __weval_dispatch_target() {                                        \
+    return (weval_func_t) & (func);                                  \
   }
 
 /* Compare entry to req; return -1 for less than, 1 for greater than,
@@ -166,7 +171,7 @@ static inline weval_lookup_entry_t* __weval_find(weval_req_t* req) {
   return NULL;
 }
 
-static inline weval_dispatch_entry_t* __weval_find_dispatch(uint32_t func_id, void* key) {
+static inline weval_dispatch_entry_t* __weval_find_dispatch(void* key) {
     if (weval_dispatch_table.nentries == 0) {
         return NULL;
     }
@@ -178,12 +183,10 @@ static inline weval_dispatch_entry_t* __weval_find_dispatch(uint32_t func_id, vo
       uint32_t mid = lo + (hi - lo) / 2;
       weval_dispatch_entry_t* entry = &weval_dispatch_table.entries[mid];
 
-      if (func_id == entry->func_id && key == entry->key) {
+      if (key == entry->key) {
         return entry;
-      } else if (func_id < entry->func_id ||
-                 (func_id == entry->func_id &&
-                  reinterpret_cast<uintptr_t>(key) <
-                      reinterpret_cast<uintptr_t>(entry->key))) {
+      } else if (reinterpret_cast<uintptr_t>(key) <
+                 reinterpret_cast<uintptr_t>(entry->key)) {
         lo = mid + 1;
       } else {
         hi = mid;
@@ -248,26 +251,15 @@ uint32_t weval_specialize_value(uint32_t value, uint32_t lo, uint32_t hi)
     WEVAL_WASM_IMPORT("specialize.value");
 
 /* Fast-dispatch intrinsics */
-uint8_t* weval_fast_dispatch(uint8_t* func, void* key, uint32_t func_id)
+uint8_t* weval_fast_dispatch(uint8_t* func, void* key)
     WEVAL_WASM_IMPORT("fast.dispatch");
-void weval_fast_dispatch_update_index(uint32_t dispatch_index, uint8_t* new_func, uint32_t func_id)
+void weval_fast_dispatch_update_index(uint32_t dispatch_index, uint8_t* new_func)
     WEVAL_WASM_IMPORT("fast.dispatch.update");
 
-static inline void weval_fast_dispatch_update(void* key, uint8_t* new_func,
-                                              uint32_t func_id) {
-  weval_dispatch_entry_t* entry = __weval_find_dispatch(func_id, key);
+static inline void weval_fast_dispatch_update(void* key, uint8_t* new_func) {
+  weval_dispatch_entry_t* entry = __weval_find_dispatch(key);
   if (entry) {
-    weval_fast_dispatch_update_index(entry->dispatch_index, new_func, func_id);
-  }
-}
-
-void weval_fast_dispatch_clear_index(uint32_t index, uint32_t func_id)
-    WEVAL_WASM_IMPORT("fast.dispatch.clear");
-
-static inline void weval_fast_dispatch_clear(void* key, uint32_t func_id) {
-  weval_dispatch_entry_t* entry = __weval_find_dispatch(func_id, key);
-  if (entry) {
-    weval_fast_dispatch_clear_index(entry->dispatch_index, func_id);
+    weval_fast_dispatch_update_index(entry->dispatch_index, new_func);
   }
 }
 

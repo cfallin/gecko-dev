@@ -491,7 +491,7 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
 #  define CALL_IC(icentry, ctx, stub, result, pc, sp, arg0, arg1, arg2, ret) \
     do {                                                                     \
       ICStubFunc func = reinterpret_cast<ICStubFunc>(                        \
-          weval_fast_dispatch(stub->rawJitCode(), (icentry), WEVAL_IC_ID));  \
+          weval_fast_dispatch(stub->rawJitCode(), (icentry)));               \
       result = func(ctx, stub, nullptr, nullptr,                             \
                     ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));        \
     } while (0)
@@ -6764,6 +6764,7 @@ bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
 
 WEVAL_DEFINE_TARGET(1, (PortableBaselineInterpret<false, false, true>));
 WEVAL_DEFINE_TARGET(2, (ICInterpretOps<true>));
+WEVAL_DEFINE_FAST_DISPATCH_TARGET(2, (ICInterpretOps<true>));
 
 void EnqueueScriptSpecialization(JSContext* cx, JSScript* script) {
   Weval& weval = script->weval();
@@ -6822,10 +6823,9 @@ void UpdateICStubHeadForSpecialization(ICEntry* icEntry,
   CacheIRStubInfo* stubInfo = const_cast<CacheIRStubInfo*>(stubInfo_);
   if (stubInfo && stubInfo->hasWeval() && stubInfo->weval().func) {
     weval_fast_dispatch_update(
-        icEntry, reinterpret_cast<uint8_t*>(stubInfo->weval().func),
-        WEVAL_IC_ID);
+        icEntry, reinterpret_cast<uint8_t*>(stubInfo->weval().func));
   } else {
-    weval_fast_dispatch_clear(icEntry, WEVAL_IC_ID);
+    weval_fast_dispatch_update(icEntry, nullptr);
   }
 }
 

@@ -52,7 +52,8 @@
     - (NO) actually a 5% slowdown -- saved as branch
       cfallin/pbl-weval-2024-packed-ic-returns.
 
-  - fast IC (typed funcrefs)
+  - (X) fast IC (typed funcrefs) -- actually, Wasmtime mechanism to
+    cache every indirect call; in hybrid-IC build, worth 17%
     - to remove a few levels of indirection -- no fetch of raw code
       pointer from ICEntry (heap)-> firstStub (heap)-> rawJitCode,
       instead a load from table[constant]
@@ -83,9 +84,40 @@
       push/pop with no calls between?
     - basically the old "memory renaming", with flush on call
     - JS locals?
+    - make stack state part of context and put separate dispatch in
+      fallback/IC-invoking cases of hybrid ICs -- enable fully inlined
+      case to stay in a separate set of blocks
+  - work on passing args more efficiently
+    - as globals? or give more registers?
+      - intrinsics to read/write "global registers" via weval; special
+        readonly-within-function variant; ensure optimized out if
+        value not used; maybe set ICCtx only once before calling into
+        all ICs, and preserve within ICs across exit frames?
+      - then: pc, sp, ctx are globals; stub, arg0, arg1, arg2 are
+        args; return value rather than ret-ptr; stubInfo and code
+        removed after specialization
+    - remove specialized-over args (stubInfo, CacheIR code) -- option
+      to weval request
+    - then ideally overhead of an IC call gets closer to hybrid-IC
+      inlined code...
   - PortableBaselineInterpret prologue cleanup
     - all unnecessary prologue from PBI (recursion limit, debug checks,
       profiling counters, ...)
+
+  - where is the remaining inefficiency?
+    - JS/IC boundary:
+      - two extra loads + compare with call-indir caching
+        - this one is truly unavoidable with CFI; only option would be
+          to hide it by removing jitCode fetch on Wasm side
+      - not enough actual registers for args; use globals, heap, SIMD
+        regs? --> ABI changes
+      - can't return value result plus error code (pack it in a magic
+        value?)
+      - prologue/epilogue vs. naked ICs in native baseline
+    - JS body:
+      - use of stack in memory for all intermediates,
+        vs. abstract-interp to optimize away
+      - prologue code (checks for everything)
 
   - optimize ICs more for specific benchmarks/cases
     - take a look at NavierStokes?

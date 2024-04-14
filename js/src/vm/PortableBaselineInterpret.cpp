@@ -459,7 +459,7 @@ struct ICCtx {
 #  define ICSTUB_PASSTHROUGH_ARGS arg0v, arg1v, arg2v
 #else
 #  define ICSTUB_ARGS uint64_t arg0, uint64_t arg1, uint64_t arg2
-#  define ICSTUB_PACK_ARGS(arg0, arg1, arg2) pc, sp, arg0, arg1, arg2
+#  define ICSTUB_PACK_ARGS(arg0, arg1, arg2) arg0, arg1, arg2
 #  define ICSTUB_UNPACK_ARGS()
 #  define ICSTUB_PASSTHROUGH_ARGS arg0, arg1, arg2
 #endif

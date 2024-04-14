@@ -199,6 +199,9 @@ void weval_write_reg(uint64_t idx, uint64_t value)
     WEVAL_WASM_IMPORT("write.reg");
 uint32_t weval_specialize_value(uint32_t value, uint32_t lo, uint32_t hi)
     WEVAL_WASM_IMPORT("specialize.value");
+uint64_t weval_read_global(uint64_t idx) WEVAL_WASM_IMPORT("read.global");
+void weval_write_global(uint64_t idx, uint64_t value)
+    WEVAL_WASM_IMPORT("write.global");
 
 /* Debugging and stats intrinsics */
     

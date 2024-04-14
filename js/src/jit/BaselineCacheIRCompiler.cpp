@@ -2655,8 +2655,8 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
   }
 
 #ifdef ENABLE_JS_PBL_WEVAL
-    // Register for weval specialization, if enabled.
-    js::pbl::EnqueueICStubSpecialization(stubInfo);
+  // Register for weval specialization, if enabled.
+  js::pbl::EnqueueICStubSpecialization(stubInfo);
 #endif
 
   // Time to allocate and attach a new stub.
@@ -2691,10 +2691,9 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
   auto newStub = new (newStubMem) ICCacheIRStub(code, stubInfo);
   writer.copyStubData(newStub->stubDataStart());
   newStub->setTypeData(writer.typeData());
-  stub->addNewStub(icEntry, newStub);
 
 #ifdef ENABLE_PORTABLE_BASELINE_INTERP
-#ifdef ENABLE_JS_PBL_WEVAL
+#  ifdef ENABLE_JS_PBL_WEVAL
   newStub->updateRawJitCode(
       (stubInfo->hasWeval() && stubInfo->weval().func)
           ? reinterpret_cast<uint8_t*>(stubInfo->weval().func)
@@ -2703,6 +2702,8 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
   newStub->updateRawJitCode(pbl::GetICInterpreter());
 #  endif
 #endif
+
+  stub->addNewStub(icEntry, newStub);
 
   JSScript* owningScript = icScript->isInlined()
                                ? icScript->inliningRoot()->owningScript()

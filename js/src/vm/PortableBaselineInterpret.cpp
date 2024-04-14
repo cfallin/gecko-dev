@@ -92,7 +92,7 @@ using namespace js::jit;
 // Whether we are using the "hybrid" strategy for ICs (see the [SMDOC]
 // in PortableBaselineInterpret.h for more). This is currently a
 // constant, but may become configurable in the future.
-static const bool kHybridICs = false;
+static const bool kHybridICs = true;
 
 /*
  * -----------------------------------------------
@@ -484,12 +484,11 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
                                 const uint8_t* code, ICSTUB_ARGS);
 
 #ifdef ENABLE_JS_PBL_WEVAL
-#  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)   \
-    do {                                                              \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(                 \
-          weval_fast_dispatch(stub->rawJitCode(), stub, 0));          \
-      result = func(ctx, stub, nullptr, nullptr,                      \
-                    ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret)); \
+#  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)       \
+    do {                                                                  \
+      ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
+      result = func(ctx, stub, nullptr, nullptr,                          \
+                    ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));     \
     } while (0)
 #else
 #  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)         \
@@ -6760,7 +6759,7 @@ static const uint32_t WEVAL_JSOP_ID = 1;
 static const uint32_t WEVAL_IC_ID = 2;
 
 WEVAL_DEFINE_TARGET(1, (PortableBaselineInterpret<false, false, true>));
-WEVAL_DEFINE_FAST_DISPATCH_TARGET(2, (ICInterpretOps<true>));
+WEVAL_DEFINE_TARGET(2, (ICInterpretOps<true>));
 
 void EnqueueScriptSpecialization(JSScript* script) {
   Weval& weval = script->weval();

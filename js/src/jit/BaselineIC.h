@@ -113,16 +113,33 @@ void FallbackICSpew(JSContext* cx, ICFallbackStub* stub, const char* fmt, ...)
 class ICEntry {
   // A pointer to the first IC stub for this instruction.
   ICStub* firstStub_;
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  // Cache the JitCode function pointer in the ICEntry itself.
+  uint8_t* jitCode_;
+#endif
 
  public:
-  explicit ICEntry(ICStub* firstStub) : firstStub_(firstStub) {}
+  explicit ICEntry(ICStub* firstStub) : firstStub_(firstStub) {
+    updateJitCode(firstStub);
+  }
 
   ICStub* firstStub() const {
     MOZ_ASSERT(firstStub_);
     return firstStub_;
   }
 
-  void setFirstStub(ICStub* stub) { firstStub_ = stub; }
+  void setFirstStub(ICStub* stub) {
+    firstStub_ = stub;
+    updateJitCode(stub);
+  }
+
+  void updateJitCode(ICStub* stub);
+
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  uint8_t* rawJitCode() const {
+    return jitCode_;
+  }
+#endif
 
   static constexpr size_t offsetOfFirstStub() {
     return offsetof(ICEntry, firstStub_);
@@ -217,6 +234,12 @@ class ICStub {
     return offsetof(ICStub, enteredCount_);
   }
 };
+
+inline void ICEntry::updateJitCode(ICStub* stub) {
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  jitCode_ = stub->rawJitCode();
+#endif
+}
 
 class ICFallbackStub final : public ICStub {
   friend class ICStubConstIterator;

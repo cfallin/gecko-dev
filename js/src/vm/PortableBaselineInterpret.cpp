@@ -480,24 +480,24 @@ typedef PBIResult (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
                                 const uint8_t* code, ICSTUB_ARGS);
 
 #ifdef ENABLE_JS_PBL_WEVAL
-#  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)       \
-    do {                                                                  \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
-      result = func(ctx, stub, nullptr, nullptr,                          \
-                    ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));     \
+#  define CALL_IC(jitcode, ctx, stub, result, pc, sp, arg0, arg1, arg2, ret) \
+    do {                                                                     \
+      ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);               \
+      result = func(ctx, stub, nullptr, nullptr,                             \
+                    ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));        \
     } while (0)
 #else
-#  define CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret)         \
-    do {                                                                    \
-      if (stub->isFallback()) {                                             \
-        ICStubFunc func = reinterpret_cast<ICStubFunc>(stub->rawJitCode()); \
-        result = func(ctx, stub, nullptr, nullptr,                          \
-                      ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));     \
-      } else {                                                              \
-        result = ICInterpretOps<false>(                                     \
-            ctx, stub, nullptr, nullptr,                                    \
-            ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));               \
-      }                                                                     \
+#  define CALL_IC(jitcode, ctx, stub, result, pc, sp, arg0, arg1, arg2, ret) \
+    do {                                                                     \
+      if (stub->isFallback()) {                                              \
+        ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);             \
+        result = func(ctx, stub, nullptr, nullptr,                           \
+                      ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));      \
+      } else {                                                               \
+        result = ICInterpretOps<false>(                                      \
+            ctx, stub, nullptr, nullptr,                                     \
+            ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2, ret));                \
+      }                                                                      \
     } while (0)
 #endif
 
@@ -2972,7 +2972,7 @@ next_ic:
   stub = stub->maybeNext();
   MOZ_ASSERT(stub);
   PBIResult result;
-  CALL_IC(ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);
+  CALL_IC(stub->rawJitCode(), ctx, stub, result, pc, sp, arg0, arg1, arg2, ret);
   return result;
 }
 
@@ -3399,23 +3399,23 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 
 #define NEXT_IC() icEntry++
 
-#define INVOKE_IC(kind)                                                   \
-  CALL_IC(ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, ic_arg1, \
-          ic_arg2, &ic_ret);                                              \
-  if (ic_result != PBIResult::Ok) {                                       \
-    WEVAL_POP_CONTEXT();                                                  \
-    goto ic_fail;                                                         \
-  }                                                                       \
+#define INVOKE_IC(kind)                                                        \
+  CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_result, pc, sp, \
+          ic_arg0, ic_arg1, ic_arg2, &ic_ret);                                 \
+  if (ic_result != PBIResult::Ok) {                                            \
+    WEVAL_POP_CONTEXT();                                                       \
+    goto ic_fail;                                                              \
+  }                                                                            \
   NEXT_IC();
 
-#define INVOKE_IC_AND_PUSH(kind)                                          \
-  CALL_IC(ctx, icEntry->firstStub(), ic_result, pc, sp, ic_arg0, ic_arg1, \
-          ic_arg2, reinterpret_cast<uint64_t*>(&sp[-1]));                 \
-  if (ic_result != PBIResult::Ok) {                                       \
-    WEVAL_POP_CONTEXT();                                                  \
-    goto ic_fail;                                                         \
-  }                                                                       \
-  sp--;                                                                   \
+#define INVOKE_IC_AND_PUSH(kind)                                               \
+  CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_result, pc, sp, \
+          ic_arg0, ic_arg1, ic_arg2, reinterpret_cast<uint64_t*>(&sp[-1]));    \
+  if (ic_result != PBIResult::Ok) {                                            \
+    WEVAL_POP_CONTEXT();                                                       \
+    goto ic_fail;                                                              \
+  }                                                                            \
+  sp--;                                                                        \
   NEXT_IC();
 
 template <bool IsRestart, bool InlineCalls, bool HybridICs>

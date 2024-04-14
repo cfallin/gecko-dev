@@ -416,8 +416,8 @@ void ICScript::initICEntries(JSContext* cx, JSScript* script) {
     ICEntry& entryRef = this->icEntry(icEntryIndex);
     ICFallbackStub* stub = fallbackStub(icEntryIndex);
     icEntryIndex++;
-    new (&entryRef) ICEntry(stub);
     new (stub) ICFallbackStub(offset, stubCode);
+    new (&entryRef) ICEntry(stub);
   }
 
   // Assert all ICEntries have been initialized.

@@ -446,31 +446,45 @@ struct ICCtx {
 };
 
 #ifdef __wasi__
-#  define ICSTUB_ARGS \
-    __i64x2 pcv, __i64x2 spv, __i64x2 arg0v, __i64x2 arg1v, __i64x2 arg2v
-#  define ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2)        \
-    wasm_i64x2_make(reinterpret_cast<uint64_t>(pc), 0),     \
-        wasm_i64x2_make(reinterpret_cast<uint64_t>(sp), 0), \
-        wasm_i64x2_make(arg0, 0), wasm_i64x2_make(arg1, 0), \
-        wasm_i64x2_make(arg2, 0)
+#  define ICSTUB_ARGS __i64x2 arg0v, __i64x2 arg1v, __i64x2 arg2v
+#  define ICSTUB_PACK_ARGS(arg0, arg1, arg2) \
+    wasm_i64x2_make(arg0, 0), wasm_i64x2_make(arg1, 0), wasm_i64x2_make(arg2, 0)
 #  define ICSTUB_UNPACK_ARGS()                              \
-    jsbytecode* pc = reinterpret_cast<jsbytecode*>(pcv[0]); \
-    StackVal* sp = reinterpret_cast<StackVal*>(spv[0]);     \
     uint64_t arg0 = arg0v[0];                               \
     uint64_t arg1 = arg1v[0];                               \
     uint64_t arg2 = arg2v[0];                               \
     (void)arg0;                                             \
     (void)arg1;                                             \
-    (void)arg2;                                             \
-    (void)pc;                                               \
-    (void)sp;
-#  define ICSTUB_PASSTHROUGH_ARGS pcv, spv, arg0v, arg1v, arg2v
+    (void)arg2;
+#  define ICSTUB_PASSTHROUGH_ARGS arg0v, arg1v, arg2v
 #else
-#  define ICSTUB_ARGS \
-    jsbytecode *pc, StackVal *sp, uint64_t arg0, uint64_t arg1, uint64_t arg2
-#  define ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2) pc, sp, arg0, arg1, arg2
+#  define ICSTUB_ARGS uint64_t arg0, uint64_t arg1, uint64_t arg2
+#  define ICSTUB_PACK_ARGS(arg0, arg1, arg2) pc, sp, arg0, arg1, arg2
 #  define ICSTUB_UNPACK_ARGS()
-#  define ICSTUB_PASSTHROUGH_ARGS pc, sp, arg0, arg1, arg2
+#  define ICSTUB_PASSTHROUGH_ARGS arg0, arg1, arg2
+#endif
+
+#ifdef ENABLE_JS_PBL_WEVAL
+#  define ICSTUB_GLOBAL_ARGS
+#  define ICSTUB_GLOBAL_ARGS_PACK(ctx, pc, sp)
+#  define ICSTUB_GLOBAL_ARGS_PREPARE(ctx, pc, sp)          \
+    weval_write_global0(reinterpret_cast<uint64_t>(&ctx)); \
+    weval_write_global1(reinterpret_cast<uint64_t>(pc));   \
+    weval_write_global2(reinterpret_cast<uint64_t>(sp));
+#  define ICSTUB_GLOBAL_ARGS_UNPACK()                                     \
+    ICCtx& ctx = *reinterpret_cast<ICCtx*>(weval_read_global0());         \
+    jsbytecode* pc = reinterpret_cast<jsbytecode*>(weval_read_global1()); \
+    StackVal* sp = reinterpret_cast<StackVal*>(weval_read_global2());     \
+    (void)ctx;                                                            \
+    (void)pc;                                                             \
+    (void)sp;
+#  define ICSTUB_GLOBAL_ARGS_PASSTHROUGH
+#else
+#  define ICSTUB_GLOBAL_ARGS ICCtx &ctx, jsbytecode *pc, StackVal *sp,
+#  define ICSTUB_GLOBAL_ARGS_PACK(ctx, pc, sp) ctx, pc, sp,
+#  define ICSTUB_GLOBAL_ARGS_PREPARE(ctx, pc, sp)
+#  define ICSTUB_GLOBAL_ARGS_UNPACK()
+#  define ICSTUB_GLOBAL_ARGS_PASSTHROUGH ctx, pc, sp,
 #endif
 
 #define PACK_IC_ERROR(pbiresult) \
@@ -480,29 +494,34 @@ struct ICCtx {
   (static_cast<PBIResult>(Value::fromRawBits((bits)).magicUint32() - 1000))
 
 // Universal signature for an IC stub function.
-typedef uint64_t (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
-                               const CacheIRStubInfo* stubInfo,
-                               const uint8_t* code, ICSTUB_ARGS);
+typedef uint64_t (*ICStubFunc)(ICStub* stub, const CacheIRStubInfo* stubInfo,
+                               const uint8_t* code, ICSTUB_GLOBAL_ARGS
+                               ICSTUB_ARGS);
 
 #ifdef ENABLE_JS_PBL_WEVAL
 #  define CALL_IC(jitcode, ctx, stub, result, pc, sp, arg0, arg1, arg2) \
     do {                                                                \
       ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);          \
-      result = func(ctx, stub, nullptr, nullptr,                        \
-                    ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2));        \
+      ICSTUB_GLOBAL_ARGS_PREPARE(ctx, pc, sp);                          \
+      result = func(stub, nullptr, nullptr,                             \
+                    ICSTUB_GLOBAL_ARGS_PACK(ctx, pc, sp)                \
+                        ICSTUB_PACK_ARGS(arg0, arg1, arg2));            \
     } while (0)
 #else
-#  define CALL_IC(jitcode, ctx, stub, result, pc, sp, arg0, arg1, arg2)        \
-    do {                                                                       \
-      if (stub->isFallback()) {                                                \
-        ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);               \
-        result = func(ctx, stub, nullptr, nullptr,                             \
-                      ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2));             \
-      } else {                                                                 \
-        result =                                                               \
-            ICInterpretOps<false>(ctx, stub, nullptr, nullptr,                 \
-                                  ICSTUB_PACK_ARGS(pc, sp, arg0, arg1, arg2)); \
-      }                                                                        \
+#  define CALL_IC(jitcode, ctx, stub, result, pc, sp, arg0, arg1, arg2)    \
+    do {                                                                   \
+      ICSTUB_GLOBAL_ARGS_PREPARE(ctx, pc, sp);                             \
+      if (stub->isFallback()) {                                            \
+        ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);           \
+        result = func(stub, nullptr, nullptr,                              \
+                      ICSTUB_GLOBAL_ARGS_PACK(ctx, pc, sp)                 \
+                          ICSTUB_PACK_ARGS(arg0, arg1, arg2));             \
+      } else {                                                             \
+        result =                                                           \
+            ICInterpretOps<false>(stub, nullptr, nullptr,                  \
+                                  ICSTUB_GLOBAL_ARGS_PACK(ctx, pc, sp)     \
+                                      ICSTUB_PACK_ARGS(arg0, arg1, arg2)); \
+      }                                                                    \
     } while (0)
 #endif
 
@@ -527,9 +546,11 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
 
 // Interpreter for CacheIR.
 template <bool Specialized>
-uint64_t MOZ_NEVER_INLINE ICInterpretOps(ICCtx& ctx, ICStub* stub,
+uint64_t MOZ_NEVER_INLINE ICInterpretOps(ICStub* stub,
                                          const CacheIRStubInfo* stubInfo,
-                                         const uint8_t* code, ICSTUB_ARGS) {
+                                         const uint8_t* code,
+                                         ICSTUB_GLOBAL_ARGS ICSTUB_ARGS) {
+  ICSTUB_GLOBAL_ARGS_UNPACK();
   ICSTUB_UNPACK_ARGS();
   ICCacheIRStub* cstub = stub->toCacheIRStub();
 
@@ -2988,27 +3009,29 @@ next_ic:
  * -----------------------------------------------
  */
 
-#define DEFINE_IC(kind, arity, fallback_body)                    \
-  static uint64_t MOZ_NEVER_INLINE IC##kind##Fallback(           \
-      ICCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo, \
-      const uint8_t* code, ICSTUB_ARGS) {                        \
-    uint64_t retValue = 0;                                       \
-    ICSTUB_UNPACK_ARGS();                                        \
-    ICFallbackStub* fallback = stub->toFallbackStub();           \
-    fallback_body;                                               \
-    retValue = ctx.state.res.asRawBits();                        \
-    ctx.state.res = UndefinedValue();                            \
-    return retValue;                                             \
-  error:                                                         \
-    return PACK_IC_ERROR(PBIResult::Error);                      \
+#define DEFINE_IC(kind, arity, fallback_body)                             \
+  static uint64_t MOZ_NEVER_INLINE IC##kind##Fallback(                    \
+      ICStub* stub, const CacheIRStubInfo* stubInfo, const uint8_t* code, \
+      ICSTUB_GLOBAL_ARGS ICSTUB_ARGS) {                                   \
+    uint64_t retValue = 0;                                                \
+    ICSTUB_UNPACK_ARGS();                                                 \
+    ICSTUB_GLOBAL_ARGS_UNPACK();                                          \
+    ICFallbackStub* fallback = stub->toFallbackStub();                    \
+    fallback_body;                                                        \
+    retValue = ctx.state.res.asRawBits();                                 \
+    ctx.state.res = UndefinedValue();                                     \
+    return retValue;                                                      \
+  error:                                                                  \
+    return PACK_IC_ERROR(PBIResult::Error);                               \
   }
 
-#define DEFINE_IC_ALIAS(kind, target)                            \
-  static uint64_t MOZ_NEVER_INLINE IC##kind##Fallback(           \
-      ICCtx& ctx, ICStub* stub, const CacheIRStubInfo* stubInfo, \
-      const uint8_t* code, ICSTUB_ARGS) {                        \
-    return IC##target##Fallback(ctx, stub, stubInfo, code,       \
-                                ICSTUB_PASSTHROUGH_ARGS);        \
+#define DEFINE_IC_ALIAS(kind, target)                                     \
+  static uint64_t MOZ_NEVER_INLINE IC##kind##Fallback(                    \
+      ICStub* stub, const CacheIRStubInfo* stubInfo, const uint8_t* code, \
+      ICSTUB_GLOBAL_ARGS ICSTUB_ARGS) {                                   \
+    return IC##target##Fallback(                                          \
+        stub, stubInfo, code,                                             \
+        ICSTUB_GLOBAL_ARGS_PASSTHROUGH ICSTUB_PASSTHROUGH_ARGS);          \
   }
 
 #define IC_LOAD_VAL(state_elem, index)                    \
@@ -6792,12 +6815,12 @@ void EnqueueICStubSpecialization(CacheIRStubInfo* stubInfo) {
     // it is nondeterministic.
     uint32_t len = sizeof(CacheIRStubInfo) - sizeof(void*);
 
-    weval.req = weval::weval(reinterpret_cast<ICStubFunc*>(&weval.func),
-                             &ICInterpretOps<true>, WEVAL_IC_ID,
-                             Runtime<ICCtx&>(), Runtime<ICStub*>(),
-                             SpecializeMemory<CacheIRStubInfo*>(stubInfo, len),
-                             SpecializeMemory<const uint8_t*>(
-                                 stubInfo->code(), stubInfo->codeLength()));
+    weval.req =
+        weval::weval(reinterpret_cast<ICStubFunc*>(&weval.func),
+                     &ICInterpretOps<true>, WEVAL_IC_ID, Runtime<ICStub*>(),
+                     SpecializeMemory<CacheIRStubInfo*>(stubInfo, len),
+                     SpecializeMemory<const uint8_t*>(stubInfo->code(),
+                                                      stubInfo->codeLength()));
   }
 }
 

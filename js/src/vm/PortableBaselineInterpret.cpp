@@ -449,12 +449,12 @@ struct ICCtx {
 #  define ICSTUB_ARGS __i64x2 arg0v, __i64x2 arg1v, __i64x2 arg2v
 #  define ICSTUB_PACK_ARGS(arg0, arg1, arg2) \
     wasm_i64x2_make(arg0, 0), wasm_i64x2_make(arg1, 0), wasm_i64x2_make(arg2, 0)
-#  define ICSTUB_UNPACK_ARGS()                              \
-    uint64_t arg0 = arg0v[0];                               \
-    uint64_t arg1 = arg1v[0];                               \
-    uint64_t arg2 = arg2v[0];                               \
-    (void)arg0;                                             \
-    (void)arg1;                                             \
+#  define ICSTUB_UNPACK_ARGS() \
+    uint64_t arg0 = arg0v[0];  \
+    uint64_t arg1 = arg1v[0];  \
+    uint64_t arg2 = arg2v[0];  \
+    (void)arg0;                \
+    (void)arg1;                \
     (void)arg2;
 #  define ICSTUB_PASSTHROUGH_ARGS arg0v, arg1v, arg2v
 #else
@@ -495,8 +495,8 @@ struct ICCtx {
 
 // Universal signature for an IC stub function.
 typedef uint64_t (*ICStubFunc)(ICStub* stub, const CacheIRStubInfo* stubInfo,
-                               const uint8_t* code, ICSTUB_GLOBAL_ARGS
-                               ICSTUB_ARGS);
+                               const uint8_t* code,
+                               ICSTUB_GLOBAL_ARGS ICSTUB_ARGS);
 
 #ifdef ENABLE_JS_PBL_WEVAL
 #  define CALL_IC(jitcode, ctx, stub, result, pc, sp, arg0, arg1, arg2) \
@@ -2311,24 +2311,27 @@ uint64_t MOZ_NEVER_INLINE ICInterpretOps(ICStub* stub,
 
       CACHEOP_CASE(LoadObjectResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();
-        retValue = ObjectValue(*reinterpret_cast<JSObject*>(READ_REG(objId.id())))
-                   .asRawBits();
+        retValue =
+            ObjectValue(*reinterpret_cast<JSObject*>(READ_REG(objId.id())))
+                .asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(LoadStringResult) {
         StringOperandId strId = cacheIRReader.stringOperandId();
-        retValue = StringValue(reinterpret_cast<JSString*>(READ_REG(strId.id())))
-                   .asRawBits();
+        retValue =
+            StringValue(reinterpret_cast<JSString*>(READ_REG(strId.id())))
+                .asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(LoadSymbolResult) {
         SymbolOperandId symId = cacheIRReader.symbolOperandId();
-        retValue = SymbolValue(reinterpret_cast<JS::Symbol*>(READ_REG(symId.id())))
-                   .asRawBits();
+        retValue =
+            SymbolValue(reinterpret_cast<JS::Symbol*>(READ_REG(symId.id())))
+                .asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2353,8 +2356,9 @@ uint64_t MOZ_NEVER_INLINE ICInterpretOps(ICStub* stub,
 
       CACHEOP_CASE(LoadBigIntResult) {
         BigIntOperandId valId = cacheIRReader.bigIntOperandId();
-        retValue = BigIntValue(reinterpret_cast<JS::BigInt*>(READ_REG(valId.id())))
-                   .asRawBits();
+        retValue =
+            BigIntValue(reinterpret_cast<JS::BigInt*>(READ_REG(valId.id())))
+                .asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2395,7 +2399,7 @@ uint64_t MOZ_NEVER_INLINE ICInterpretOps(ICStub* stub,
     if (result < INT32_MIN || result > INT32_MAX) {        \
       FAIL_IC();                                           \
     }                                                      \
-    retValue = Int32Value(int32_t(result)).asRawBits();        \
+    retValue = Int32Value(int32_t(result)).asRawBits();    \
     PREDICT_RETURN();                                      \
     DISPATCH_CACHEOP();                                    \
   }

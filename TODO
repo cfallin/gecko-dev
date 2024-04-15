@@ -87,7 +87,11 @@
     - make stack state part of context and put separate dispatch in
       fallback/IC-invoking cases of hybrid ICs -- enable fully inlined
       case to stay in a separate set of blocks
-  - work on passing args more efficiently
+  - (x) work on passing args more efficiently -- settled on using
+    tailcall conv for up to 8 args; everything else was either more
+    complex (SIMD, removing args) or diverged from weval semantic
+    clarity (globals, removing args) or else had unresolvable issues
+    (removing args)
     - as globals? or give more registers?
       - intrinsics to read/write "global registers" via weval; special
         readonly-within-function variant; ensure optimized out if

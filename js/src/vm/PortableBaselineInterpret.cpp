@@ -374,9 +374,8 @@ class VMFrame {
   void* prevSavedStack;
 
  public:
-  VMFrame(VMFrameManager& mgr, Stack& stack_, StackVal* sp, jsbytecode* pc)
+  VMFrame(VMFrameManager& mgr, Stack& stack_, StackVal* sp)
       : cx(mgr.cx), stack(stack_) {
-    mgr.frame->interpreterPC() = pc;
     exitFP = stack.pushExitFrame(sp, mgr.frame);
     if (!exitFP) {
       return;
@@ -403,7 +402,7 @@ class VMFrame {
 };
 
 #define PUSH_EXIT_FRAME_OR_RET(value)                           \
-  VMFrame cx(ctx.frameMgr, ctx.stack, sp, pc);                  \
+  VMFrame cx(ctx.frameMgr, ctx.stack, sp);                      \
   if (!cx.success()) {                                          \
     return value;                                               \
   }                                                             \
@@ -413,7 +412,9 @@ class VMFrame {
 #define PUSH_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(PACK_IC_ERROR(PBIResult::Error))
 #define PUSH_FALLBACK_IC_FRAME() \
   PUSH_EXIT_FRAME_OR_RET(PACK_IC_ERROR(PBIResult::Error))
-#define PUSH_EXIT_FRAME() PUSH_EXIT_FRAME_OR_RET(PBIResult::Error)
+#define PUSH_EXIT_FRAME()      \
+  frame->interpreterPC() = pc; \
+  PUSH_EXIT_FRAME_OR_RET(PBIResult::Error)
 
 /*
  * -----------------------------------------------
@@ -432,7 +433,6 @@ struct ICCtx {
   ICRegs icregs;
 
   BaselineFrame* frame;
-  jsbytecode* pc;
   StackVal* sp;
 
   ICCtx(JSContext* cx, BaselineFrame* frame_, State& state_, Stack& stack_)
@@ -457,27 +457,23 @@ typedef uint64_t (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
                                uint64_t arg2);
 
 #ifdef ENABLE_JS_PBL_WEVAL
-#  define CALL_IC(jitcode, ctx, stub, result, pcvalue, spvalue, arg0, arg1, \
-                  arg2)                                                     \
-    do {                                                                    \
-      ctx.pc = pcvalue;                                                     \
-      ctx.sp = spvalue;                                                     \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);              \
-      result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2);         \
+#  define CALL_IC(jitcode, ctx, stub, result, spvalue, arg0, arg1, arg2) \
+    do {                                                                 \
+      ctx.sp = spvalue;                                                  \
+      ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);           \
+      result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2);      \
     } while (0)
 #else
-#  define CALL_IC(jitcode, ctx, stub, result, pcvalue, spvalue, arg0, arg1, \
-                  arg2)                                                     \
-    do {                                                                    \
-      ctx.pc = pcvalue;                                                     \
-      ctx.sp = spvalue;                                                     \
-      if (stub->isFallback()) {                                             \
-        ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);            \
-        result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2);       \
-      } else {                                                              \
-        result = ICInterpretOps<false>(ctx, stub, nullptr, nullptr, arg0,   \
-                                       arg1, arg2);                         \
-      }                                                                     \
+#  define CALL_IC(jitcode, ctx, stub, result, spvalue, arg0, arg1, arg2)  \
+    do {                                                                  \
+      ctx.sp = spvalue;                                                   \
+      if (stub->isFallback()) {                                           \
+        ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);          \
+        result = func(ctx, stub, nullptr, nullptr, arg0, arg1, arg2);     \
+      } else {                                                            \
+        result = ICInterpretOps<false>(ctx, stub, nullptr, nullptr, arg0, \
+                                       arg1, arg2);                       \
+      }                                                                   \
     } while (0)
 #endif
 
@@ -506,7 +502,6 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
                         const CacheIRStubInfo* stubInfo, const uint8_t* code,
                         uint64_t arg0, uint64_t arg1, uint64_t arg2) {
   ICCacheIRStub* cstub = stub->toCacheIRStub();
-  jsbytecode*& pc = ctx.pc;
   StackVal*& sp = ctx.sp;
 
   if (!Specialized) {
@@ -562,9 +557,8 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
   };
   (void)addresses;
 
-#define CACHEOP_TRACE(name)                                                    \
-  TRACE_PRINTF("cacheop (frame %p pc %p stub %p): " #name "\n", ctx.frame, pc, \
-               cstub);
+#define CACHEOP_TRACE(name) \
+  TRACE_PRINTF("cacheop (frame %p stub %p): " #name "\n", ctx.frame, cstub);
 
 #define FAIL_IC() goto next_ic;
 
@@ -2958,7 +2952,7 @@ next_ic:
   stub = stub->maybeNext();
   MOZ_ASSERT(stub);
   uint64_t result;
-  CALL_IC(stub->rawJitCode(), ctx, stub, result, pc, sp, arg0, arg1, arg2);
+  CALL_IC(stub->rawJitCode(), ctx, stub, result, sp, arg0, arg1, arg2);
   return result;
 }
 
@@ -2974,7 +2968,6 @@ next_ic:
       const uint8_t* code, uint64_t arg0, uint64_t arg1, uint64_t arg2) { \
     uint64_t retValue = 0;                                                \
     ICFallbackStub* fallback = stub->toFallbackStub();                    \
-    jsbytecode*& pc = ctx.pc;                                             \
     StackVal*& sp = ctx.sp;                                               \
     fallback_body;                                                        \
     retValue = ctx.state.res.asRawBits();                                 \
@@ -3341,7 +3334,8 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     goto dispatch
 #endif
 
-#define ADVANCE(delta) pc += (delta);
+#define ADVANCE(delta) \
+  pc += (delta);
 #define ADVANCE_AND_DISPATCH(delta) \
   ADVANCE(delta);                   \
   DISPATCH();
@@ -3386,14 +3380,15 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 
 #define NEXT_IC() icEntry++
 
-#define INVOKE_IC(kind)                                                     \
-  CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret, pc, sp, \
-          ic_arg0, ic_arg1, ic_arg2);                                       \
-  if (IS_IC_ERROR(ic_ret)) {                                                \
-    WEVAL_POP_CONTEXT();                                                    \
-    ic_result = UNPACK_IC_ERROR(ic_ret);                                    \
-    goto ic_fail;                                                           \
-  }                                                                         \
+#define INVOKE_IC(kind)                                                 \
+  frame->interpreterPC() = pc;                                          \
+  CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret, sp, \
+          ic_arg0, ic_arg1, ic_arg2);                                   \
+  if (IS_IC_ERROR(ic_ret)) {                                            \
+    WEVAL_POP_CONTEXT();                                                \
+    ic_result = UNPACK_IC_ERROR(ic_ret);                                \
+    goto ic_fail;                                                       \
+  }                                                                     \
   NEXT_IC();
 
 #define INVOKE_IC_AND_PUSH(kind) \

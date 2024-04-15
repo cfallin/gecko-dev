@@ -414,6 +414,7 @@ class VMFrame {
   PUSH_EXIT_FRAME_OR_RET(PACK_IC_ERROR(PBIResult::Error))
 #define PUSH_EXIT_FRAME()      \
   frame->interpreterPC() = pc; \
+  SYNCSP();                    \
   PUSH_EXIT_FRAME_OR_RET(PBIResult::Error)
 
 /*
@@ -452,9 +453,8 @@ struct ICCtx {
 // Universal signature for an IC stub function.
 typedef uint64_t (*ICStubFunc)(ICCtx& ctx, ICStub* stub,
                                const CacheIRStubInfo* stubInfo,
-                               const uint8_t* code,
-                               uint64_t arg0, uint64_t arg1,
-                               uint64_t arg2);
+                               const uint8_t* code, uint64_t arg0,
+                               uint64_t arg1, uint64_t arg2);
 
 #ifdef ENABLE_JS_PBL_WEVAL
 #  define CALL_IC(jitcode, ctx, stub, result, spvalue, arg0, arg1, arg2) \
@@ -495,7 +495,7 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
 #else
 #  define INVOKE_PBI(result, script, interp, ...) result = interp(__VA_ARGS__);
 #endif
-  
+
 // Interpreter for CacheIR.
 template <bool Specialized>
 uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
@@ -874,8 +874,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t shapeOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        uintptr_t expectedShape =
-            stubInfo->getStubRawWord(cstub, shapeOffset);
+        uintptr_t expectedShape = stubInfo->getStubRawWord(cstub, shapeOffset);
         if (reinterpret_cast<uintptr_t>(obj->shape()) != expectedShape) {
           FAIL_IC();
         }
@@ -1002,8 +1001,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE(GuardGlobalGeneration) {
         uint32_t expectedOffset = cacheIRReader.stubOffset();
         uint32_t generationAddrOffset = cacheIRReader.stubOffset();
-        uint32_t expected =
-            stubInfo->getStubRawInt32(cstub, expectedOffset);
+        uint32_t expected = stubInfo->getStubRawInt32(cstub, expectedOffset);
         uint32_t* generationAddr = reinterpret_cast<uint32_t*>(
             stubInfo->getStubRawWord(cstub, generationAddrOffset));
         if (*generationAddr != expected) {
@@ -1147,8 +1145,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         uint32_t expectedOffset = cacheIRReader.stubOffset();
         uint32_t nargsAndFlagsOffset = cacheIRReader.stubOffset();
         (void)nargsAndFlagsOffset;  // Unused.
-        uintptr_t expected =
-            stubInfo->getStubRawWord(cstub, expectedOffset);
+        uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
         if (expected != READ_REG(funId.id())) {
           FAIL_IC();
         }
@@ -1176,8 +1173,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE(GuardSpecificAtom) {
         StringOperandId strId = cacheIRReader.stringOperandId();
         uint32_t expectedOffset = cacheIRReader.stubOffset();
-        uintptr_t expected =
-            stubInfo->getStubRawWord(cstub, expectedOffset);
+        uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
         if (expected != READ_REG(strId.id())) {
           // TODO: BaselineCacheIRCompiler also checks for equal strings
           FAIL_IC();
@@ -1188,8 +1184,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE(GuardSpecificSymbol) {
         SymbolOperandId symId = cacheIRReader.symbolOperandId();
         uint32_t expectedOffset = cacheIRReader.stubOffset();
-        uintptr_t expected =
-            stubInfo->getStubRawWord(cstub, expectedOffset);
+        uintptr_t expected = stubInfo->getStubRawWord(cstub, expectedOffset);
         if (expected != READ_REG(symId.id())) {
           FAIL_IC();
         }
@@ -1293,8 +1288,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         uint32_t idOffset = cacheIRReader.stubOffset();
         uint32_t getterSetterOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        jsid id = jsid::fromRawBits(
-            stubInfo->getStubRawWord(cstub, idOffset));
+        jsid id = jsid::fromRawBits(stubInfo->getStubRawWord(cstub, idOffset));
         GetterSetter* getterSetter = reinterpret_cast<GetterSetter*>(
             stubInfo->getStubRawWord(cstub, getterSetterOffset));
         if (!ObjectHasGetterSetterPure(ctx.frameMgr.cxForLocalUseOnly(), obj,
@@ -1353,10 +1347,9 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         uint32_t offsetOffset = cacheIRReader.stubOffset();
         uint32_t valOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        uint32_t offset =
-            stubInfo->getStubRawInt32(cstub, offsetOffset);
-        Value val = Value::fromRawBits(
-            stubInfo->getStubRawInt64(cstub, valOffset));
+        uint32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
+        Value val =
+            Value::fromRawBits(stubInfo->getStubRawInt64(cstub, valOffset));
         GCPtr<Value>* slot = reinterpret_cast<GCPtr<Value>*>(
             reinterpret_cast<uintptr_t>(obj) + offset);
         Value actual = slot->get();
@@ -1371,10 +1364,9 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         uint32_t offsetOffset = cacheIRReader.stubOffset();
         uint32_t valOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        uint32_t offset =
-            stubInfo->getStubRawInt32(cstub, offsetOffset);
-        Value val = Value::fromRawBits(
-            stubInfo->getStubRawInt64(cstub, valOffset));
+        uint32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
+        Value val =
+            Value::fromRawBits(stubInfo->getStubRawInt64(cstub, valOffset));
         NativeObject* nobj = &obj->as<NativeObject>();
         HeapSlot* slots = nobj->getSlotsUnchecked();
         Value actual = slots[offset / sizeof(Value)];
@@ -1390,8 +1382,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t offsetOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        uint32_t offset =
-            stubInfo->getStubRawInt32(cstub, offsetOffset);
+        uint32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
         GCPtr<Value>* slot = reinterpret_cast<GCPtr<Value>*>(
             reinterpret_cast<uintptr_t>(obj) + offset);
         Value actual = slot->get();
@@ -1590,8 +1581,8 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t nameOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        jsid name = jsid::fromRawBits(
-            stubInfo->getStubRawWord(cstub, nameOffset));
+        jsid name =
+            jsid::fromRawBits(stubInfo->getStubRawWord(cstub, nameOffset));
         if (!obj->shape()->isNative()) {
           FAIL_IC();
         }
@@ -1646,8 +1637,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t offsetOffset = cacheIRReader.stubOffset();
         ValOperandId rhsId = cacheIRReader.valOperandId();
-        uintptr_t offset =
-            stubInfo->getStubRawInt32(cstub, offsetOffset);
+        uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
         NativeObject* nobj =
             reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
         GCPtr<Value>* slot = reinterpret_cast<GCPtr<Value>*>(
@@ -1662,8 +1652,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t offsetOffset = cacheIRReader.stubOffset();
         ValOperandId rhsId = cacheIRReader.valOperandId();
-        uint32_t offset =
-            stubInfo->getStubRawInt32(cstub, offsetOffset);
+        uint32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
         NativeObject* nobj =
             reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
         HeapSlot* slots = nobj->getSlotsUnchecked();
@@ -1681,8 +1670,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         ValOperandId rhsId = cacheIRReader.valOperandId();
         uint32_t newShapeOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        int32_t offset =
-            stubInfo->getStubRawInt32(cstub, offsetOffset);
+        int32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
         Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
         Shape* newShape = reinterpret_cast<Shape*>(
             stubInfo->getStubRawWord(cstub, newShapeOffset));
@@ -1700,8 +1688,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         ValOperandId rhsId = cacheIRReader.valOperandId();
         uint32_t newShapeOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        int32_t offset =
-            stubInfo->getStubRawInt32(cstub, offsetOffset);
+        int32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
         Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
         Shape* newShape = reinterpret_cast<Shape*>(
             stubInfo->getStubRawWord(cstub, newShapeOffset));
@@ -1722,8 +1709,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         uint32_t newShapeOffset = cacheIRReader.stubOffset();
         uint32_t numNewSlotsOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        int32_t offset =
-            stubInfo->getStubRawInt32(cstub, offsetOffset);
+        int32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
         Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
         Shape* newShape = reinterpret_cast<Shape*>(
             stubInfo->getStubRawWord(cstub, newShapeOffset));
@@ -2044,8 +2030,8 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
             ImmutableScriptData* isd = script->immutableScriptData();
             PBIResult result;
             INVOKE_PBI(result, script,
-                       (PortableBaselineInterpret<false, true, kHybridICs>), cx,
-                       ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
+                       (PortableBaselineInterpret<false, false, kHybridICs>),
+                       cx, ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
                        reinterpret_cast<Value*>(&retValue), pc, isd, nullptr,
                        nullptr, nullptr, PBIResult::Ok);
             if (result != PBIResult::Ok) {
@@ -2070,8 +2056,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE(LoadFixedSlotResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t offsetOffset = cacheIRReader.stubOffset();
-        uintptr_t offset =
-            stubInfo->getStubRawInt32(cstub, offsetOffset);
+        uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
         NativeObject* nobj =
             reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
         Value* slot = reinterpret_cast<Value*>(
@@ -2088,8 +2073,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE(LoadDynamicSlotResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t offsetOffset = cacheIRReader.stubOffset();
-        uintptr_t offset =
-            stubInfo->getStubRawInt32(cstub, offsetOffset);
+        uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
         NativeObject* nobj =
             reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
         HeapSlot* slots = nobj->getSlotsUnchecked();
@@ -3334,8 +3318,7 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     goto dispatch
 #endif
 
-#define ADVANCE(delta) \
-  pc += (delta);
+#define ADVANCE(delta) pc += (delta);
 #define ADVANCE_AND_DISPATCH(delta) \
   ADVANCE(delta);                   \
   DISPATCH();
@@ -3343,13 +3326,14 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 #define END_OP(op) ADVANCE_AND_DISPATCH(JSOpLength_##op);
 
 #define IC_SET_ARG_FROM_STACK(index, stack_index) \
-  ic_arg##index = sp[(stack_index)].asUInt64();
-#define IC_POP_ARG(index) ic_arg##index = (*sp++).asUInt64();
+  SYNCSP();                                       \
+  ic_arg##index = VIRTSP(stack_index).asUInt64();
+#define IC_POP_ARG(index) ic_arg##index = VIRTPOP().asUInt64();
 #define IC_SET_VAL_ARG(index, expr) ic_arg##index = (expr).asRawBits();
 #define IC_SET_OBJ_ARG(index, expr) \
   ic_arg##index = reinterpret_cast<uint64_t>(expr);
 #define IC_ZERO_ARG(index) ic_arg##index = 0;
-#define IC_PUSH_RESULT() PUSH(StackVal(ic_ret));
+#define IC_PUSH_RESULT() VIRTPUSH(StackVal(ic_ret));
 
 #if !defined(TRACE_INTERP)
 #  define PREDICT_NEXT(op)       \
@@ -3382,6 +3366,7 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 
 #define INVOKE_IC(kind)                                                 \
   frame->interpreterPC() = pc;                                          \
+  SYNCSP();                                                             \
   CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret, sp, \
           ic_arg0, ic_arg1, ic_arg2);                                   \
   if (IS_IC_ERROR(ic_ret)) {                                            \
@@ -3393,9 +3378,61 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 
 #define INVOKE_IC_AND_PUSH(kind) \
   INVOKE_IC(kind);               \
-  PUSH(StackVal(ic_ret));
+  VIRTPUSH(StackVal(ic_ret));
 
-template <bool IsRestart, bool InlineCalls, bool HybridICs>
+#ifdef ENABLE_JS_PBL_WEVAL
+#  define VIRTPUSH(value)                                                    \
+    if (Specialized) {                                                       \
+      --sp;                                                                  \
+      weval_push_stack(reinterpret_cast<uint64_t*>(sp), (value).asUInt64()); \
+    } else {                                                                 \
+      *--sp = (value);                                                       \
+    }
+#  define VIRTPOP()                                      \
+    (Specialized ? ({                                    \
+      uint64_t* ptr = reinterpret_cast<uint64_t*>(sp++); \
+      StackVal(weval_pop_stack(ptr));                    \
+    })                                                   \
+                 : *sp++)
+#  define VIRTSP(index)                                                     \
+    (Specialized ? StackVal(weval_read_stack(                               \
+                       reinterpret_cast<uint64_t*>(&sp[(index)]), (index))) \
+                 : sp[(index)])
+#  define VIRTSPWRITE(index, value)                                         \
+    if (Specialized) {                                                      \
+      weval_write_stack(reinterpret_cast<uint64_t*>(&sp[(index)]), (index), \
+                        (value).asUInt64());                                \
+    } else {                                                                \
+      sp[(index)] = (value);                                                \
+    }
+#  define SYNCSP()        \
+    if (Specialized) {    \
+      weval_sync_stack(); \
+    }
+#else
+#  define VIRTPUSH(value) PUSH(value)
+#  define VIRTPOP() POP()
+#  define VIRTSP(index) sp[(index)]
+#  define VIRTSPWRITE(index, value) sp[(index)] = (value)
+#  define SYNCSP()
+#endif
+
+#define VIRTPOPN(n) \
+  SYNCSP();         \
+  POPN(n);
+
+#define SPHANDLE(index)          \
+  ({                             \
+    SYNCSP();                    \
+    Stack::handle(&sp[(index)]); \
+  })
+#define SPHANDLEMUT(index)          \
+  ({                                \
+    SYNCSP();                       \
+    Stack::handleMut(&sp[(index)]); \
+  })
+
+template <bool Specialized, bool IsRestart, bool HybridICs>
 PBIResult PortableBaselineInterpret(
     JSContext* cx_, State& state, Stack& stack, StackVal* sp,
     JSObject* envChain, Value* ret, jsbytecode* pc, ImmutableScriptData* isd,
@@ -3404,6 +3441,7 @@ PBIResult PortableBaselineInterpret(
 #define RESTART(code)             \
   if (!IsRestart) {               \
     TRACE_PRINTF("Restarting\n"); \
+    SYNCSP();                     \
     restartCode = code;           \
     goto restart;                 \
   }
@@ -3537,6 +3575,7 @@ PBIResult PortableBaselineInterpret(
 #ifdef TRACE_INTERP
   {
     JSOp op = JSOp(*pc);
+    SYNCSP();
     printf("sp[0] = %" PRIx64 " sp[1] = %" PRIx64 " sp[2] = %" PRIx64 "\n",
            sp[0].asUInt64(), sp[1].asUInt64(), sp[2].asUInt64());
     printf("script = %p pc = %p: %s (ic %d) pending = %d\n", script.get(), pc,
@@ -3561,65 +3600,65 @@ PBIResult PortableBaselineInterpret(
       CASE(Nop) { END_OP(Nop); }
       CASE(NopIsAssignOp) { END_OP(NopIsAssignOp); }
       CASE(Undefined) {
-        PUSH(StackVal(UndefinedValue()));
+        VIRTPUSH(StackVal(UndefinedValue()));
         END_OP(Undefined);
       }
       CASE(Null) {
-        PUSH(StackVal(NullValue()));
+        VIRTPUSH(StackVal(NullValue()));
         END_OP(Null);
       }
       CASE(False) {
-        PUSH(StackVal(BooleanValue(false)));
+        VIRTPUSH(StackVal(BooleanValue(false)));
         END_OP(False);
       }
       CASE(True) {
-        PUSH(StackVal(BooleanValue(true)));
+        VIRTPUSH(StackVal(BooleanValue(true)));
         END_OP(True);
       }
       CASE(Int32) {
-        PUSH(StackVal(Int32Value(GET_INT32(pc))));
+        VIRTPUSH(StackVal(Int32Value(GET_INT32(pc))));
         END_OP(Int32);
       }
       CASE(Zero) {
-        PUSH(StackVal(Int32Value(0)));
+        VIRTPUSH(StackVal(Int32Value(0)));
         END_OP(Zero);
       }
       CASE(One) {
-        PUSH(StackVal(Int32Value(1)));
+        VIRTPUSH(StackVal(Int32Value(1)));
         END_OP(One);
       }
       CASE(Int8) {
-        PUSH(StackVal(Int32Value(GET_INT8(pc))));
+        VIRTPUSH(StackVal(Int32Value(GET_INT8(pc))));
         END_OP(Int8);
       }
       CASE(Uint16) {
-        PUSH(StackVal(Int32Value(GET_UINT16(pc))));
+        VIRTPUSH(StackVal(Int32Value(GET_UINT16(pc))));
         END_OP(Uint16);
       }
       CASE(Uint24) {
-        PUSH(StackVal(Int32Value(GET_UINT24(pc))));
+        VIRTPUSH(StackVal(Int32Value(GET_UINT24(pc))));
         END_OP(Uint24);
       }
       CASE(Double) {
-        PUSH(StackVal(GET_INLINE_VALUE(pc)));
+        VIRTPUSH(StackVal(GET_INLINE_VALUE(pc)));
         END_OP(Double);
       }
       CASE(BigInt) {
-        PUSH(StackVal(JS::BigIntValue(script->getBigInt(pc))));
+        VIRTPUSH(StackVal(JS::BigIntValue(script->getBigInt(pc))));
         END_OP(BigInt);
       }
       CASE(String) {
-        PUSH(StackVal(StringValue(script->getString(pc))));
+        VIRTPUSH(StackVal(StringValue(script->getString(pc))));
         END_OP(String);
       }
       CASE(Symbol) {
-        PUSH(StackVal(SymbolValue(
+        VIRTPUSH(StackVal(SymbolValue(
             ctx.frameMgr.cxForLocalUseOnly()->wellKnownSymbols().get(
                 GET_UINT8(pc)))));
         END_OP(Symbol);
       }
       CASE(Void) {
-        sp[0] = StackVal(JS::UndefinedValue());
+        VIRTSPWRITE(0, StackVal(JS::UndefinedValue()));
         END_OP(Void);
       }
 
@@ -3627,8 +3666,11 @@ PBIResult PortableBaselineInterpret(
       CASE(TypeofExpr) {
         static_assert(JSOpLength_Typeof == JSOpLength_TypeofExpr);
         if (HybridICs) {
-          sp[0] = StackVal(StringValue(TypeOfOperation(
-              Stack::handle(sp), ctx.frameMgr.cxForLocalUseOnly()->runtime())));
+          SYNCSP();
+          VIRTSPWRITE(
+              0,
+              StackVal(StringValue(TypeOfOperation(
+                  SPHANDLE(0), ctx.frameMgr.cxForLocalUseOnly()->runtime()))));
           NEXT_IC();
         } else {
           IC_POP_ARG(0);
@@ -3640,7 +3682,7 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Pos) {
-        if (sp[0].asValue().isNumber()) {
+        if (VIRTSP(0).asValue().isNumber()) {
           // Nothing!
           NEXT_IC();
           END_OP(Pos);
@@ -3649,16 +3691,17 @@ PBIResult PortableBaselineInterpret(
         }
       }
       CASE(Neg) {
-        if (sp[0].asValue().isInt32()) {
-          int32_t i = sp[0].asValue().toInt32();
+        Value v = VIRTSP(0).asValue();
+        if (v.isInt32()) {
+          int32_t i = v.toInt32();
           if (i != 0 && i != INT32_MIN) {
-            sp[0] = StackVal(Int32Value(-i));
+            VIRTSPWRITE(0, StackVal(Int32Value(-i)));
             NEXT_IC();
             END_OP(Neg);
           }
         }
-        if (sp[0].asValue().isNumber()) {
-          sp[0] = StackVal(NumberValue(-sp[0].asValue().toNumber()));
+        if (v.isNumber()) {
+          VIRTSPWRITE(0, StackVal(NumberValue(-v.toNumber())));
           NEXT_IC();
           END_OP(Neg);
         }
@@ -3666,32 +3709,34 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Inc) {
-        if (sp[0].asValue().isInt32()) {
-          int32_t i = sp[0].asValue().toInt32();
+        Value v = VIRTSP(0).asValue();
+        if (v.isInt32()) {
+          int32_t i = v.toInt32();
           if (i != INT32_MAX) {
-            sp[0] = StackVal(Int32Value(i + 1));
+            VIRTSPWRITE(0, StackVal(Int32Value(i + 1)));
             NEXT_IC();
             END_OP(Inc);
           }
         }
-        if (sp[0].asValue().isNumber()) {
-          sp[0] = StackVal(NumberValue(sp[0].asValue().toNumber() + 1));
+        if (v.isNumber()) {
+          VIRTSPWRITE(0, StackVal(NumberValue(v.toNumber() + 1)));
           NEXT_IC();
           END_OP(Inc);
         }
         goto generic_unary;
       }
       CASE(Dec) {
-        if (sp[0].asValue().isInt32()) {
-          int32_t i = sp[0].asValue().toInt32();
+        Value v = VIRTSP(0).asValue();
+        if (v.isInt32()) {
+          int32_t i = v.toInt32();
           if (i != INT32_MIN) {
-            sp[0] = StackVal(Int32Value(i - 1));
+            VIRTSPWRITE(0, StackVal(Int32Value(i - 1)));
             NEXT_IC();
             END_OP(Dec);
           }
         }
-        if (sp[0].asValue().isNumber()) {
-          sp[0] = StackVal(NumberValue(sp[0].asValue().toNumber() - 1));
+        if (v.isNumber()) {
+          VIRTSPWRITE(0, StackVal(NumberValue(v.toNumber() - 1)));
           NEXT_IC();
           END_OP(Dec);
         }
@@ -3699,9 +3744,10 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(BitNot) {
-        if (sp[0].asValue().isInt32()) {
-          int32_t i = sp[0].asValue().toInt32();
-          sp[0] = StackVal(Int32Value(~i));
+        Value v = VIRTSP(0).asValue();
+        if (v.isInt32()) {
+          int32_t i = v.toInt32();
+          VIRTSPWRITE(0, StackVal(Int32Value(~i)));
           NEXT_IC();
           END_OP(Inc);
         }
@@ -3710,10 +3756,11 @@ PBIResult PortableBaselineInterpret(
 
       CASE(ToNumeric) {
         if (HybridICs) {
-          if (sp[0].asValue().isNumeric()) {
+          if (VIRTSP(0).asValue().isNumeric()) {
             NEXT_IC();
           } else {
-            MutableHandleValue val = Stack::handleMut(&sp[0]);
+            SYNCSP();
+            MutableHandleValue val = SPHANDLEMUT(0);
             PUSH_EXIT_FRAME();
             if (!ToNumeric(cx, val)) {
               GOTO_ERROR();
@@ -3741,25 +3788,29 @@ PBIResult PortableBaselineInterpret(
 
       CASE(Not) {
         if (HybridICs) {
-          sp[0] = StackVal(BooleanValue(!ToBoolean(Stack::handle(sp))));
+          SYNCSP();
+          VIRTSPWRITE(0, StackVal(BooleanValue(!ToBoolean(SPHANDLE(0)))));
           NEXT_IC();
         } else {
           IC_POP_ARG(0);
           IC_ZERO_ARG(1);
           IC_ZERO_ARG(2);
           INVOKE_IC(ToBool);
-          PUSH(StackVal(BooleanValue(!Value::fromRawBits(ic_ret).toBoolean())));
+          VIRTPUSH(
+              StackVal(BooleanValue(!Value::fromRawBits(ic_ret).toBoolean())));
         }
         END_OP(Not);
       }
 
       CASE(And) {
         bool result;
-        if (sp[0].asValue().isBoolean()) {
-          result = sp[0].asValue().toBoolean();
+        Value v = VIRTSP(0).asValue();
+        if (v.isBoolean()) {
+          result = v.toBoolean();
           NEXT_IC();
         } else if (HybridICs) {
-          result = ToBoolean(Stack::handle(sp));
+          SYNCSP();
+          result = ToBoolean(SPHANDLE(0));
           NEXT_IC();
         } else {
           IC_SET_ARG_FROM_STACK(0, 0);
@@ -3780,11 +3831,12 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Or) {
         bool result;
-        if (sp[0].asValue().isBoolean()) {
-          result = sp[0].asValue().toBoolean();
+        Value v = VIRTSP(0).asValue();
+        if (v.isBoolean()) {
+          result = v.toBoolean();
           NEXT_IC();
         } else if (HybridICs) {
-          result = ToBoolean(Stack::handle(sp));
+          result = ToBoolean(SPHANDLE(0));
           NEXT_IC();
         } else {
           IC_SET_ARG_FROM_STACK(0, 0);
@@ -3805,13 +3857,14 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(JumpIfTrue) {
         bool result;
-        if (sp[0].asValue().isBoolean()) {
-          result = sp[0].asValue().toBoolean();
-          POP();
+        Value v = VIRTSP(0).asValue();
+        if (v.isBoolean()) {
+          result = v.toBoolean();
+          VIRTPOP();
           NEXT_IC();
         } else if (HybridICs) {
-          result = ToBoolean(Stack::handle(sp));
-          POP();
+          result = ToBoolean(SPHANDLE(0));
+          VIRTPOP();
           NEXT_IC();
         } else {
           IC_POP_ARG(0);
@@ -3832,13 +3885,14 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(JumpIfFalse) {
         bool result;
-        if (sp[0].asValue().isBoolean()) {
-          result = sp[0].asValue().toBoolean();
-          POP();
+        Value v = VIRTSP(0).asValue();
+        if (v.isBoolean()) {
+          result = v.toBoolean();
+          VIRTPOP();
           NEXT_IC();
         } else if (HybridICs) {
-          result = ToBoolean(Stack::handle(sp));
-          POP();
+          result = ToBoolean(SPHANDLE(0));
+          VIRTPOP();
           NEXT_IC();
         } else {
           IC_POP_ARG(0);
@@ -3860,36 +3914,38 @@ PBIResult PortableBaselineInterpret(
 
       CASE(Add) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            int64_t lhs = sp[1].asValue().toInt32();
-            int64_t rhs = sp[0].asValue().toInt32();
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            int64_t lhs = v1.toInt32();
+            int64_t rhs = v0.toInt32();
             if (lhs + rhs >= int64_t(INT32_MIN) &&
                 lhs + rhs <= int64_t(INT32_MAX)) {
-              POP();
-              sp[0] = StackVal(Int32Value(int32_t(lhs + rhs)));
+              VIRTPOP();
+              VIRTSPWRITE(0, StackVal(Int32Value(int32_t(lhs + rhs))));
               NEXT_IC();
               END_OP(Add);
             }
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
-            POP();
-            sp[0] = StackVal(NumberValue(lhs + rhs));
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(NumberValue(lhs + rhs)));
             NEXT_IC();
             END_OP(Add);
           }
 
-          MutableHandleValue lhs = Stack::handleMut(sp + 1);
-          MutableHandleValue rhs = Stack::handleMut(sp);
-          MutableHandleValue result = Stack::handleMut(sp + 1);
+          MutableHandleValue lhs = SPHANDLEMUT(1);
+          MutableHandleValue rhs = SPHANDLEMUT(0);
+          MutableHandleValue result = SPHANDLEMUT(1);
           {
             PUSH_EXIT_FRAME();
             if (!AddOperation(cx, lhs, rhs, result)) {
               GOTO_ERROR();
             }
           }
-          POP();
+          VIRTPOP();
           NEXT_IC();
           END_OP(Add);
         }
@@ -3898,36 +3954,38 @@ PBIResult PortableBaselineInterpret(
 
       CASE(Sub) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            int64_t lhs = sp[1].asValue().toInt32();
-            int64_t rhs = sp[0].asValue().toInt32();
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            int64_t lhs = v1.toInt32();
+            int64_t rhs = v0.toInt32();
             if (lhs - rhs >= int64_t(INT32_MIN) &&
                 lhs - rhs <= int64_t(INT32_MAX)) {
-              POP();
-              sp[0] = StackVal(Int32Value(int32_t(lhs - rhs)));
+              VIRTPOP();
+              VIRTSPWRITE(0, StackVal(Int32Value(int32_t(lhs - rhs))));
               NEXT_IC();
               END_OP(Sub);
             }
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
-            POP();
-            sp[0] = StackVal(NumberValue(lhs - rhs));
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(NumberValue(lhs - rhs)));
             NEXT_IC();
             END_OP(Add);
           }
 
-          MutableHandleValue lhs = Stack::handleMut(sp + 1);
-          MutableHandleValue rhs = Stack::handleMut(sp);
-          MutableHandleValue result = Stack::handleMut(sp + 1);
+          MutableHandleValue lhs = SPHANDLEMUT(1);
+          MutableHandleValue rhs = SPHANDLEMUT(0);
+          MutableHandleValue result = SPHANDLEMUT(1);
           {
             PUSH_EXIT_FRAME();
             if (!SubOperation(cx, lhs, rhs, result)) {
               GOTO_ERROR();
             }
           }
-          POP();
+          VIRTPOP();
           NEXT_IC();
           END_OP(Sub);
         }
@@ -3936,38 +3994,40 @@ PBIResult PortableBaselineInterpret(
 
       CASE(Mul) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            int64_t lhs = sp[1].asValue().toInt32();
-            int64_t rhs = sp[0].asValue().toInt32();
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            int64_t lhs = v1.toInt32();
+            int64_t rhs = v0.toInt32();
             int64_t product = lhs * rhs;
             if (product >= int64_t(INT32_MIN) &&
                 product <= int64_t(INT32_MAX) &&
                 (product != 0 || !((lhs < 0) ^ (rhs < 0)))) {
-              POP();
-              sp[0] = StackVal(Int32Value(int32_t(product)));
+              VIRTPOP();
+              VIRTSPWRITE(0, StackVal(Int32Value(int32_t(product))));
               NEXT_IC();
               END_OP(Mul);
             }
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
-            POP();
-            sp[0] = StackVal(NumberValue(lhs * rhs));
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(NumberValue(lhs * rhs)));
             NEXT_IC();
             END_OP(Mul);
           }
 
-          MutableHandleValue lhs = Stack::handleMut(sp + 1);
-          MutableHandleValue rhs = Stack::handleMut(sp);
-          MutableHandleValue result = Stack::handleMut(sp + 1);
+          MutableHandleValue lhs = SPHANDLEMUT(1);
+          MutableHandleValue rhs = SPHANDLEMUT(0);
+          MutableHandleValue result = SPHANDLEMUT(1);
           {
             PUSH_EXIT_FRAME();
             if (!MulOperation(cx, lhs, rhs, result)) {
               GOTO_ERROR();
             }
           }
-          POP();
+          VIRTPOP();
           NEXT_IC();
           END_OP(Mul);
         }
@@ -3975,25 +4035,27 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Div) {
         if (HybridICs) {
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
-            POP();
-            sp[0] = StackVal(NumberValue(NumberDiv(lhs, rhs)));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(NumberValue(NumberDiv(lhs, rhs))));
             NEXT_IC();
             END_OP(Div);
           }
 
-          MutableHandleValue lhs = Stack::handleMut(sp + 1);
-          MutableHandleValue rhs = Stack::handleMut(sp);
-          MutableHandleValue result = Stack::handleMut(sp + 1);
+          MutableHandleValue lhs = SPHANDLEMUT(1);
+          MutableHandleValue rhs = SPHANDLEMUT(0);
+          MutableHandleValue result = SPHANDLEMUT(1);
           {
             PUSH_EXIT_FRAME();
             if (!DivOperation(cx, lhs, rhs, result)) {
               GOTO_ERROR();
             }
           }
-          POP();
+          VIRTPOP();
           NEXT_IC();
           END_OP(Div);
         }
@@ -4001,36 +4063,38 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Mod) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            int64_t lhs = sp[1].asValue().toInt32();
-            int64_t rhs = sp[0].asValue().toInt32();
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            int64_t lhs = v1.toInt32();
+            int64_t rhs = v0.toInt32();
             if (lhs > 0 && rhs > 0) {
               int64_t mod = lhs % rhs;
-              POP();
-              sp[0] = StackVal(Int32Value(int32_t(mod)));
+              VIRTPOP();
+              VIRTSPWRITE(0, StackVal(Int32Value(int32_t(mod))));
               NEXT_IC();
               END_OP(Mod);
             }
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
-            POP();
-            sp[0] = StackVal(DoubleValue(NumberMod(lhs, rhs)));
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(DoubleValue(NumberMod(lhs, rhs))));
             NEXT_IC();
             END_OP(Mod);
           }
 
-          MutableHandleValue lhs = Stack::handleMut(sp + 1);
-          MutableHandleValue rhs = Stack::handleMut(sp);
-          MutableHandleValue result = Stack::handleMut(sp + 1);
+          MutableHandleValue lhs = SPHANDLEMUT(1);
+          MutableHandleValue rhs = SPHANDLEMUT(0);
+          MutableHandleValue result = SPHANDLEMUT(1);
           {
             PUSH_EXIT_FRAME();
             if (!ModOperation(cx, lhs, rhs, result)) {
               GOTO_ERROR();
             }
           }
-          POP();
+          VIRTPOP();
           NEXT_IC();
           END_OP(Mod);
         }
@@ -4038,25 +4102,27 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Pow) {
         if (HybridICs) {
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
-            POP();
-            sp[0] = StackVal(NumberValue(ecmaPow(lhs, rhs)));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(NumberValue(ecmaPow(lhs, rhs))));
             NEXT_IC();
             END_OP(Pow);
           }
 
-          MutableHandleValue lhs = Stack::handleMut(sp + 1);
-          MutableHandleValue rhs = Stack::handleMut(sp);
-          MutableHandleValue result = Stack::handleMut(sp + 1);
+          MutableHandleValue lhs = SPHANDLEMUT(1);
+          MutableHandleValue rhs = SPHANDLEMUT(0);
+          MutableHandleValue result = SPHANDLEMUT(1);
           {
             PUSH_EXIT_FRAME();
             if (!PowOperation(cx, lhs, rhs, result)) {
               GOTO_ERROR();
             }
           }
-          POP();
+          VIRTPOP();
           NEXT_IC();
           END_OP(Pow);
         }
@@ -4064,11 +4130,13 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(BitOr) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            int32_t lhs = sp[1].asValue().toInt32();
-            int32_t rhs = sp[0].asValue().toInt32();
-            POP();
-            sp[0] = StackVal(Int32Value(lhs | rhs));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            int32_t lhs = v1.toInt32();
+            int32_t rhs = v0.toInt32();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(Int32Value(lhs | rhs)));
             NEXT_IC();
             END_OP(BitOr);
           }
@@ -4077,11 +4145,13 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(BitAnd) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            int32_t lhs = sp[1].asValue().toInt32();
-            int32_t rhs = sp[0].asValue().toInt32();
-            POP();
-            sp[0] = StackVal(Int32Value(lhs & rhs));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            int32_t lhs = v1.toInt32();
+            int32_t rhs = v0.toInt32();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(Int32Value(lhs & rhs)));
             NEXT_IC();
             END_OP(BitAnd);
           }
@@ -4090,11 +4160,13 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(BitXor) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            int32_t lhs = sp[1].asValue().toInt32();
-            int32_t rhs = sp[0].asValue().toInt32();
-            POP();
-            sp[0] = StackVal(Int32Value(lhs ^ rhs));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            int32_t lhs = v1.toInt32();
+            int32_t rhs = v0.toInt32();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(Int32Value(lhs ^ rhs)));
             NEXT_IC();
             END_OP(BitXor);
           }
@@ -4103,14 +4175,16 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Lsh) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
             // Unsigned to avoid undefined behavior on left-shift overflow
             // (see comment in BitLshOperation in Interpreter.cpp).
-            uint32_t lhs = uint32_t(sp[1].asValue().toInt32());
-            uint32_t rhs = uint32_t(sp[0].asValue().toInt32());
-            POP();
+            uint32_t lhs = uint32_t(v1.toInt32());
+            uint32_t rhs = uint32_t(v0.toInt32());
+            VIRTPOP();
             rhs &= 31;
-            sp[0] = StackVal(Int32Value(int32_t(lhs << rhs)));
+            VIRTSPWRITE(0, StackVal(Int32Value(int32_t(lhs << rhs))));
             NEXT_IC();
             END_OP(Lsh);
           }
@@ -4119,12 +4193,14 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Rsh) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            int32_t lhs = sp[1].asValue().toInt32();
-            int32_t rhs = sp[0].asValue().toInt32();
-            POP();
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            int32_t lhs = v1.toInt32();
+            int32_t rhs = v0.toInt32();
+            VIRTPOP();
             rhs &= 31;
-            sp[0] = StackVal(Int32Value(lhs >> rhs));
+            VIRTSPWRITE(0, StackVal(Int32Value(lhs >> rhs)));
             NEXT_IC();
             END_OP(Rsh);
           }
@@ -4133,17 +4209,21 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Ursh) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            uint32_t lhs = uint32_t(sp[1].asValue().toInt32());
-            int32_t rhs = sp[0].asValue().toInt32();
-            POP();
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            uint32_t lhs = uint32_t(v1.toInt32());
+            int32_t rhs = v0.toInt32();
+            VIRTPOP();
             rhs &= 31;
             uint32_t result = lhs >> rhs;
+            StackVal stackResult(0);
             if (result <= uint32_t(INT32_MAX)) {
-              sp[0] = StackVal(Int32Value(int32_t(result)));
+              stackResult = StackVal(Int32Value(int32_t(result)));
             } else {
-              sp[0] = StackVal(NumberValue(double(result)));
+              stackResult = StackVal(NumberValue(double(result)));
             }
+            VIRTSPWRITE(0, stackResult);
             NEXT_IC();
             END_OP(Ursh);
           }
@@ -4172,28 +4252,28 @@ PBIResult PortableBaselineInterpret(
 
       CASE(Eq) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            bool result =
-                sp[0].asValue().toInt32() == sp[1].asValue().toInt32();
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            bool result = v0.toInt32() == v1.toInt32();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Eq);
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
             bool result = lhs == rhs;
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Eq);
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            bool result =
-                sp[0].asValue().toNumber() == sp[1].asValue().toNumber();
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+          if (v0.isNumber() && v1.isNumber()) {
+            bool result = v0.toNumber() == v1.toNumber();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Eq);
           }
@@ -4203,28 +4283,28 @@ PBIResult PortableBaselineInterpret(
 
       CASE(Ne) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            bool result =
-                sp[0].asValue().toInt32() != sp[1].asValue().toInt32();
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            bool result = v0.toInt32() != v1.toInt32();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Ne);
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
             bool result = lhs != rhs;
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Ne);
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            bool result =
-                sp[0].asValue().toNumber() != sp[1].asValue().toNumber();
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+          if (v0.isNumber() && v1.isNumber()) {
+            bool result = v0.toNumber() != v1.toNumber();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Eq);
           }
@@ -4234,22 +4314,24 @@ PBIResult PortableBaselineInterpret(
 
       CASE(Lt) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            bool result = sp[1].asValue().toInt32() < sp[0].asValue().toInt32();
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            bool result = v1.toInt32() < v0.toInt32();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Lt);
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
             bool result = lhs < rhs;
             if (std::isnan(lhs) || std::isnan(rhs)) {
               result = false;
             }
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Lt);
           }
@@ -4258,23 +4340,24 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Le) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            bool result =
-                sp[1].asValue().toInt32() <= sp[0].asValue().toInt32();
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            bool result = v1.toInt32() <= v0.toInt32();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Le);
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
             bool result = lhs <= rhs;
             if (std::isnan(lhs) || std::isnan(rhs)) {
               result = false;
             }
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Le);
           }
@@ -4283,22 +4366,24 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Gt) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            bool result = sp[1].asValue().toInt32() > sp[0].asValue().toInt32();
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            bool result = v1.toInt32() > v0.toInt32();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Gt);
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
             bool result = lhs > rhs;
             if (std::isnan(lhs) || std::isnan(rhs)) {
               result = false;
             }
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Gt);
           }
@@ -4307,23 +4392,24 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(Ge) {
         if (HybridICs) {
-          if (sp[0].asValue().isInt32() && sp[1].asValue().isInt32()) {
-            bool result =
-                sp[1].asValue().toInt32() >= sp[0].asValue().toInt32();
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
+          if (v0.isInt32() && v1.isInt32()) {
+            bool result = v1.toInt32() >= v0.toInt32();
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Ge);
           }
-          if (sp[0].asValue().isNumber() && sp[1].asValue().isNumber()) {
-            double lhs = sp[1].asValue().toNumber();
-            double rhs = sp[0].asValue().toNumber();
+          if (v0.isNumber() && v1.isNumber()) {
+            double lhs = v1.toNumber();
+            double rhs = v0.toNumber();
             bool result = lhs >= rhs;
             if (std::isnan(lhs) || std::isnan(rhs)) {
               result = false;
             }
-            POP();
-            sp[0] = StackVal(BooleanValue(result));
+            VIRTPOP();
+            VIRTSPWRITE(0, StackVal(BooleanValue(result)));
             NEXT_IC();
             END_OP(Ge);
           }
@@ -4334,10 +4420,12 @@ PBIResult PortableBaselineInterpret(
       CASE(StrictEq)
       CASE(StrictNe) {
         if (HybridICs) {
+          Value v0 = VIRTSP(0).asValue();
+          Value v1 = VIRTSP(1).asValue();
           bool result;
-          HandleValue lval = Stack::handle(sp + 1);
-          HandleValue rval = Stack::handle(sp);
-          if (sp[0].asValue().isString() && sp[1].asValue().isString()) {
+          HandleValue lval = SPHANDLE(1);
+          HandleValue rval = SPHANDLE(0);
+          if (v0.isString() && v1.isString()) {
             PUSH_EXIT_FRAME();
             if (!js::StrictlyEqual(cx, lval, rval, &result)) {
               GOTO_ERROR();
@@ -4347,9 +4435,10 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          POP();
-          sp[0] = StackVal(
-              BooleanValue((JSOp(*pc) == JSOp::StrictEq) ? result : !result));
+          VIRTPOP();
+          VIRTSPWRITE(0,
+                      StackVal(BooleanValue(
+                          (JSOp(*pc) == JSOp::StrictEq) ? result : !result)));
           NEXT_IC();
           END_OP(StrictEq);
         } else {
@@ -4397,14 +4486,14 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(ToString) {
-        if (sp[0].asValue().isString()) {
+        if (VIRTSP(0).asValue().isString()) {
           END_OP(ToString);
         }
         {
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTPOP().asValue());
           if (JSString* result = ToStringSlow<NoGC>(
                   ctx.frameMgr.cxForLocalUseOnly(), value0)) {
-            PUSH(StackVal(StringValue(result)));
+            VIRTPUSH(StackVal(StringValue(result)));
           } else {
             {
               PUSH_EXIT_FRAME();
@@ -4413,23 +4502,24 @@ PBIResult PortableBaselineInterpret(
                 GOTO_ERROR();
               }
             }
-            PUSH(StackVal(StringValue(result)));
+            VIRTPUSH(StackVal(StringValue(result)));
           }
         }
         END_OP(ToString);
       }
 
       CASE(IsNullOrUndefined) {
-        bool result = sp[0].asValue().isNull() || sp[0].asValue().isUndefined();
-        PUSH(StackVal(BooleanValue(result)));
+        Value v = VIRTSP(0).asValue();
+        bool result = v.isNull() || v.isUndefined();
+        VIRTPUSH(StackVal(BooleanValue(result)));
         END_OP(IsNullOrUndefined);
       }
 
       CASE(GlobalThis) {
-        PUSH(StackVal(ObjectValue(*ctx.frameMgr.cxForLocalUseOnly()
-                                       ->global()
-                                       ->lexicalEnvironment()
-                                       .thisObject())));
+        VIRTPUSH(StackVal(ObjectValue(*ctx.frameMgr.cxForLocalUseOnly()
+                                           ->global()
+                                           ->lexicalEnvironment()
+                                           .thisObject())));
         END_OP(GlobalThis);
       }
 
@@ -4442,22 +4532,22 @@ PBIResult PortableBaselineInterpret(
             PUSH_EXIT_FRAME();
             js::GetNonSyntacticGlobalThis(cx, obj0, &value0);
           }
-          PUSH(StackVal(value0));
+          VIRTPUSH(StackVal(value0));
         }
         END_OP(NonSyntacticGlobalThis);
       }
 
       CASE(NewTarget) {
-        PUSH(StackVal(frame->newTarget()));
+        VIRTPUSH(StackVal(frame->newTarget()));
         END_OP(NewTarget);
       }
 
       CASE(DynamicImport) {
         {
           ReservedRooted<Value> value0(&state.value0,
-                                       POP().asValue());  // options
+                                       VIRTPOP().asValue());  // options
           ReservedRooted<Value> value1(&state.value1,
-                                       POP().asValue());  // specifier
+                                       VIRTPOP().asValue());  // specifier
           JSObject* promise;
           {
             PUSH_EXIT_FRAME();
@@ -4466,7 +4556,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(ObjectValue(*promise)));
+          VIRTPUSH(StackVal(ObjectValue(*promise)));
         }
         END_OP(DynamicImport);
       }
@@ -4480,7 +4570,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(ObjectValue(*metaObject)));
+        VIRTPUSH(StackVal(ObjectValue(*metaObject)));
         END_OP(ImportMeta);
       }
 
@@ -4494,7 +4584,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(ObjectValue(*obj)));
+          VIRTPUSH(StackVal(ObjectValue(*obj)));
           NEXT_IC();
           END_OP(NewInit);
         } else {
@@ -4515,7 +4605,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(ObjectValue(*obj)));
+          VIRTPUSH(StackVal(ObjectValue(*obj)));
           NEXT_IC();
           END_OP(NewObject);
         } else {
@@ -4527,12 +4617,12 @@ PBIResult PortableBaselineInterpret(
         }
       }
       CASE(Object) {
-        PUSH(StackVal(ObjectValue(*script->getObject(pc))));
+        VIRTPUSH(StackVal(ObjectValue(*script->getObject(pc))));
         END_OP(Object);
       }
       CASE(ObjWithProto) {
         {
-          ReservedRooted<Value> value0(&state.value0, sp[0].asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTSP(0).asValue());
           JSObject* obj;
           {
             PUSH_EXIT_FRAME();
@@ -4541,7 +4631,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          sp[0] = StackVal(ObjectValue(*obj));
+          VIRTSPWRITE(0, StackVal(ObjectValue(*obj)));
         }
         END_OP(ObjWithProto);
       }
@@ -4557,16 +4647,17 @@ PBIResult PortableBaselineInterpret(
         static_assert(JSOpLength_InitElem == JSOpLength_InitElemInc);
         static_assert(JSOpLength_InitElem == JSOpLength_SetElem);
         static_assert(JSOpLength_InitElem == JSOpLength_StrictSetElem);
-        StackVal val = sp[0];
+        StackVal val = VIRTSP(0);
         IC_POP_ARG(2);
         IC_POP_ARG(1);
         IC_SET_ARG_FROM_STACK(0, 0);
         if (JSOp(*pc) == JSOp::SetElem || JSOp(*pc) == JSOp::StrictSetElem) {
-          sp[0] = val;
+          VIRTSPWRITE(0, val);
         }
         INVOKE_IC(SetElem);
         if (JSOp(*pc) == JSOp::InitElemInc) {
-          PUSH(StackVal(Int32Value(Value::fromRawBits(ic_arg1).toInt32() + 1)));
+          VIRTPUSH(
+              StackVal(Int32Value(Value::fromRawBits(ic_arg1).toInt32() + 1)));
         }
         END_OP(InitElem);
       }
@@ -4581,10 +4672,12 @@ PBIResult PortableBaselineInterpret(
         static_assert(JSOpLength_InitPropGetter ==
                       JSOpLength_InitHiddenPropSetter);
         {
-          ReservedRooted<JSObject*> obj1(&state.obj1,
-                                         &POP().asValue().toObject());  // val
+          ReservedRooted<JSObject*> obj1(
+              &state.obj1,
+              &VIRTPOP().asValue().toObject());  // val
           ReservedRooted<JSObject*> obj0(
-              &state.obj0, &sp[0].asValue().toObject());  // obj; leave on stack
+              &state.obj0,
+              &VIRTSP(0).asValue().toObject());  // obj; leave on stack
           ReservedRooted<PropertyName*> name0(&state.name0,
                                               script->getName(pc));
           {
@@ -4607,12 +4700,14 @@ PBIResult PortableBaselineInterpret(
         static_assert(JSOpLength_InitElemGetter ==
                       JSOpLength_InitHiddenElemSetter);
         {
-          ReservedRooted<JSObject*> obj1(&state.obj1,
-                                         &POP().asValue().toObject());  // val
+          ReservedRooted<JSObject*> obj1(
+              &state.obj1,
+              &VIRTPOP().asValue().toObject());  // val
           ReservedRooted<Value> value0(&state.value0,
-                                       POP().asValue());  // idval
+                                       VIRTPOP().asValue());  // idval
           ReservedRooted<JSObject*> obj0(
-              &state.obj0, &sp[0].asValue().toObject());  // obj; leave on stack
+              &state.obj0,
+              &VIRTSP(0).asValue().toObject());  // obj; leave on stack
           {
             PUSH_EXIT_FRAME();
             if (!InitElemGetterSetterOperation(cx, pc, obj0, value0, obj1)) {
@@ -4641,8 +4736,8 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(GetElem) {
-        HandleValue lhs = Stack::handle(&sp[1]);
-        HandleValue rhs = Stack::handle(&sp[0]);
+        HandleValue lhs = SPHANDLE(1);
+        HandleValue rhs = SPHANDLE(0);
         uint32_t index;
         if (IsDefinitelyIndex(rhs, &index)) {
           if (lhs.isString()) {
@@ -4653,8 +4748,8 @@ PBIResult PortableBaselineInterpret(
               StaticStrings& sstr =
                   ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
               if (sstr.hasUnit(c)) {
-                sp[1] = StackVal(StringValue(sstr.getUnit(c)));
-                POP();
+                VIRTPOP();
+                VIRTSPWRITE(0, StackVal(StringValue(sstr.getUnit(c))));
                 NEXT_IC();
                 END_OP(GetElem);
               }
@@ -4665,8 +4760,8 @@ PBIResult PortableBaselineInterpret(
             Value ret;
             if (GetElementNoGC(ctx.frameMgr.cxForLocalUseOnly(), obj, lhs,
                                index, &ret)) {
-              sp[1] = StackVal(ret);
-              POP();
+              VIRTPOP();
+              VIRTSPWRITE(0, StackVal(ret));
               NEXT_IC();
               END_OP(GetElem);
             }
@@ -4693,7 +4788,7 @@ PBIResult PortableBaselineInterpret(
 
       CASE(DelProp) {
         {
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTPOP().asValue());
           ReservedRooted<PropertyName*> name0(&state.name0,
                                               script->getName(pc));
           bool res = false;
@@ -4703,13 +4798,13 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(BooleanValue(res)));
+          VIRTPUSH(StackVal(BooleanValue(res)));
         }
         END_OP(DelProp);
       }
       CASE(StrictDelProp) {
         {
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTPOP().asValue());
           ReservedRooted<PropertyName*> name0(&state.name0,
                                               script->getName(pc));
           bool res = false;
@@ -4719,14 +4814,14 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(BooleanValue(res)));
+          VIRTPUSH(StackVal(BooleanValue(res)));
         }
         END_OP(StrictDelProp);
       }
       CASE(DelElem) {
         {
-          ReservedRooted<Value> value1(&state.value1, POP().asValue());
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());
+          ReservedRooted<Value> value1(&state.value1, VIRTPOP().asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTPOP().asValue());
           bool res = false;
           {
             PUSH_EXIT_FRAME();
@@ -4734,14 +4829,14 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(BooleanValue(res)));
+          VIRTPUSH(StackVal(BooleanValue(res)));
         }
         END_OP(DelElem);
       }
       CASE(StrictDelElem) {
         {
-          ReservedRooted<Value> value1(&state.value1, POP().asValue());
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());
+          ReservedRooted<Value> value1(&state.value1, VIRTPOP().asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTPOP().asValue());
           bool res = false;
           {
             PUSH_EXIT_FRAME();
@@ -4749,7 +4844,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(BooleanValue(res)));
+          VIRTPUSH(StackVal(BooleanValue(res)));
         }
         END_OP(StrictDelElem);
       }
@@ -4781,13 +4876,14 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(SymbolValue(symbol)));
+          VIRTPUSH(StackVal(SymbolValue(symbol)));
         }
         END_OP(NewPrivateName);
       }
 
       CASE(SuperBase) {
-        JSFunction& superEnvFunc = POP().asValue().toObject().as<JSFunction>();
+        JSFunction& superEnvFunc =
+            VIRTPOP().asValue().toObject().as<JSFunction>();
         MOZ_ASSERT(superEnvFunc.allowSuperProperty());
         MOZ_ASSERT(superEnvFunc.baseScript()->needsHomeObject());
         const Value& homeObjVal = superEnvFunc.getExtendedSlot(
@@ -4796,7 +4892,7 @@ PBIResult PortableBaselineInterpret(
         JSObject* homeObj = &homeObjVal.toObject();
         JSObject* superBase = HomeObjectSuperBase(homeObj);
 
-        PUSH(StackVal(ObjectOrNullValue(superBase)));
+        VIRTPUSH(StackVal(ObjectOrNullValue(superBase)));
         END_OP(SuperBase);
       }
 
@@ -4806,10 +4902,12 @@ PBIResult PortableBaselineInterpret(
         static_assert(JSOpLength_SetPropSuper == JSOpLength_StrictSetPropSuper);
         bool strict = JSOp(*pc) == JSOp::StrictSetPropSuper;
         {
-          ReservedRooted<Value> value2(&state.value2, POP().asValue());  // rval
-          ReservedRooted<Value> value1(&state.value1, POP().asValue());  // lval
+          ReservedRooted<Value> value2(&state.value2,
+                                       VIRTPOP().asValue());  // rval
+          ReservedRooted<Value> value1(&state.value1,
+                                       VIRTPOP().asValue());  // lval
           ReservedRooted<Value> value0(&state.value0,
-                                       POP().asValue());  // recevier
+                                       VIRTPOP().asValue());  // recevier
           ReservedRooted<PropertyName*> name0(&state.name0,
                                               script->getName(pc));
           {
@@ -4820,7 +4918,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(value2));
+          VIRTPUSH(StackVal(value2));
         }
         END_OP(SetPropSuper);
       }
@@ -4831,12 +4929,14 @@ PBIResult PortableBaselineInterpret(
         static_assert(JSOpLength_SetElemSuper == JSOpLength_StrictSetElemSuper);
         bool strict = JSOp(*pc) == JSOp::StrictSetElemSuper;
         {
-          ReservedRooted<Value> value3(&state.value3, POP().asValue());  // rval
-          ReservedRooted<Value> value2(&state.value2, POP().asValue());  // lval
+          ReservedRooted<Value> value3(&state.value3,
+                                       VIRTPOP().asValue());  // rval
+          ReservedRooted<Value> value2(&state.value2,
+                                       VIRTPOP().asValue());  // lval
           ReservedRooted<Value> value1(&state.value1,
-                                       POP().asValue());  // index
+                                       VIRTPOP().asValue());  // index
           ReservedRooted<Value> value0(&state.value0,
-                                       POP().asValue());  // receiver
+                                       VIRTPOP().asValue());  // receiver
           {
             PUSH_EXIT_FRAME();
             // SetElementSuper(cx, lval, receiver, index, rval, strict)
@@ -4845,7 +4945,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(value3));  // value
+          VIRTPUSH(StackVal(value3));  // value
         }
         END_OP(SetElemSuper);
       }
@@ -4860,27 +4960,27 @@ PBIResult PortableBaselineInterpret(
 
       CASE(MoreIter) {
         // iter => iter, name
-        Value v = IteratorMore(&sp[0].asValue().toObject());
-        PUSH(StackVal(v));
+        Value v = IteratorMore(&VIRTSP(0).asValue().toObject());
+        VIRTPUSH(StackVal(v));
         END_OP(MoreIter);
       }
 
       CASE(IsNoIter) {
         // iter => iter, bool
-        bool result = sp[0].asValue().isMagic(JS_NO_ITER_VALUE);
-        PUSH(StackVal(BooleanValue(result)));
+        bool result = VIRTSP(0).asValue().isMagic(JS_NO_ITER_VALUE);
+        VIRTPUSH(StackVal(BooleanValue(result)));
         END_OP(IsNoIter);
       }
 
       CASE(EndIter) {
         // iter, interval =>
-        POP();
-        CloseIterator(&POP().asValue().toObject());
+        VIRTPOP();
+        CloseIterator(&VIRTPOP().asValue().toObject());
         END_OP(EndIter);
       }
 
       CASE(CloseIter) {
-        IC_SET_OBJ_ARG(0, &POP().asValue().toObject());
+        IC_SET_OBJ_ARG(0, &VIRTPOP().asValue().toObject());
         IC_ZERO_ARG(1);
         IC_ZERO_ARG(2);
         INVOKE_IC(CloseIter);
@@ -4888,7 +4988,7 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(CheckIsObj) {
-        if (!sp[0].asValue().isObject()) {
+        if (!VIRTSP(0).asValue().isObject()) {
           PUSH_EXIT_FRAME();
           MOZ_ALWAYS_FALSE(
               js::ThrowCheckIsObject(cx, js::CheckIsObjectKind(GET_UINT8(pc))));
@@ -4900,7 +5000,7 @@ PBIResult PortableBaselineInterpret(
 
       CASE(CheckObjCoercible) {
         {
-          ReservedRooted<Value> value0(&state.value0, sp[0].asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTSP(0).asValue());
           if (value0.isNullOrUndefined()) {
             PUSH_EXIT_FRAME();
             MOZ_ALWAYS_FALSE(ThrowObjectCoercible(cx, value0));
@@ -4914,9 +5014,11 @@ PBIResult PortableBaselineInterpret(
       CASE(ToAsyncIter) {
         // iter, next => asynciter
         {
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());  // next
-          ReservedRooted<JSObject*> obj0(&state.obj0,
-                                         &POP().asValue().toObject());  // iter
+          ReservedRooted<Value> value0(&state.value0,
+                                       VIRTPOP().asValue());  // next
+          ReservedRooted<JSObject*> obj0(
+              &state.obj0,
+              &VIRTPOP().asValue().toObject());  // iter
           JSObject* result;
           {
             PUSH_EXIT_FRAME();
@@ -4925,7 +5027,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(ObjectValue(*result)));
+          VIRTPUSH(StackVal(ObjectValue(*result)));
         }
         END_OP(ToAsyncIter);
       }
@@ -4933,9 +5035,9 @@ PBIResult PortableBaselineInterpret(
       CASE(MutateProto) {
         // obj, protoVal => obj
         {
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTPOP().asValue());
           ReservedRooted<JSObject*> obj0(&state.obj0,
-                                         &sp[0].asValue().toObject());
+                                         &VIRTSP(0).asValue().toObject());
           {
             PUSH_EXIT_FRAME();
             if (!MutatePrototype(cx, obj0.as<PlainObject>(), value0)) {
@@ -4957,7 +5059,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(ObjectValue(*obj)));
+          VIRTPUSH(StackVal(ObjectValue(*obj)));
           NEXT_IC();
           END_OP(NewArray);
         } else {
@@ -4972,9 +5074,9 @@ PBIResult PortableBaselineInterpret(
       CASE(InitElemArray) {
         // array, val => array
         {
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTPOP().asValue());
           ReservedRooted<JSObject*> obj0(&state.obj0,
-                                         &sp[0].asValue().toObject());
+                                         &VIRTSP(0).asValue().toObject());
           {
             PUSH_EXIT_FRAME();
             InitElemArrayOperation(cx, pc, obj0.as<ArrayObject>(), value0);
@@ -4984,7 +5086,7 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Hole) {
-        PUSH(StackVal(MagicValue(JS_ELEMENTS_HOLE)));
+        VIRTPUSH(StackVal(MagicValue(JS_ELEMENTS_HOLE)));
         END_OP(Hole);
       }
 
@@ -4998,7 +5100,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(ObjectValue(*obj)));
+        VIRTPUSH(StackVal(ObjectValue(*obj)));
         END_OP(RegExp);
       }
 
@@ -5016,7 +5118,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(ObjectValue(*res)));
+          VIRTPUSH(StackVal(ObjectValue(*res)));
         }
         END_OP(Lambda);
       }
@@ -5024,9 +5126,10 @@ PBIResult PortableBaselineInterpret(
       CASE(SetFunName) {
         // fun, name => fun
         {
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());  // name
+          ReservedRooted<Value> value0(&state.value0,
+                                       VIRTPOP().asValue());  // name
           ReservedRooted<JSFunction*> fun0(
-              &state.fun0, &sp[0].asValue().toObject().as<JSFunction>());
+              &state.fun0, &VIRTSP(0).asValue().toObject().as<JSFunction>());
           FunctionPrefixKind prefixKind = FunctionPrefixKind(GET_UINT8(pc));
           {
             PUSH_EXIT_FRAME();
@@ -5042,9 +5145,9 @@ PBIResult PortableBaselineInterpret(
         // fun, homeObject => fun
         {
           ReservedRooted<JSObject*> obj0(
-              &state.obj0, &POP().asValue().toObject());  // homeObject
+              &state.obj0, &VIRTPOP().asValue().toObject());  // homeObject
           ReservedRooted<JSFunction*> fun0(
-              &state.fun0, &sp[0].asValue().toObject().as<JSFunction>());
+              &state.fun0, &VIRTSP(0).asValue().toObject().as<JSFunction>());
           MOZ_ASSERT(fun0->allowSuperProperty());
           MOZ_ASSERT(obj0->is<PlainObject>() || obj0->is<JSFunction>());
           fun0->setExtendedSlot(FunctionExtended::METHOD_HOMEOBJECT_SLOT,
@@ -5055,7 +5158,7 @@ PBIResult PortableBaselineInterpret(
 
       CASE(CheckClassHeritage) {
         {
-          ReservedRooted<Value> value0(&state.value0, sp[0].asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTSP(0).asValue());
           {
             PUSH_EXIT_FRAME();
             if (!CheckClassHeritageOperation(cx, value0)) {
@@ -5069,8 +5172,9 @@ PBIResult PortableBaselineInterpret(
       CASE(FunWithProto) {
         // proto => obj
         {
-          ReservedRooted<JSObject*> obj0(&state.obj0,
-                                         &POP().asValue().toObject());  // proto
+          ReservedRooted<JSObject*> obj0(
+              &state.obj0,
+              &VIRTPOP().asValue().toObject());  // proto
           ReservedRooted<JSObject*> obj1(&state.obj1,
                                          frame->environmentChain());
           ReservedRooted<JSFunction*> fun0(&state.fun0,
@@ -5083,7 +5187,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(ObjectValue(*obj)));
+          VIRTPUSH(StackVal(ObjectValue(*obj)));
         }
         END_OP(FunWithProto);
       }
@@ -5098,7 +5202,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(ObjectValue(*builtin)));
+        VIRTPUSH(StackVal(ObjectValue(*builtin)));
         END_OP(BuiltinObject);
       }
 
@@ -5127,7 +5231,7 @@ PBIResult PortableBaselineInterpret(
         uint32_t argc = GET_ARGC(pc);
         do {
           {
-            if (!InlineCalls) {
+            if (Specialized) {
               break;
             }
 
@@ -5248,7 +5352,7 @@ PBIResult PortableBaselineInterpret(
             // downward-growth stack compared to what the calling
             // convention expects).
             for (uint32_t i = 0; i < totalArgs; i++) {
-              PUSH(origArgs[i]);
+              VIRTPUSH(origArgs[i]);
             }
 
             // 4. Push inter-frame content: callee token, descriptor for
@@ -5286,7 +5390,7 @@ PBIResult PortableBaselineInterpret(
             // default.
             uint32_t nfixed = calleeScript->nfixed();
             for (uint32_t i = 0; i < nfixed; i++) {
-              PUSH(StackVal(UndefinedValue()));
+              VIRTPUSH(StackVal(UndefinedValue()));
             }
             ret->setUndefined();
             // 9. Initialize environment objects.
@@ -5339,8 +5443,8 @@ PBIResult PortableBaselineInterpret(
         IC_ZERO_ARG(2);
         ctx.icregs.extraArgs = 2 + constructing;
         INVOKE_IC(Call);
-        POPN(argc + 2 + constructing);
-        PUSH(StackVal(Value::fromRawBits(ic_ret)));
+        VIRTPOPN(argc + 2 + constructing);
+        VIRTPUSH(StackVal(Value::fromRawBits(ic_ret)));
         END_OP(Call);
       }
 
@@ -5354,8 +5458,8 @@ PBIResult PortableBaselineInterpret(
         IC_ZERO_ARG(2);
         ctx.icregs.extraArgs = 2;
         INVOKE_IC(SpreadCall);
-        POPN(3);
-        PUSH(StackVal(Value::fromRawBits(ic_ret)));
+        VIRTPOPN(3);
+        VIRTPUSH(StackVal(Value::fromRawBits(ic_ret)));
         END_OP(SpreadCall);
       }
 
@@ -5367,8 +5471,8 @@ PBIResult PortableBaselineInterpret(
         IC_ZERO_ARG(2);
         ctx.icregs.extraArgs = 3;
         INVOKE_IC(SpreadCall);
-        POPN(4);
-        PUSH(StackVal(Value::fromRawBits(ic_ret)));
+        VIRTPOPN(4);
+        VIRTPUSH(StackVal(Value::fromRawBits(ic_ret)));
         END_OP(SpreadSuperCall);
       }
 
@@ -5399,7 +5503,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(state.res));
+        VIRTPUSH(StackVal(state.res));
         state.res.setUndefined();
         END_OP(ImplicitThis);
       }
@@ -5409,24 +5513,24 @@ PBIResult PortableBaselineInterpret(
         MOZ_ASSERT(!cso->as<ArrayObject>().isExtensible());
         MOZ_ASSERT(cso->as<ArrayObject>().containsPure(
             ctx.frameMgr.cxForLocalUseOnly()->names().raw));
-        PUSH(StackVal(ObjectValue(*cso)));
+        VIRTPUSH(StackVal(ObjectValue(*cso)));
         END_OP(CallSiteObj);
       }
 
       CASE(IsConstructing) {
-        PUSH(StackVal(MagicValue(JS_IS_CONSTRUCTING)));
+        VIRTPUSH(StackVal(MagicValue(JS_IS_CONSTRUCTING)));
         END_OP(IsConstructing);
       }
 
       CASE(SuperFun) {
-        JSObject* superEnvFunc = &POP().asValue().toObject();
+        JSObject* superEnvFunc = &VIRTPOP().asValue().toObject();
         JSObject* superFun = SuperFunOperation(superEnvFunc);
-        PUSH(StackVal(ObjectOrNullValue(superFun)));
+        VIRTPUSH(StackVal(ObjectOrNullValue(superFun)));
         END_OP(SuperFun);
       }
 
       CASE(CheckThis) {
-        if (sp[0].asValue().isMagic(JS_UNINITIALIZED_LEXICAL)) {
+        if (VIRTSP(0).asValue().isMagic(JS_UNINITIALIZED_LEXICAL)) {
           PUSH_EXIT_FRAME();
           MOZ_ALWAYS_FALSE(ThrowUninitializedThis(cx));
           GOTO_ERROR();
@@ -5435,7 +5539,7 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(CheckThisReinit) {
-        if (!sp[0].asValue().isMagic(JS_UNINITIALIZED_LEXICAL)) {
+        if (!VIRTSP(0).asValue().isMagic(JS_UNINITIALIZED_LEXICAL)) {
           PUSH_EXIT_FRAME();
           MOZ_ALWAYS_FALSE(ThrowInitializedThis(cx));
           GOTO_ERROR();
@@ -5452,14 +5556,14 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(ObjectValue(*generator)));
+        VIRTPUSH(StackVal(ObjectValue(*generator)));
         END_OP(Generator);
       }
 
       CASE(InitialYield) {
         // gen => rval, gen, resumeKind
         ReservedRooted<JSObject*> obj0(&state.obj0,
-                                       &sp[0].asValue().toObject());
+                                       &VIRTSP(0).asValue().toObject());
         uint32_t frameSize = ctx.stack.frameSize(sp, frame);
         {
           PUSH_EXIT_FRAME();
@@ -5467,7 +5571,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        frame->setReturnValue(sp[0].asValue());
+        frame->setReturnValue(VIRTSP(0).asValue());
         goto do_return;
       }
 
@@ -5475,7 +5579,7 @@ PBIResult PortableBaselineInterpret(
       CASE(Yield) {
         // rval1, gen => rval2, gen, resumeKind
         ReservedRooted<JSObject*> obj0(&state.obj0,
-                                       &POP().asValue().toObject());
+                                       &VIRTPOP().asValue().toObject());
         uint32_t frameSize = ctx.stack.frameSize(sp, frame);
         {
           PUSH_EXIT_FRAME();
@@ -5483,14 +5587,14 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        frame->setReturnValue(sp[0].asValue());
+        frame->setReturnValue(VIRTSP(0).asValue());
         goto do_return;
       }
 
       CASE(FinalYieldRval) {
         // gen =>
         ReservedRooted<JSObject*> obj0(&state.obj0,
-                                       &POP().asValue().toObject());
+                                       &VIRTPOP().asValue().toObject());
         {
           PUSH_EXIT_FRAME();
           if (!FinalSuspend(cx, obj0, pc)) {
@@ -5501,8 +5605,8 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(IsGenClosing) {
-        bool result = sp[0].asValue() == MagicValue(JS_GENERATOR_CLOSING);
-        PUSH(StackVal(BooleanValue(result)));
+        bool result = VIRTSP(0).asValue() == MagicValue(JS_GENERATOR_CLOSING);
+        VIRTPUSH(StackVal(BooleanValue(result)));
         END_OP(IsGenClosing);
       }
 
@@ -5510,10 +5614,11 @@ PBIResult PortableBaselineInterpret(
         // value, gen => promise
         JSObject* promise;
         {
-          ReservedRooted<JSObject*> obj0(&state.obj0,
-                                         &POP().asValue().toObject());  // gen
+          ReservedRooted<JSObject*> obj0(
+              &state.obj0,
+              &VIRTPOP().asValue().toObject());  // gen
           ReservedRooted<Value> value0(&state.value0,
-                                       POP().asValue());  // value
+                                       VIRTPOP().asValue());  // value
           PUSH_EXIT_FRAME();
           promise = AsyncFunctionAwait(
               cx, obj0.as<AsyncFunctionGeneratorObject>(), value0);
@@ -5521,7 +5626,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(ObjectValue(*promise)));
+        VIRTPUSH(StackVal(ObjectValue(*promise)));
         END_OP(AsyncAwait);
       }
 
@@ -5529,10 +5634,11 @@ PBIResult PortableBaselineInterpret(
         // value, gen => promise
         JSObject* promise;
         {
-          ReservedRooted<JSObject*> obj0(&state.obj0,
-                                         &POP().asValue().toObject());  // gen
+          ReservedRooted<JSObject*> obj0(
+              &state.obj0,
+              &VIRTPOP().asValue().toObject());  // gen
           ReservedRooted<Value> value0(&state.value0,
-                                       POP().asValue());  // value
+                                       VIRTPOP().asValue());  // value
           PUSH_EXIT_FRAME();
           promise = AsyncFunctionResolve(
               cx, obj0.as<AsyncFunctionGeneratorObject>(), value0);
@@ -5540,7 +5646,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(ObjectValue(*promise)));
+        VIRTPUSH(StackVal(ObjectValue(*promise)));
         END_OP(AsyncResolve);
       }
 
@@ -5548,12 +5654,13 @@ PBIResult PortableBaselineInterpret(
         // reason, gen => promise
         JSObject* promise;
         {
-          ReservedRooted<JSObject*> obj0(&state.obj0,
-                                         &POP().asValue().toObject());  // gen
+          ReservedRooted<JSObject*> obj0(
+              &state.obj0,
+              &VIRTPOP().asValue().toObject());  // gen
           ReservedRooted<Value> value0(&state.value0,
-                                       POP().asValue());  // stack
+                                       VIRTPOP().asValue());  // stack
           ReservedRooted<Value> value1(&state.value1,
-                                       POP().asValue());  // reason
+                                       VIRTPOP().asValue());  // reason
           PUSH_EXIT_FRAME();
           promise = AsyncFunctionReject(
               cx, obj0.as<AsyncFunctionGeneratorObject>(), value1, value0);
@@ -5561,7 +5668,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(ObjectValue(*promise)));
+        VIRTPUSH(StackVal(ObjectValue(*promise)));
         END_OP(AsyncReject);
       }
 
@@ -5569,37 +5676,37 @@ PBIResult PortableBaselineInterpret(
         // value => value, can_skip
         bool result = false;
         {
-          ReservedRooted<Value> value0(&state.value0, sp[0].asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTSP(0).asValue());
           PUSH_EXIT_FRAME();
           if (!CanSkipAwait(cx, value0, &result)) {
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(BooleanValue(result)));
+        VIRTPUSH(StackVal(BooleanValue(result)));
         END_OP(CanSkipAwait);
       }
 
       CASE(MaybeExtractAwaitValue) {
         // value, can_skip => value_or_resolved, can_skip
         {
-          Value can_skip = POP().asValue();
+          Value can_skip = VIRTPOP().asValue();
           ReservedRooted<Value> value0(&state.value0,
-                                       POP().asValue());  // value
+                                       VIRTPOP().asValue());  // value
           if (can_skip.toBoolean()) {
             PUSH_EXIT_FRAME();
             if (!ExtractAwaitValue(cx, value0, &value0)) {
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(value0));
-          PUSH(StackVal(can_skip));
+          VIRTPUSH(StackVal(value0));
+          VIRTPUSH(StackVal(can_skip));
         }
         END_OP(MaybeExtractAwaitValue);
       }
 
       CASE(ResumeKind) {
         GeneratorResumeKind resumeKind = ResumeKindFromPC(pc);
-        PUSH(StackVal(Int32Value(int32_t(resumeKind))));
+        VIRTPUSH(StackVal(Int32Value(int32_t(resumeKind))));
         END_OP(ResumeKind);
       }
 
@@ -5607,10 +5714,12 @@ PBIResult PortableBaselineInterpret(
         // rval, gen, resumeKind => rval
         {
           GeneratorResumeKind resumeKind =
-              IntToResumeKind(POP().asValue().toInt32());
-          ReservedRooted<JSObject*> obj0(&state.obj0,
-                                         &POP().asValue().toObject());   // gen
-          ReservedRooted<Value> value0(&state.value0, sp[0].asValue());  // rval
+              IntToResumeKind(VIRTPOP().asValue().toInt32());
+          ReservedRooted<JSObject*> obj0(
+              &state.obj0,
+              &VIRTPOP().asValue().toObject());  // gen
+          ReservedRooted<Value> value0(&state.value0,
+                                       VIRTSP(0).asValue());  // rval
           if (resumeKind != GeneratorResumeKind::Next) {
             PUSH_EXIT_FRAME();
             MOZ_ALWAYS_FALSE(GeneratorThrowOrReturn(
@@ -5623,7 +5732,8 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Resume) {
-        Value gen = sp[2].asValue();
+        SYNCSP();
+        Value gen = VIRTSP(2).asValue();
         Value* callerSP = reinterpret_cast<Value*>(sp);
         {
           ReservedRooted<Value> value0(&state.value0);
@@ -5635,8 +5745,8 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          POPN(2);
-          sp[0] = StackVal(value0);
+          VIRTPOPN(2);
+          VIRTSPWRITE(0, StackVal(value0));
         }
         END_OP(Resume);
       }
@@ -5689,7 +5799,7 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Coalesce) {
-        if (!sp[0].asValue().isNullOrUndefined()) {
+        if (!VIRTSP(0).asValue().isNullOrUndefined()) {
           ADVANCE(GET_JUMP_OFFSET(pc));
           DISPATCH();
         } else {
@@ -5698,9 +5808,9 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Case) {
-        bool cond = POP().asValue().toBoolean();
+        bool cond = VIRTPOP().asValue().toBoolean();
         if (cond) {
-          POP();
+          VIRTPOP();
           ADVANCE(GET_JUMP_OFFSET(pc));
           DISPATCH();
         } else {
@@ -5709,7 +5819,7 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Default) {
-        POP();
+        VIRTPOP();
         ADVANCE(GET_JUMP_OFFSET(pc));
         DISPATCH();
       }
@@ -5718,7 +5828,7 @@ PBIResult PortableBaselineInterpret(
         int32_t len = GET_JUMP_OFFSET(pc);
         int32_t low = GET_JUMP_OFFSET(pc + 1 * JUMP_OFFSET_LEN);
         int32_t high = GET_JUMP_OFFSET(pc + 2 * JUMP_OFFSET_LEN);
-        Value v = POP().asValue();
+        Value v = VIRTPOP().asValue();
         int32_t i = 0;
         if (v.isInt32()) {
           i = v.toInt32();
@@ -5746,22 +5856,23 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Return) {
-        frame->setReturnValue(POP().asValue());
+        frame->setReturnValue(VIRTPOP().asValue());
         goto do_return;
       }
 
       CASE(GetRval) {
-        PUSH(StackVal(frame->returnValue()));
+        VIRTPUSH(StackVal(frame->returnValue()));
         END_OP(GetRval);
       }
 
       CASE(SetRval) {
-        frame->setReturnValue(POP().asValue());
+        frame->setReturnValue(VIRTPOP().asValue());
         END_OP(SetRval);
       }
 
     do_return:
       CASE(RetRval) {
+        SYNCSP();
         bool ok = true;
         if (frame->isDebuggee() && !from_unwind) {
           TRACE_PRINTF("doing DebugEpilogueOnBaselineReturn\n");
@@ -5775,7 +5886,7 @@ PBIResult PortableBaselineInterpret(
 
         // If FP is higher than the entry frame now, return; otherwise,
         // do an inline state update.
-        if (!InlineCalls || ctx.stack.fp > entryFrame) {
+        if (Specialized || ctx.stack.fp > entryFrame) {
           *ret = frame->returnValue();
           TRACE_PRINTF("ret = %" PRIx64 "\n", ret->asRawBits());
           return ok ? PBIResult::Ok : PBIResult::Error;
@@ -5818,9 +5929,9 @@ PBIResult PortableBaselineInterpret(
           // Pop args -- this is 1 more than how many are pushed in the
           // `totalArgs` count during the call fastpath because it includes
           // the callee.
-          POPN(argc + 2 + constructing);
+          VIRTPOPN(argc + 2 + constructing);
           // Push return value.
-          PUSH(StackVal(innerRet));
+          VIRTPUSH(StackVal(innerRet));
 
           if (!ok) {
             GOTO_ERROR();
@@ -5835,12 +5946,12 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(CheckReturn) {
-        Value thisval = POP().asValue();
+        Value thisval = VIRTPOP().asValue();
         // inlined version of frame->checkReturn(thisval, result)
         // (js/src/vm/Stack.cpp).
         HandleValue retVal = frame->returnValue();
         if (retVal.isObject()) {
-          PUSH(StackVal(retVal));
+          VIRTPUSH(StackVal(retVal));
         } else if (!retVal.isUndefined()) {
           PUSH_EXIT_FRAME();
           MOZ_ALWAYS_FALSE(ReportValueError(cx, JSMSG_BAD_DERIVED_RETURN,
@@ -5854,14 +5965,14 @@ PBIResult PortableBaselineInterpret(
           GOTO_ERROR();
 
         } else {
-          PUSH(StackVal(thisval));
+          VIRTPUSH(StackVal(thisval));
         }
         END_OP(CheckReturn);
       }
 
       CASE(Throw) {
         {
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTPOP().asValue());
           PUSH_EXIT_FRAME();
           MOZ_ALWAYS_FALSE(ThrowOperation(cx, value0));
           GOTO_ERROR();
@@ -5871,8 +5982,8 @@ PBIResult PortableBaselineInterpret(
 
       CASE(ThrowWithStack) {
         {
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());
-          ReservedRooted<Value> value1(&state.value1, POP().asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTPOP().asValue());
+          ReservedRooted<Value> value1(&state.value1, VIRTPOP().asValue());
           PUSH_EXIT_FRAME();
           MOZ_ALWAYS_FALSE(ThrowWithStackOperation(cx, value1, value0));
           GOTO_ERROR();
@@ -5911,7 +6022,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(state.res));
+        VIRTPUSH(StackVal(state.res));
         state.res.setUndefined();
         END_OP(Exception);
       }
@@ -5928,8 +6039,8 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(state.res));
-          PUSH(StackVal(value0));
+          VIRTPUSH(StackVal(state.res));
+          VIRTPUSH(StackVal(value0));
           state.res.setUndefined();
         }
         END_OP(ExceptionAndStack);
@@ -5948,23 +6059,23 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Uninitialized) {
-        PUSH(StackVal(MagicValue(JS_UNINITIALIZED_LEXICAL)));
+        VIRTPUSH(StackVal(MagicValue(JS_UNINITIALIZED_LEXICAL)));
         END_OP(Uninitialized);
       }
       CASE(InitLexical) {
         uint32_t i = GET_LOCALNO(pc);
-        frame->unaliasedLocal(i) = sp[0].asValue();
+        frame->unaliasedLocal(i) = VIRTSP(0).asValue();
         END_OP(InitLexical);
       }
 
       CASE(InitAliasedLexical) {
         EnvironmentCoordinate ec = EnvironmentCoordinate(pc);
         EnvironmentObject& obj = getEnvironmentFromCoordinate(frame, ec);
-        obj.setAliasedBinding(ec, sp[0].asValue());
+        obj.setAliasedBinding(ec, VIRTSP(0).asValue());
         END_OP(InitAliasedLexical);
       }
       CASE(CheckLexical) {
-        if (sp[0].asValue().isMagic(JS_UNINITIALIZED_LEXICAL)) {
+        if (VIRTSP(0).asValue().isMagic(JS_UNINITIALIZED_LEXICAL)) {
           PUSH_EXIT_FRAME();
           ReportRuntimeLexicalError(cx, JSMSG_UNINITIALIZED_LEXICAL, script,
                                     pc);
@@ -5973,7 +6084,7 @@ PBIResult PortableBaselineInterpret(
         END_OP(CheckLexical);
       }
       CASE(CheckAliasedLexical) {
-        if (sp[0].asValue().isMagic(JS_UNINITIALIZED_LEXICAL)) {
+        if (VIRTSP(0).asValue().isMagic(JS_UNINITIALIZED_LEXICAL)) {
           PUSH_EXIT_FRAME();
           ReportRuntimeLexicalError(cx, JSMSG_UNINITIALIZED_LEXICAL, script,
                                     pc);
@@ -6018,35 +6129,35 @@ PBIResult PortableBaselineInterpret(
       CASE(GetArg) {
         unsigned i = GET_ARGNO(pc);
         if (script->argsObjAliasesFormals()) {
-          PUSH(StackVal(frame->argsObj().arg(i)));
+          VIRTPUSH(StackVal(frame->argsObj().arg(i)));
         } else {
-          PUSH(StackVal(frame->unaliasedFormal(i)));
+          VIRTPUSH(StackVal(frame->unaliasedFormal(i)));
         }
         END_OP(GetArg);
       }
 
       CASE(GetFrameArg) {
         uint32_t i = GET_ARGNO(pc);
-        PUSH(StackVal(frame->unaliasedFormal(i, DONT_CHECK_ALIASING)));
+        VIRTPUSH(StackVal(frame->unaliasedFormal(i, DONT_CHECK_ALIASING)));
         END_OP(GetFrameArg);
       }
 
       CASE(GetLocal) {
         uint32_t i = GET_LOCALNO(pc);
         TRACE_PRINTF(" -> local: %d\n", int(i));
-        PUSH(StackVal(frame->unaliasedLocal(i)));
+        VIRTPUSH(StackVal(frame->unaliasedLocal(i)));
         END_OP(GetLocal);
       }
 
       CASE(ArgumentsLength) {
-        PUSH(StackVal(Int32Value(frame->numActualArgs())));
+        VIRTPUSH(StackVal(Int32Value(frame->numActualArgs())));
         END_OP(ArgumentsLength);
       }
 
       CASE(GetActualArg) {
         MOZ_ASSERT(!script->needsArgsObj());
-        uint32_t index = sp[0].asValue().toInt32();
-        sp[0] = StackVal(frame->unaliasedActual(index));
+        uint32_t index = VIRTSP(0).asValue().toInt32();
+        VIRTSPWRITE(0, StackVal(frame->unaliasedActual(index)));
         END_OP(GetActualArg);
       }
 
@@ -6056,7 +6167,7 @@ PBIResult PortableBaselineInterpret(
                       JSOpLength_GetAliasedDebugVar);
         EnvironmentCoordinate ec = EnvironmentCoordinate(pc);
         EnvironmentObject& obj = getEnvironmentFromCoordinate(frame, ec);
-        PUSH(StackVal(obj.aliasedBinding(ec)));
+        VIRTPUSH(StackVal(obj.aliasedBinding(ec)));
         END_OP(GetAliasedVar);
       }
 
@@ -6071,7 +6182,7 @@ PBIResult PortableBaselineInterpret(
               GOTO_ERROR();
             }
           }
-          PUSH(StackVal(value0));
+          VIRTPUSH(StackVal(value0));
         }
         END_OP(GetImport);
       }
@@ -6085,7 +6196,7 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Callee) {
-        PUSH(StackVal(frame->calleev()));
+        VIRTPUSH(StackVal(frame->calleev()));
         END_OP(Callee);
       }
 
@@ -6095,7 +6206,7 @@ PBIResult PortableBaselineInterpret(
         for (unsigned i = 0; i < numHops; i++) {
           env = &env->as<EnvironmentObject>().enclosingEnvironment();
         }
-        PUSH(StackVal(ObjectValue(env->as<CallObject>().callee())));
+        VIRTPUSH(StackVal(ObjectValue(env->as<CallObject>().callee())));
         END_OP(EnvCallee);
       }
 
@@ -6113,7 +6224,7 @@ PBIResult PortableBaselineInterpret(
         IC_POP_ARG(1);
         IC_POP_ARG(0);
         IC_ZERO_ARG(2);
-        PUSH(StackVal(ic_arg1));
+        VIRTPUSH(StackVal(ic_arg1));
         INVOKE_IC(SetProp);
         END_OP(SetProp);
       }
@@ -6142,9 +6253,9 @@ PBIResult PortableBaselineInterpret(
       CASE(SetArg) {
         unsigned i = GET_ARGNO(pc);
         if (script->argsObjAliasesFormals()) {
-          frame->argsObj().setArg(i, sp[0].asValue());
+          frame->argsObj().setArg(i, VIRTSP(0).asValue());
         } else {
-          frame->unaliasedFormal(i) = sp[0].asValue();
+          frame->unaliasedFormal(i) = VIRTSP(0).asValue();
         }
         END_OP(SetArg);
       }
@@ -6152,7 +6263,7 @@ PBIResult PortableBaselineInterpret(
       CASE(SetLocal) {
         uint32_t i = GET_LOCALNO(pc);
         TRACE_PRINTF(" -> local: %d\n", int(i));
-        frame->unaliasedLocal(i) = sp[0].asValue();
+        frame->unaliasedLocal(i) = VIRTSP(0).asValue();
         END_OP(SetLocal);
       }
 
@@ -6160,13 +6271,13 @@ PBIResult PortableBaselineInterpret(
         EnvironmentCoordinate ec = EnvironmentCoordinate(pc);
         EnvironmentObject& obj = getEnvironmentFromCoordinate(frame, ec);
         MOZ_ASSERT(!IsUninitializedLexical(obj.aliasedBinding(ec)));
-        obj.setAliasedBinding(ec, sp[0].asValue());
+        obj.setAliasedBinding(ec, VIRTSP(0).asValue());
         END_OP(SetAliasedVar);
       }
 
       CASE(SetIntrinsic) {
         {
-          ReservedRooted<Value> value0(&state.value0, sp[0].asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTSP(0).asValue());
           {
             PUSH_EXIT_FRAME();
             if (!SetIntrinsicOperation(cx, script, pc, value0)) {
@@ -6269,7 +6380,7 @@ PBIResult PortableBaselineInterpret(
       CASE(EnterWith) {
         {
           ReservedRooted<Scope*> scope0(&state.scope0, script->getScope(pc));
-          ReservedRooted<Value> value0(&state.value0, POP().asValue());
+          ReservedRooted<Value> value0(&state.value0, VIRTPOP().asValue());
           PUSH_EXIT_FRAME();
           if (!EnterWithOperation(cx, frame, value0, scope0.as<WithScope>())) {
             GOTO_ERROR();
@@ -6289,7 +6400,7 @@ PBIResult PortableBaselineInterpret(
           PUSH_EXIT_FRAME();
           varObj = BindVarOperation(cx, obj0);
         }
-        PUSH(StackVal(ObjectValue(*varObj)));
+        VIRTPUSH(StackVal(ObjectValue(*varObj)));
         END_OP(BindVar);
       }
 
@@ -6317,7 +6428,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(state.res));
+        VIRTPUSH(StackVal(state.res));
         state.res.setUndefined();
         END_OP(DelName);
       }
@@ -6329,7 +6440,7 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(state.res));
+        VIRTPUSH(StackVal(state.res));
         state.res.setUndefined();
         END_OP(Arguments);
       }
@@ -6349,58 +6460,64 @@ PBIResult PortableBaselineInterpret(
             GOTO_ERROR();
           }
         }
-        PUSH(StackVal(state.res));
+        VIRTPUSH(StackVal(state.res));
         state.res.setUndefined();
         END_OP(FunctionThis);
       }
 
       CASE(Pop) {
-        POP();
+        VIRTPOP();
         END_OP(Pop);
       }
       CASE(PopN) {
+        SYNCSP();
         uint32_t n = GET_UINT16(pc);
-        POPN(n);
+        VIRTPOPN(n);
         END_OP(PopN);
       }
       CASE(Dup) {
-        StackVal value = sp[0];
-        PUSH(value);
+        StackVal value = VIRTSP(0);
+        VIRTPUSH(value);
         END_OP(Dup);
       }
       CASE(Dup2) {
-        StackVal value1 = sp[0];
-        StackVal value2 = sp[1];
-        PUSH(value2);
-        PUSH(value1);
+        StackVal value1 = VIRTSP(0);
+        StackVal value2 = VIRTSP(1);
+        VIRTPUSH(value2);
+        VIRTPUSH(value1);
         END_OP(Dup2);
       }
       CASE(DupAt) {
         unsigned i = GET_UINT24(pc);
-        StackVal value = sp[i];
-        PUSH(value);
+        StackVal value = VIRTSP(i);
+        VIRTPUSH(value);
         END_OP(DupAt);
       }
       CASE(Swap) {
-        std::swap(sp[0], sp[1]);
+        StackVal v0 = VIRTSP(0);
+        StackVal v1 = VIRTSP(1);
+        VIRTSPWRITE(0, v1);
+        VIRTSPWRITE(1, v0);
         END_OP(Swap);
       }
       CASE(Pick) {
         unsigned i = GET_UINT8(pc);
+        SYNCSP();
         StackVal tmp = sp[i];
         memmove(&sp[1], &sp[0], sizeof(StackVal) * i);
-        sp[0] = tmp;
+        VIRTSPWRITE(0, tmp);
         END_OP(Pick);
       }
       CASE(Unpick) {
         unsigned i = GET_UINT8(pc);
-        StackVal tmp = sp[0];
+        StackVal tmp = VIRTSP(0);
+        SYNCSP();
         memmove(&sp[0], &sp[1], sizeof(StackVal) * i);
         sp[i] = tmp;
         END_OP(Unpick);
       }
       CASE(DebugCheckSelfHosted) {
-        HandleValue val = Stack::handle(&sp[0]);
+        HandleValue val = SPHANDLE(0);
         {
           PUSH_EXIT_FRAME();
           if (!Debug_CheckSelfHosted(cx, val)) {
@@ -6433,7 +6550,7 @@ PBIResult PortableBaselineInterpret(
 restart:
   // This is a `goto` target so that we exit any on-stack exit frames
   // before restarting, to match previous behavior.
-  return PortableBaselineInterpret<true, true, HybridICs>(
+  return PortableBaselineInterpret<false, true, HybridICs>(
       ctx.frameMgr.cxForLocalUseOnly(), state, stack, sp, envChain, ret, pc,
       isd, entryPC, frame, entryFrame, restartCode);
 
@@ -6651,7 +6768,7 @@ bool PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   jsbytecode* pc = script->code();
   ImmutableScriptData* isd = script->immutableScriptData();
   PBIResult ret;
-  INVOKE_PBI(ret, script, (PortableBaselineInterpret<false, true, kHybridICs>),
+  INVOKE_PBI(ret, script, (PortableBaselineInterpret<false, false, kHybridICs>),
              cx, state, stack, sp, envChain, result, pc, isd, nullptr, nullptr,
              nullptr, PBIResult::Ok);
   switch (ret) {
@@ -6731,7 +6848,7 @@ bool PortablebaselineInterpreterStackCheck(JSContext* cx, RunState& state,
 static const uint32_t WEVAL_JSOP_ID = 1;
 static const uint32_t WEVAL_IC_ID = 2;
 
-WEVAL_DEFINE_TARGET(1, (PortableBaselineInterpret<false, false, true>));
+WEVAL_DEFINE_TARGET(1, (PortableBaselineInterpret<true, false, true>));
 WEVAL_DEFINE_TARGET(2, (ICInterpretOps<true>));
 
 void EnqueueScriptSpecialization(JSScript* script) {
@@ -6747,7 +6864,7 @@ void EnqueueScriptSpecialization(JSScript* script) {
 
     weval.req = weval::weval(
         reinterpret_cast<PBIFunc*>(&weval.func),
-        &PortableBaselineInterpret<false, false, kHybridICs>, WEVAL_JSOP_ID,
+        &PortableBaselineInterpret<true, false, kHybridICs>, WEVAL_JSOP_ID,
         Runtime<JSContext*>(), Runtime<State&>(), Runtime<Stack&>(),
         Runtime<StackVal*>(), Runtime<JSObject*>(), Runtime<Value*>(),
         SpecializeMemory<jsbytecode*>(pc, pc_len),

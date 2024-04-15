@@ -243,6 +243,10 @@ struct Stack {
       StackVal* sp, BaselineFrame* prevFrame) {
     uint8_t* prevFP =
         reinterpret_cast<uint8_t*>(prevFrame) + BaselineFrame::Size();
+    TRACE_PRINTF(
+        "pushExitFrame: prevFrame = %p sp = %p BaselineFrame::Size() = %d -> "
+        "computed prevFP = %p actual fp = %p\n",
+        prevFrame, sp, int(BaselineFrame::Size()), prevFP, fp);
     MOZ_ASSERT(reinterpret_cast<StackVal*>(prevFP) == fp);
     setFrameSize(sp, prevFrame);
 
@@ -3386,12 +3390,13 @@ PBIResult PortableBaselineInterpret(
     JSObject* envChain, Value* ret, jsbytecode* pc, ImmutableScriptData* isd,
     jsbytecode* restartEntryPC, BaselineFrame* restartFrame,
     StackVal* restartEntryFrame, PBIResult restartCode) {
-#define RESTART(code)                                                          \
-  if (!IsRestart) {                                                            \
-    return PortableBaselineInterpret<true, true, HybridICs>(                   \
-        ctx.frameMgr.cxForLocalUseOnly(), state, stack, sp, envChain, ret, pc, \
-        isd, entryPC, frame, entryFrame, code);                                \
+#define RESTART(code)             \
+  if (!IsRestart) {               \
+    TRACE_PRINTF("Restarting\n"); \
+    restartCode = code;           \
+    goto restart;                 \
   }
+
 #define GOTO_ERROR()           \
   do {                         \
     RESTART(PBIResult::Error); \
@@ -6353,6 +6358,13 @@ PBIResult PortableBaselineInterpret(
       MOZ_CRASH("Bad opcode");
     }
   }
+
+restart:
+  // This is a `goto` target so that we exit any on-stack exit frames
+  // before restarting, to match previous behavior.
+  return PortableBaselineInterpret<true, true, HybridICs>(
+      ctx.frameMgr.cxForLocalUseOnly(), state, stack, sp, envChain, ret, pc,
+      isd, entryPC, frame, entryFrame, restartCode);
 
 error:
   TRACE_PRINTF("HandleException: frame %p\n", frame);

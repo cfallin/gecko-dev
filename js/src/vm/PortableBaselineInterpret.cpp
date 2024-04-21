@@ -73,7 +73,7 @@ using namespace js::jit;
  * what PBL is doing at every opcode step.
  */
 
-// #define TRACE_INTERP
+#define TRACE_INTERP
 
 #ifdef TRACE_INTERP
 #  define TRACE_PRINTF(...) \
@@ -3411,14 +3411,16 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     if (Specialized) {    \
       weval_sync_stack(); \
     }
-#elif defined(TEST_VIRT_STACK)
+#elif defined(xxTEST_VIRT_STACK)
 #  define VIRTPUSH(value)           \
     do {                            \
       --sp;                         \
       virtstack.push_back((value)); \
+      SYNCSP(); \
     } while (0)
 #  define VIRTPOP()                \
     ({                             \
+      SYNCSP();                    \
       StackVal result(0);          \
       if (virtstack.size() > 0) {  \
         result = virtstack.back(); \
@@ -3431,6 +3433,7 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     })
 #  define VIRTSP(index)                                   \
     ({                                                    \
+      SYNCSP();                                           \
       StackVal result(0);                                 \
       if (index < virtstack.size()) {                     \
         result = virtstack[virtstack.size() - 1 - index]; \
@@ -3441,6 +3444,7 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     })
 #  define VIRTSPWRITE(index, value)                        \
     do {                                                   \
+      SYNCSP(); \
       if (index < virtstack.size()) {                      \
         virtstack[virtstack.size() - 1 - index] = (value); \
       } else if (virtstack.size() == 0 && index == 0) {    \
@@ -3448,6 +3452,7 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
       } else {                                             \
         sp[index] = (value);                               \
       }                                                    \
+      SYNCSP(); \
     } while (0)
 #  define SYNCSP()                                    \
     do {                                              \
@@ -3499,6 +3504,7 @@ PBIResult PortableBaselineInterpret(
 
 #define GOTO_ERROR()           \
   do {                         \
+    SYNCSP();                  \
     RESTART(PBIResult::Error); \
     goto error;                \
   } while (0)
@@ -5282,6 +5288,9 @@ PBIResult PortableBaselineInterpret(
         uint32_t argc = GET_ARGC(pc);
         do {
           {
+#ifdef xxTEST_VIRT_STACK
+            break;
+#endif
             if (Specialized) {
               break;
             }

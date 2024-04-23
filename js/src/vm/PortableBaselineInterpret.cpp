@@ -66,8 +66,6 @@ namespace pbl {
 
 using namespace js::jit;
 
-// #define TEST_VIRT_STACK
-
 /*
  * Debugging: enable `TRACE_INTERP` for an extremely detailed dump of
  * what PBL is doing at every opcode step.
@@ -3413,52 +3411,6 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     if (Specialized) {    \
       weval_sync_stack(); \
     }
-#elif defined(TEST_VIRT_STACK)
-#  define VIRTPUSH(value)           \
-    do {                            \
-      --sp;                         \
-      virtstack.push_back((value)); \
-    } while (0)
-#  define VIRTPOP()                \
-    ({                             \
-      StackVal result(0);          \
-      if (virtstack.size() > 0) {  \
-        result = virtstack.back(); \
-        virtstack.pop_back();      \
-      } else {                     \
-        result = *sp;              \
-      }                            \
-      sp++;                        \
-      result;                      \
-    })
-#  define VIRTSP(index)                                   \
-    ({                                                    \
-      StackVal result(0);                                 \
-      if (index < virtstack.size()) {                     \
-        result = virtstack[virtstack.size() - 1 - index]; \
-      } else {                                            \
-        result = sp[index];                               \
-      }                                                   \
-      result;                                             \
-    })
-#  define VIRTSPWRITE(index, value)                        \
-    do {                                                   \
-      if (index < virtstack.size()) {                      \
-        virtstack[virtstack.size() - 1 - index] = (value); \
-      } else if (virtstack.size() == 0 && index == 0) {    \
-        virtstack.push_back((value));                      \
-      } else {                                             \
-        sp[index] = (value);                               \
-      }                                                    \
-    } while (0)
-#  define SYNCSP()                                             \
-    do {                                                       \
-      TRACE_PRINTF("Sync stack: %d\n", int(virtstack.size())); \
-      for (size_t i = 0; i < virtstack.size(); i++) {          \
-        sp[virtstack.size() - 1 - i] = virtstack[i];           \
-      }                                                        \
-      virtstack.clear();                                       \
-    } while (0)
 #else
 #  define VIRTPUSH(value) PUSH(value)
 #  define VIRTPOP() POP()
@@ -3488,10 +3440,6 @@ PBIResult PortableBaselineInterpret(
     JSObject* envChain, Value* ret, jsbytecode* pc, ImmutableScriptData* isd,
     jsbytecode* restartEntryPC, BaselineFrame* restartFrame,
     StackVal* restartEntryFrame, PBIResult restartCode) {
-#ifdef TEST_VIRT_STACK
-  std::vector<StackVal> virtstack;
-#endif
-
 #define RESTART(code)                                                 \
   if (!IsRestart) {                                                   \
     TRACE_PRINTF("Restarting (code %d sp %p fp %p)\n", int(code), sp, \
@@ -5292,9 +5240,6 @@ PBIResult PortableBaselineInterpret(
         uint32_t argc = GET_ARGC(pc);
         do {
           {
-#ifdef TEST_VIRT_STACK
-            break;
-#endif
             if (Specialized) {
               break;
             }

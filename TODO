@@ -126,6 +126,11 @@
   - optimize ICs more for specific benchmarks/cases
     - take a look at NavierStokes?
 
+  - do basic-block versioning, with type tags on stack as context
+
+  - handle known-bits/partial-constants and branch folding on type tag
+    checks
+
 - collect ICs from Octane (script to do this)
 - ensure Octane works (resolve unset-register-3 issue?)
 - build cached-weval (incremental compilation) approach

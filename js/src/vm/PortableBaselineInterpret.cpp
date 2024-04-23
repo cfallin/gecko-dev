@@ -3328,7 +3328,6 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 #define END_OP(op) ADVANCE_AND_DISPATCH(JSOpLength_##op);
 
 #define IC_SET_ARG_FROM_STACK(index, stack_index) \
-  SYNCSP();                                       \
   ic_arg##index = VIRTSP(stack_index).asUInt64();
 #define IC_POP_ARG(index) ic_arg##index = VIRTPOP().asUInt64();
 #define IC_SET_VAL_ARG(index, expr) ic_arg##index = (expr).asRawBits();
@@ -3583,8 +3582,6 @@ PBIResult PortableBaselineInterpret(
   {
     MOZ_RELEASE_ASSERT(sp <= ctx.stack.fp);
     JSOp op = JSOp(*pc);
-    printf("virtstack depth is %d\n", int(virtstack.size()));
-    SYNCSP();
     printf("sp[0] = %" PRIx64 " sp[1] = %" PRIx64 " sp[2] = %" PRIx64 "\n",
            sp[0].asUInt64(), sp[1].asUInt64(), sp[2].asUInt64());
     printf("script = %p pc = %p: %s (ic %d) pending = %d\n", script.get(), pc,

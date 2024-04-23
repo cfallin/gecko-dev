@@ -66,14 +66,14 @@ namespace pbl {
 
 using namespace js::jit;
 
-#define TEST_VIRT_STACK
+// #define TEST_VIRT_STACK
 
 /*
  * Debugging: enable `TRACE_INTERP` for an extremely detailed dump of
  * what PBL is doing at every opcode step.
  */
 
-#define TRACE_INTERP
+// #define TRACE_INTERP
 
 #ifdef TRACE_INTERP
 #  define TRACE_PRINTF(...) \
@@ -163,12 +163,14 @@ struct Stack {
   StackVal* base;
   StackVal* top;
   StackVal* unwindingSP;
+  StackVal* unwindingFP;
 
   explicit Stack(PortableBaselineStack& pbs)
       : fp(reinterpret_cast<StackVal*>(pbs.top)),
         base(reinterpret_cast<StackVal*>(pbs.base)),
         top(reinterpret_cast<StackVal*>(pbs.top)),
-        unwindingSP(nullptr) {}
+        unwindingSP(nullptr),
+        unwindingFP(nullptr) {}
 
   MOZ_ALWAYS_INLINE bool check(StackVal* sp, size_t size, bool margin = true) {
     return reinterpret_cast<uintptr_t>(base) + size +
@@ -3411,16 +3413,14 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     if (Specialized) {    \
       weval_sync_stack(); \
     }
-#elif defined(xxTEST_VIRT_STACK)
+#elif defined(TEST_VIRT_STACK)
 #  define VIRTPUSH(value)           \
     do {                            \
       --sp;                         \
       virtstack.push_back((value)); \
-      SYNCSP(); \
     } while (0)
 #  define VIRTPOP()                \
     ({                             \
-      SYNCSP();                    \
       StackVal result(0);          \
       if (virtstack.size() > 0) {  \
         result = virtstack.back(); \
@@ -3433,7 +3433,6 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     })
 #  define VIRTSP(index)                                   \
     ({                                                    \
-      SYNCSP();                                           \
       StackVal result(0);                                 \
       if (index < virtstack.size()) {                     \
         result = virtstack[virtstack.size() - 1 - index]; \
@@ -3444,7 +3443,6 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     })
 #  define VIRTSPWRITE(index, value)                        \
     do {                                                   \
-      SYNCSP(); \
       if (index < virtstack.size()) {                      \
         virtstack[virtstack.size() - 1 - index] = (value); \
       } else if (virtstack.size() == 0 && index == 0) {    \
@@ -3452,14 +3450,14 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
       } else {                                             \
         sp[index] = (value);                               \
       }                                                    \
-      SYNCSP(); \
     } while (0)
-#  define SYNCSP()                                    \
-    do {                                              \
-      for (size_t i = 0; i < virtstack.size(); i++) { \
-        sp[virtstack.size() - 1 - i] = virtstack[i];  \
-      }                                               \
-      virtstack.clear();                              \
+#  define SYNCSP()                                             \
+    do {                                                       \
+      TRACE_PRINTF("Sync stack: %d\n", int(virtstack.size())); \
+      for (size_t i = 0; i < virtstack.size(); i++) {          \
+        sp[virtstack.size() - 1 - i] = virtstack[i];           \
+      }                                                        \
+      virtstack.clear();                                       \
     } while (0)
 #else
 #  define VIRTPUSH(value) PUSH(value)
@@ -3493,13 +3491,14 @@ PBIResult PortableBaselineInterpret(
 #ifdef TEST_VIRT_STACK
   std::vector<StackVal> virtstack;
 #endif
-  
-#define RESTART(code)             \
-  if (!IsRestart) {               \
-    TRACE_PRINTF("Restarting\n"); \
-    SYNCSP();                     \
-    restartCode = code;           \
-    goto restart;                 \
+
+#define RESTART(code)                                                 \
+  if (!IsRestart) {                                                   \
+    TRACE_PRINTF("Restarting (code %d sp %p fp %p)\n", int(code), sp, \
+                 ctx.stack.fp);                                       \
+    SYNCSP();                                                         \
+    restartCode = code;                                               \
+    goto restart;                                                     \
   }
 
 #define GOTO_ERROR()           \
@@ -3545,6 +3544,9 @@ PBIResult PortableBaselineInterpret(
 
   if (IsRestart) {
     ic_result = restartCode;
+    TRACE_PRINTF(
+        "Enter from restart: sp = %p ctx.stack.fp = %p ctx.frame = %p\n", sp,
+        ctx.stack.fp, ctx.frame);
     goto ic_fail;
   } else {
     AutoCheckRecursionLimit recursion(ctx.frameMgr.cxForLocalUseOnly());
@@ -3631,7 +3633,9 @@ PBIResult PortableBaselineInterpret(
   dispatch:
 #ifdef TRACE_INTERP
   {
+    MOZ_RELEASE_ASSERT(sp <= ctx.stack.fp);
     JSOp op = JSOp(*pc);
+    printf("virtstack depth is %d\n", int(virtstack.size()));
     SYNCSP();
     printf("sp[0] = %" PRIx64 " sp[1] = %" PRIx64 " sp[2] = %" PRIx64 "\n",
            sp[0].asUInt64(), sp[1].asUInt64(), sp[2].asUInt64());
@@ -5288,7 +5292,7 @@ PBIResult PortableBaselineInterpret(
         uint32_t argc = GET_ARGC(pc);
         do {
           {
-#ifdef xxTEST_VIRT_STACK
+#ifdef TEST_VIRT_STACK
             break;
 #endif
             if (Specialized) {
@@ -6627,18 +6631,19 @@ error:
       case ExceptionResumeKind::EntryFrame:
         TRACE_PRINTF(" -> Return from entry frame\n");
         frame->setReturnValue(MagicValue(JS_ION_ERROR));
-        ctx.stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
+        ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         goto unwind_error;
       case ExceptionResumeKind::Catch:
         pc = frame->interpreterPC();
-        ctx.stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
+        ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
-        TRACE_PRINTF(" -> catch to pc %p\n", pc);
+        TRACE_PRINTF(" -> catch to pc %p (fp %p sp %p)\n", pc, rfe.framePointer,
+                     rfe.stackPointer);
         goto unwind;
       case ExceptionResumeKind::Finally:
         pc = frame->interpreterPC();
-        ctx.stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
+        ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         sp = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> finally to pc %p\n", pc);
         PUSH(StackVal(rfe.exception));
@@ -6648,7 +6653,7 @@ error:
         goto unwind;
       case ExceptionResumeKind::ForcedReturnBaseline:
         pc = frame->interpreterPC();
-        ctx.stack.fp = reinterpret_cast<StackVal*>(rfe.framePointer);
+        ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> forced return\n");
         goto unwind_ret;
@@ -6687,12 +6692,13 @@ ic_fail:
 
 unwind:
   TRACE_PRINTF("unwind: fp = %p entryFrame = %p\n", ctx.stack.fp, entryFrame);
-  if (reinterpret_cast<uintptr_t>(ctx.stack.fp) >
+  if (reinterpret_cast<uintptr_t>(ctx.stack.unwindingFP) >
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     TRACE_PRINTF(" -> returning\n");
     return PBIResult::Unwind;
   }
   sp = ctx.stack.unwindingSP;
+  ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
   TRACE_PRINTF(" -> setting sp to %p, frame to %p\n", sp, frame);
@@ -6706,15 +6712,16 @@ unwind:
 unwind_error:
   TRACE_PRINTF("unwind_error: fp = %p entryFrame = %p\n", ctx.stack.fp,
                entryFrame);
-  if (reinterpret_cast<uintptr_t>(ctx.stack.fp) >
+  if (reinterpret_cast<uintptr_t>(ctx.stack.unwindingFP) >
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     return PBIResult::UnwindError;
   }
-  if (reinterpret_cast<uintptr_t>(ctx.stack.fp) ==
+  if (reinterpret_cast<uintptr_t>(ctx.stack.unwindingFP) ==
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     return PBIResult::Error;
   }
   sp = ctx.stack.unwindingSP;
+  ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
   TRACE_PRINTF(" -> setting sp to %p, frame to %p\n", sp, frame);
@@ -6728,16 +6735,17 @@ unwind_error:
 unwind_ret:
   TRACE_PRINTF("unwind_ret: fp = %p entryFrame = %p\n", ctx.stack.fp,
                entryFrame);
-  if (reinterpret_cast<uintptr_t>(ctx.stack.fp) >
+  if (reinterpret_cast<uintptr_t>(ctx.stack.unwindingFP) >
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     return PBIResult::UnwindRet;
   }
-  if (reinterpret_cast<uintptr_t>(ctx.stack.fp) ==
+  if (reinterpret_cast<uintptr_t>(ctx.stack.unwindingFP) ==
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     *ret = frame->returnValue();
     return PBIResult::Ok;
   }
   sp = ctx.stack.unwindingSP;
+  ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
   TRACE_PRINTF(" -> setting sp to %p, frame to %p\n", sp, frame);

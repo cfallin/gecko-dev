@@ -79,7 +79,7 @@
       - note: generate a "clear all cached funcptrs" function too, and
         call this (via intrinsic) in GC. otherwise stale ICStub keys
         could have false positives.
-  - renamed stack
+  - (x) renamed stack
     - stack primitives for loading ("write-through cache")? Elide
       push/pop with no calls between?
     - basically the old "memory renaming", with flush on call

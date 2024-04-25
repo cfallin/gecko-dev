@@ -6070,7 +6070,17 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(InitLexical) {
         uint32_t i = GET_LOCALNO(pc);
+#ifndef ENABLE_JS_PBL_WEVAL
         frame->unaliasedLocal(i) = VIRTSP(0).asValue();
+#else
+        if (Specialized) {
+          weval_write_local(
+            reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i,
+            VIRTSP(0).asUInt64());
+        } else {
+          frame->unaliasedLocal(i) = VIRTSP(0).asValue();
+        }
+#endif
         END_OP(InitLexical);
       }
 
@@ -6151,7 +6161,18 @@ PBIResult PortableBaselineInterpret(
       CASE(GetLocal) {
         uint32_t i = GET_LOCALNO(pc);
         TRACE_PRINTF(" -> local: %d\n", int(i));
-        VIRTPUSH(StackVal(frame->unaliasedLocal(i)));
+        Value result;
+#ifdef ENABLE_JS_PBL_WEVAL
+        if (Specialized) {
+          result = Value::fromRawBits(weval_read_local(
+              reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i));
+        } else {
+          result = frame->unaliasedLocal(i);
+        }
+#else
+        result = frame->unaliasedLocal(i);
+#endif
+        VIRTPUSH(StackVal(result));
         END_OP(GetLocal);
       }
 
@@ -6269,7 +6290,17 @@ PBIResult PortableBaselineInterpret(
       CASE(SetLocal) {
         uint32_t i = GET_LOCALNO(pc);
         TRACE_PRINTF(" -> local: %d\n", int(i));
+#ifndef ENABLE_JS_PBL_WEVAL
         frame->unaliasedLocal(i) = VIRTSP(0).asValue();
+#else
+        if (Specialized) {
+          weval_write_local(
+            reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i,
+            VIRTSP(0).asUInt64());
+        } else {
+          frame->unaliasedLocal(i) = VIRTSP(0).asValue();
+        }
+#endif
         END_OP(SetLocal);
       }
 

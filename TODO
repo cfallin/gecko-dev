@@ -127,6 +127,11 @@
     - take a look at NavierStokes?
 
   - do basic-block versioning, with type tags on stack as context
+    - use tags as means to avoid spilling values back to stack!
+      e.g. int32s are always local
+    - switch up `stack` state to merge with max length, not min,
+      filling in "runtime" at tail but with known tags if match (and
+      certain kinds of tags are "immutable")
 
   - handle known-bits/partial-constants and branch folding on type tag
     checks

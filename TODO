@@ -29,10 +29,10 @@
     - get profiler to provide line-number info
     - put opcode in weval context / basic-block names?
   - (x) hybrid ICs still a thing?
-  - make sure SP is in a register and not constantly reloaded
-  - debuggee checks
-  - profiling counts?
-  - extra pointer-chain indirections when updating e.g. IC pointer
+  - (x) make sure SP is in a register and not constantly reloaded
+  - (x) debuggee checks
+  - (x) profiling counts?
+  - (x) extra pointer-chain indirections when updating e.g. IC pointer
   - (x) pass IC args as registers (avoid some memory traffic)
   - avoid conditional at IC site; always indirect call
   - (x) run with no-sig-check, no-stack-limit, no-null-check,
@@ -108,6 +108,16 @@
     - all unnecessary prologue from PBI (recursion limit, debug checks,
       profiling counters, ...)
 
+  - do basic-block versioning, with type tags on stack as context
+    - use tags as means to avoid spilling values back to stack!
+      e.g. int32s are always local
+    - switch up `stack` state to merge with max length, not min,
+      filling in "runtime" at tail but with known tags if match (and
+      certain kinds of tags are "immutable")
+
+  - handle known-bits/partial-constants and branch folding on type tag
+    checks
+
   - where is the remaining inefficiency?
     - JS/IC boundary:
       - two extra loads + compare with call-indir caching
@@ -126,18 +136,8 @@
   - optimize ICs more for specific benchmarks/cases
     - take a look at NavierStokes?
 
-  - do basic-block versioning, with type tags on stack as context
-    - use tags as means to avoid spilling values back to stack!
-      e.g. int32s are always local
-    - switch up `stack` state to merge with max length, not min,
-      filling in "runtime" at tail but with known tags if match (and
-      certain kinds of tags are "immutable")
-
-  - handle known-bits/partial-constants and branch folding on type tag
-    checks
-
-- collect ICs from Octane (script to do this)
-- ensure Octane works (resolve unset-register-3 issue?)
+- (x) collect ICs from Octane (script to do this)
+- (x) ensure Octane works (resolve unset-register-3 issue?)
 - build cached-weval (incremental compilation) approach
 
 - "fast IC invocation" mechanism: typed funcref table, fixed indices

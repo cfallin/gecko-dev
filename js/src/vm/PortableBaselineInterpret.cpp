@@ -4742,6 +4742,27 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(GetElem) {
+        if (VIRTSP(1).asValue().isString()) {
+          HandleValue lhs = SPHANDLE(1);
+          HandleValue rhs = SPHANDLE(0);
+          uint32_t index;
+          if (IsDefinitelyIndex(rhs, &index)) {
+            JSString* str = lhs.toString();
+            if (index < str->length() && str->isLinear()) {
+              JSLinearString* linear = &str->asLinear();
+              char16_t c = linear->latin1OrTwoByteChar(index);
+              StaticStrings& sstr =
+                ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
+              if (sstr.hasUnit(c)) {
+                VIRTPOP();
+                VIRTSPWRITE(0, StackVal(StringValue(sstr.getUnit(c))));
+                NEXT_IC();
+                END_OP(GetElem);
+              }
+            }
+          }
+        }
+
         IC_POP_ARG(1);
         IC_POP_ARG(0);
         IC_ZERO_ARG(2);

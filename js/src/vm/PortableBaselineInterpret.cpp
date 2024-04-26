@@ -3410,12 +3410,27 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
     if (Specialized) {    \
       weval_sync_stack(); \
     }
+#  define SETLOCAL(i, value)                                         \
+    if (Specialized) {                                               \
+      weval_write_local(                                             \
+          reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i, \
+          (value).asRawBits());                                      \
+    } else {                                                         \
+      frame->unaliasedLocal(i) = value;                              \
+    }
+#  define GETLOCAL(i)                                                      \
+    (Specialized                                                           \
+         ? Value::fromRawBits(weval_read_local(                            \
+               reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i)) \
+         : frame->unaliasedLocal(i))
 #else
 #  define VIRTPUSH(value) PUSH(value)
 #  define VIRTPOP() POP()
 #  define VIRTSP(index) sp[(index)]
 #  define VIRTSPWRITE(index, value) sp[(index)] = (value)
 #  define SYNCSP()
+#  define SETLOCAL(i, value) frame->unaliasedLocal(i) = value
+#  define GETLOCAL(i) frame->unaliasedLocal(i)
 #endif
 
 #define VIRTPOPN(n) \
@@ -6059,17 +6074,7 @@ PBIResult PortableBaselineInterpret(
       }
       CASE(InitLexical) {
         uint32_t i = GET_LOCALNO(pc);
-#ifndef ENABLE_JS_PBL_WEVAL
-        frame->unaliasedLocal(i) = VIRTSP(0).asValue();
-#else
-        if (Specialized) {
-          weval_write_local(
-            reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i,
-            VIRTSP(0).asUInt64());
-        } else {
-          frame->unaliasedLocal(i) = VIRTSP(0).asValue();
-        }
-#endif
+        SETLOCAL(i, VIRTSP(0).asValue());
         END_OP(InitLexical);
       }
 
@@ -6150,18 +6155,7 @@ PBIResult PortableBaselineInterpret(
       CASE(GetLocal) {
         uint32_t i = GET_LOCALNO(pc);
         TRACE_PRINTF(" -> local: %d\n", int(i));
-        Value result;
-#ifdef ENABLE_JS_PBL_WEVAL
-        if (Specialized) {
-          result = Value::fromRawBits(weval_read_local(
-              reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i));
-        } else {
-          result = frame->unaliasedLocal(i);
-        }
-#else
-        result = frame->unaliasedLocal(i);
-#endif
-        VIRTPUSH(StackVal(result));
+        VIRTPUSH(StackVal(GETLOCAL(i)));
         END_OP(GetLocal);
       }
 
@@ -6279,17 +6273,7 @@ PBIResult PortableBaselineInterpret(
       CASE(SetLocal) {
         uint32_t i = GET_LOCALNO(pc);
         TRACE_PRINTF(" -> local: %d\n", int(i));
-#ifndef ENABLE_JS_PBL_WEVAL
-        frame->unaliasedLocal(i) = VIRTSP(0).asValue();
-#else
-        if (Specialized) {
-          weval_write_local(
-            reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i,
-            VIRTSP(0).asUInt64());
-        } else {
-          frame->unaliasedLocal(i) = VIRTSP(0).asValue();
-        }
-#endif
+        SETLOCAL(i, VIRTSP(0).asValue());
         END_OP(SetLocal);
       }
 

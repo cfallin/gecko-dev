@@ -2189,7 +2189,7 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
           // always preceded by LinearizeForCharAccess.
           MOZ_ALWAYS_TRUE(str->getChar(/* cx = */ nullptr, index, &c));
           StaticStrings& sstr =
-              ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
+            ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
           if (sstr.hasUnit(c)) {
             result = sstr.getUnit(c);
           } else {
@@ -2323,6 +2323,69 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(DoubleAddResult) {
+        NumberOperandId lhsId = cacheIRReader.numberOperandId();
+        NumberOperandId rhsId = cacheIRReader.numberOperandId();
+        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
+        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        retValue = DoubleValue(lhs.toNumber() + rhs.toNumber()).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(DoubleSubResult) {
+        NumberOperandId lhsId = cacheIRReader.numberOperandId();
+        NumberOperandId rhsId = cacheIRReader.numberOperandId();
+        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
+        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        retValue = DoubleValue(lhs.toNumber() - rhs.toNumber()).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(DoubleMulResult) {
+        NumberOperandId lhsId = cacheIRReader.numberOperandId();
+        NumberOperandId rhsId = cacheIRReader.numberOperandId();
+        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
+        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        retValue = DoubleValue(lhs.toNumber() * rhs.toNumber()).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(DoubleDivResult) {
+        NumberOperandId lhsId = cacheIRReader.numberOperandId();
+        NumberOperandId rhsId = cacheIRReader.numberOperandId();
+        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
+        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        retValue =
+            DoubleValue(NumberDiv(lhs.toNumber(), rhs.toNumber())).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(DoubleModResult) {
+        NumberOperandId lhsId = cacheIRReader.numberOperandId();
+        NumberOperandId rhsId = cacheIRReader.numberOperandId();
+        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
+        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        retValue =
+            DoubleValue(NumberMod(lhs.toNumber(), rhs.toNumber())).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(DoublePowResult) {
+        NumberOperandId lhsId = cacheIRReader.numberOperandId();
+        NumberOperandId rhsId = cacheIRReader.numberOperandId();
+        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
+        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        retValue =
+            DoubleValue(ecmaPow(lhs.toNumber(), rhs.toNumber())).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
 #define INT32_OP(name, op, extra_check)                    \
   CACHEOP_CASE(Int32##name##Result) {                      \
     Int32OperandId lhsId = cacheIRReader.int32OperandId(); \
@@ -2418,6 +2481,49 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
           FAIL_IC();
         }
         retValue = Int32Value(int32_t(value)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(Int32LeftShiftResult) {
+        Int32OperandId lhsId = cacheIRReader.int32OperandId();
+        Int32OperandId rhsId = cacheIRReader.int32OperandId();
+        int32_t lhs = int32_t(READ_REG(lhsId.id()));
+        int32_t rhs = int32_t(READ_REG(rhsId.id()));
+        int32_t result = lhs << (rhs & 0x1F);
+        retValue = Int32Value(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(Int32RightShiftResult) {
+        Int32OperandId lhsId = cacheIRReader.int32OperandId();
+        Int32OperandId rhsId = cacheIRReader.int32OperandId();
+        int32_t lhs = int32_t(READ_REG(lhsId.id()));
+        int32_t rhs = int32_t(READ_REG(rhsId.id()));
+        int32_t result = lhs >> (rhs & 0x1F);
+        retValue = Int32Value(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(Int32URightShiftResult) {
+        Int32OperandId lhsId = cacheIRReader.int32OperandId();
+        Int32OperandId rhsId = cacheIRReader.int32OperandId();
+        uint32_t lhs = uint32_t(READ_REG(lhsId.id()));
+        int32_t rhs = int32_t(READ_REG(rhsId.id()));
+        uint32_t result = lhs >> (rhs & 0x1F);
+        retValue = (result >= 0x80000000)
+                       ? DoubleValue(double(result)).asRawBits()
+                       : Int32Value(int32_t(result)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(Int32NotResult) {
+        Int32OperandId inputId = cacheIRReader.int32OperandId();
+        int32_t input = int32_t(READ_REG(inputId.id()));
+        retValue = Int32Value(~input).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2835,22 +2941,12 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE_UNIMPL(LoadConstantString)
       CACHEOP_CASE_UNIMPL(LoadInstanceOfObjectResult)
       CACHEOP_CASE_UNIMPL(LoadTypeOfObjectResult)
-      CACHEOP_CASE_UNIMPL(DoubleAddResult)
-      CACHEOP_CASE_UNIMPL(DoubleSubResult)
-      CACHEOP_CASE_UNIMPL(DoubleMulResult)
-      CACHEOP_CASE_UNIMPL(DoubleDivResult)
-      CACHEOP_CASE_UNIMPL(DoubleModResult)
-      CACHEOP_CASE_UNIMPL(DoublePowResult)
       CACHEOP_CASE_UNIMPL(BigIntAddResult)
       CACHEOP_CASE_UNIMPL(BigIntSubResult)
       CACHEOP_CASE_UNIMPL(BigIntMulResult)
       CACHEOP_CASE_UNIMPL(BigIntDivResult)
       CACHEOP_CASE_UNIMPL(BigIntModResult)
       CACHEOP_CASE_UNIMPL(BigIntPowResult)
-      CACHEOP_CASE_UNIMPL(Int32LeftShiftResult)
-      CACHEOP_CASE_UNIMPL(Int32RightShiftResult)
-      CACHEOP_CASE_UNIMPL(Int32URightShiftResult)
-      CACHEOP_CASE_UNIMPL(Int32NotResult)
       CACHEOP_CASE_UNIMPL(BigIntBitOrResult)
       CACHEOP_CASE_UNIMPL(BigIntBitXorResult)
       CACHEOP_CASE_UNIMPL(BigIntBitAndResult)
@@ -4767,7 +4863,7 @@ PBIResult PortableBaselineInterpret(
               JSLinearString* linear = &str->asLinear();
               char16_t c = linear->latin1OrTwoByteChar(index);
               StaticStrings& sstr =
-                ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
+                  ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
               if (sstr.hasUnit(c)) {
                 VIRTPOP();
                 VIRTSPWRITE(0, StackVal(StringValue(sstr.getUnit(c))));

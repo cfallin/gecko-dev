@@ -2536,6 +2536,14 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(LoadDoubleTruthyResult) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = Value::fromRawBits(READ_REG(inputId.id())).toNumber();
+        retValue = BooleanValue(input != 0.0).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(LoadStringTruthyResult) {
         StringOperandId strId = cacheIRReader.stringOperandId();
         JSString* str = reinterpret_cast<JSLinearString*>(READ_REG(strId.id()));
@@ -2711,6 +2719,42 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(CompareDoubleResult) {
+        JSOp op = cacheIRReader.jsop();
+        NumberOperandId lhsId = cacheIRReader.numberOperandId();
+        NumberOperandId rhsId = cacheIRReader.numberOperandId();
+        double lhs = Value::fromRawBits(READ_REG(lhsId.id())).toNumber();
+        double rhs = Value::fromRawBits(READ_REG(rhsId.id())).toNumber();
+        bool result;
+        switch (op) {
+        case JSOp::Eq:
+        case JSOp::StrictEq:
+          result = lhs == rhs;
+          break;
+        case JSOp::Ne:
+        case JSOp::StrictNe:
+          result = lhs != rhs;
+          break;
+        case JSOp::Lt:
+          result = lhs < rhs;
+          break;
+        case JSOp::Le:
+          result = lhs <= rhs;
+          break;
+        case JSOp::Gt:
+          result = lhs > rhs;
+          break;
+        case JSOp::Ge:
+          result = lhs >= rhs;
+          break;
+        default:
+          MOZ_CRASH("Unexpected opcode");
+        }
+        retValue = BooleanValue(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(CompareNullUndefinedResult) {
         JSOp op = cacheIRReader.jsop();
         bool isUndefined = cacheIRReader.readBool();
@@ -2754,6 +2798,14 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
         (void)objId;
         (void)idOffset;
         (void)slotOffset;
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathSqrtNumberResult) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = Value::fromRawBits(READ_REG(inputId.id())).toNumber();
+        retValue = NumberValue(sqrt(input)).asRawBits();
+        PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
 
@@ -2845,7 +2897,6 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE_UNIMPL(MathSignNumberResult)
       CACHEOP_CASE_UNIMPL(MathSignNumberToInt32Result)
       CACHEOP_CASE_UNIMPL(MathImulResult)
-      CACHEOP_CASE_UNIMPL(MathSqrtNumberResult)
       CACHEOP_CASE_UNIMPL(MathFRoundNumberResult)
       CACHEOP_CASE_UNIMPL(MathRandomResult)
       CACHEOP_CASE_UNIMPL(MathHypot2NumberResult)
@@ -2961,7 +3012,6 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE_UNIMPL(DoubleDecResult)
       CACHEOP_CASE_UNIMPL(BigIntIncResult)
       CACHEOP_CASE_UNIMPL(BigIntDecResult)
-      CACHEOP_CASE_UNIMPL(LoadDoubleTruthyResult)
       CACHEOP_CASE_UNIMPL(LoadBigIntTruthyResult)
       CACHEOP_CASE_UNIMPL(LoadValueTruthyResult)
       CACHEOP_CASE_UNIMPL(NewPlainObjectResult)
@@ -2970,7 +3020,6 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE_UNIMPL(CallIsSuspendedGeneratorResult)
       CACHEOP_CASE_UNIMPL(CompareObjectResult)
       CACHEOP_CASE_UNIMPL(CompareSymbolResult)
-      CACHEOP_CASE_UNIMPL(CompareDoubleResult)
       CACHEOP_CASE_UNIMPL(CompareBigIntResult)
       CACHEOP_CASE_UNIMPL(CompareBigIntInt32Result)
       CACHEOP_CASE_UNIMPL(CompareBigIntNumberResult)

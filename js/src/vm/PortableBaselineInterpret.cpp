@@ -2539,7 +2539,9 @@ uint64_t ICInterpretOps(ICCtx& ctx, ICStub* stub,
       CACHEOP_CASE(LoadDoubleTruthyResult) {
         NumberOperandId inputId = cacheIRReader.numberOperandId();
         double input = Value::fromRawBits(READ_REG(inputId.id())).toNumber();
-        retValue = BooleanValue(input != 0.0).asRawBits();
+        // NaN is falsy, not truthy; `input != input` ensures we avoid
+        // NaNs.
+        retValue = BooleanValue(input != 0.0 && input == input).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }

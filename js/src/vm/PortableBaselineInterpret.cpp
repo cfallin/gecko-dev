@@ -3945,18 +3945,16 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(ToNumeric) {
-        if (HybridICs) {
-          if (VIRTSP(0).asValue().isNumeric()) {
-            NEXT_IC();
-          } else {
-            SYNCSP();
-            MutableHandleValue val = SPHANDLEMUT(0);
-            PUSH_EXIT_FRAME();
-            if (!ToNumeric(cx, val)) {
-              GOTO_ERROR();
-            }
-            NEXT_IC();
+        if (VIRTSP(0).asValue().isNumeric()) {
+          NEXT_IC();
+        } else if (HybridICs) {
+          SYNCSP();
+          MutableHandleValue val = SPHANDLEMUT(0);
+          PUSH_EXIT_FRAME();
+          if (!ToNumeric(cx, val)) {
+            GOTO_ERROR();
           }
+          NEXT_IC();
         } else {
           goto generic_unary;
         }
@@ -3977,7 +3975,10 @@ PBIResult PortableBaselineInterpret(
     }
 
       CASE(Not) {
-        if (HybridICs) {
+        Value v = VIRTSP(0).asValue();
+        if (v.isBoolean()) {
+          VIRTSPWRITE(0, StackVal(BooleanValue(!v.toBoolean())));
+        } else if (HybridICs) {
           SYNCSP();
           VIRTSPWRITE(0, StackVal(BooleanValue(!ToBoolean(SPHANDLE(0)))));
           NEXT_IC();

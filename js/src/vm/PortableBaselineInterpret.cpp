@@ -2041,14 +2041,16 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             jsbytecode* pc = script->code();
             ImmutableScriptData* isd = script->immutableScriptData();
             PBIResult result;
+            Value ret;
             INVOKE_PBI(result, script,
                        (PortableBaselineInterpret<false, false, kHybridICs>),
                        cx, ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-                       reinterpret_cast<Value*>(&retValue), pc, isd, nullptr,
+                       reinterpret_cast<Value*>(&ret), pc, isd, nullptr,
                        nullptr, nullptr, PBIResult::Ok);
             if (result != PBIResult::Ok) {
               return PACK_IC_ERROR(result);
             }
+            retValue = ret.asRawBits();
           }
         }
 

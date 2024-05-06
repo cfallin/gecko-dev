@@ -472,7 +472,7 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
     do {                                                                      \
       ctx.sp = spvalue;                                                       \
       ctx.stub = stubvalue;                                                   \
-      if (stub->isFallback()) {                                               \
+      if (ctx.stub->isFallback()) {                                           \
         ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);              \
         result = func(arg0, arg1, arg2, ctx);                                 \
       } else {                                                                \
@@ -519,8 +519,13 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
     stubInfo = cstub->stubInfo();
     code = stubInfo->code();
   } else {
+#ifdef ENABLE_JS_PBL_WEVAL
     stubInfo = reinterpret_cast<const CacheIRStubInfo*>(weval_read_specialization_global(0));
     code = reinterpret_cast<uint8_t*>(weval_read_specialization_global(1));
+#else
+    stubInfo = cstub->stubInfo();
+    code = stubInfo->code();
+#endif
   }
 
   CacheIRReader cacheIRReader(code, nullptr);

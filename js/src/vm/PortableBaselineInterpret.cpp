@@ -499,6 +499,9 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
 #  define INVOKE_PBI(result, script, interp, ...) result = interp(__VA_ARGS__);
 #endif
 
+static uint64_t CallNextIC(ICStub* stub, uint64_t arg0, uint64_t arg1,
+                           uint64_t arg2, ICCtx& ctx);
+
 // Interpreter for CacheIR.
 template <bool Specialized>
 uint64_t ICInterpretOps(ICStub* stub, uint64_t arg0, uint64_t arg1,
@@ -3087,10 +3090,16 @@ next_ic:
 #ifdef ENABLE_JS_PBL_WEVAL
   weval::pop_context();
 #endif
+  return CallNextIC(stub, arg0, arg1, arg2, ctx);
+}
+
+static MOZ_NEVER_INLINE uint64_t CallNextIC(ICStub* stub, uint64_t arg0,
+                                            uint64_t arg1, uint64_t arg2,
+                                            ICCtx& ctx) {
   stub = stub->maybeNext();
   MOZ_ASSERT(stub);
   uint64_t result;
-  CALL_IC(stub->rawJitCode(), ctx, stub, result, sp, arg0, arg1, arg2);
+  CALL_IC(stub->rawJitCode(), ctx, stub, result, ctx.sp, arg0, arg1, arg2);
   return result;
 }
 

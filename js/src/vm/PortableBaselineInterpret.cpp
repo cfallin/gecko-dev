@@ -88,7 +88,10 @@ using namespace js::jit;
 // Whether we are using the "hybrid" strategy for ICs (see the [SMDOC]
 // in PortableBaselineInterpret.h for more). This is currently a
 // constant, but may become configurable in the future.
-static const bool kHybridICs = false;
+static const bool kHybridICsInterp = false;
+#ifdef ENABLE_JS_PBL_WEVAL
+static const bool kHybridICsCompiled = false;
+#endif
 
 /*
  * -----------------------------------------------
@@ -2048,7 +2051,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             PBIResult result;
             Value ret;
             INVOKE_PBI(result, script,
-                       (PortableBaselineInterpret<false, false, kHybridICs>),
+                       (PortableBaselineInterpret<false, false, kHybridICsInterp>),
                        cx, ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
                        reinterpret_cast<Value*>(&ret), pc, isd, nullptr,
                        nullptr, nullptr, PBIResult::Ok);
@@ -6952,7 +6955,7 @@ bool PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   jsbytecode* pc = script->code();
   ImmutableScriptData* isd = script->immutableScriptData();
   PBIResult ret;
-  INVOKE_PBI(ret, script, (PortableBaselineInterpret<false, false, kHybridICs>),
+  INVOKE_PBI(ret, script, (PortableBaselineInterpret<false, false, kHybridICsInterp>),
              cx, state, stack, sp, envChain, result, pc, isd, nullptr, nullptr,
              nullptr, PBIResult::Ok);
   switch (ret) {
@@ -7048,7 +7051,7 @@ void EnqueueScriptSpecialization(JSScript* script) {
 
     weval.req = weval::weval(
         reinterpret_cast<PBIFunc*>(&weval.func),
-        &PortableBaselineInterpret<true, false, kHybridICs>, WEVAL_JSOP_ID,
+        &PortableBaselineInterpret<true, false, kHybridICsCompiled>, WEVAL_JSOP_ID,
         /* num_globals = */ 0, Runtime<JSContext*>(), Runtime<State&>(),
         Runtime<Stack&>(), Runtime<StackVal*>(), Runtime<JSObject*>(),
         Runtime<Value*>(), SpecializeMemory<jsbytecode*>(pc, pc_len),

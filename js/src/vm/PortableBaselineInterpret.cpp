@@ -4926,7 +4926,7 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(GetElem) {
-        if (VIRTSP(1).asValue().isString()) {
+        if (HybridICs && VIRTSP(1).asValue().isString()) {
           HandleValue lhs = SPHANDLE(1);
           HandleValue rhs = SPHANDLE(0);
           uint32_t index;

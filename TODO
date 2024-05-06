@@ -106,7 +106,7 @@
       inlined code...
       - seems to be on navier-stokes!
 
-  - IC cleanup
+  - (x) IC cleanup
     - remove shadow-stack use of CacheIRReader
     - remove phantom reads of weval-inserted globals; make them
       specialization state only

@@ -3552,7 +3552,9 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 #define NEXT_IC() icEntry++
 
 #define INVOKE_IC(kind)                                                 \
-  frame->interpreterPC() = pc;                                          \
+  if (!Specialized) {                                                   \
+    frame->interpreterPC() = pc;                                        \
+  }                                                                     \
   SYNCSP();                                                             \
   CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret, sp, \
           ic_arg0, ic_arg1, ic_arg2);                                   \

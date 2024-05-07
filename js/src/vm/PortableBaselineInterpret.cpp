@@ -464,14 +464,17 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                                ICCtx& ctx);
 
 #ifdef ENABLE_JS_PBL_WEVAL
+#  define DEFINE_SP_IN_IC() \
+    StackVal* sp = reinterpret_cast<StackVal*>(weval_read_global0());
 #  define CALL_IC(jitcode, ctx, stubvalue, result, spvalue, arg0, arg1, arg2) \
     do {                                                                      \
-      ctx.sp = spvalue;                                                       \
+      weval_write_global0(reinterpret_cast<uint64_t>(spvalue));               \
       ctx.stub = stubvalue;                                                   \
       ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);                \
       result = func(arg0, arg1, arg2, ctx);                                   \
     } while (0)
 #else
+#  define DEFINE_SP_IN_IC() StackVal*& sp = ctx.sp;
 #  define CALL_IC(jitcode, ctx, stubvalue, result, spvalue, arg0, arg1, arg2) \
     do {                                                                      \
       ctx.sp = spvalue;                                                       \
@@ -513,7 +516,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                         ICCtx& ctx) {
   ICStub* stub = ctx.stub;
   ICCacheIRStub* cstub = stub->toCacheIRStub();
-  StackVal*& sp = ctx.sp;
 
   const CacheIRStubInfo* stubInfo;
   const uint8_t* code;
@@ -1571,6 +1573,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         ValOperandId resultId = cacheIRReader.valOperandId();
         BOUNDSCHECK(resultId);
         uint8_t slotIndex = cacheIRReader.readByte();
+        DEFINE_SP_IN_IC();
         Value val = sp[slotIndex].asValue();
         TRACE_PRINTF(" -> slot %d: val %" PRIx64 "\n", int(slotIndex),
                      val.asRawBits());
@@ -1584,6 +1587,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         Int32OperandId argcId = cacheIRReader.int32OperandId();
         uint8_t slotIndex = cacheIRReader.readByte();
         int32_t argc = int32_t(READ_REG(argcId.id()));
+        DEFINE_SP_IN_IC();
         Value val = sp[slotIndex + argc].asValue();
         WRITE_REG(resultId.id(), val.asRawBits());
         DISPATCH_CACHEOP();
@@ -1642,6 +1646,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
         Value id = Value::fromRawBits(READ_REG(idId.id()));
         Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        DEFINE_SP_IN_IC();
         {
           PUSH_IC_FRAME();
           ReservedRooted<JSObject*> obj0(&ctx.state.obj0, obj);
@@ -1987,6 +1992,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
           FAIL_IC();
         }
 
+        DEFINE_SP_IN_IC();
+
         uint32_t extra = 1 + flags.isConstructing() + isNative;
         uint32_t totalArgs = argc + extra;
         StackVal* origArgs = sp;
@@ -2182,13 +2189,16 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
 
         WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str));
         if (str->isRope()) {
-          PUSH_IC_FRAME();
-          JSLinearString* result = LinearizeForCharAccess(cx, str);
-          if (!result) {
-            ctx.error = PBIResult::Error;
-            return IC_ERROR_SENTINEL();
+          DEFINE_SP_IN_IC();
+          {
+            PUSH_IC_FRAME();
+            JSLinearString* result = LinearizeForCharAccess(cx, str);
+            if (!result) {
+              ctx.error = PBIResult::Error;
+              return IC_ERROR_SENTINEL();
+            }
+            WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(result));
           }
-          WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(result));
         }
         PREDICT_NEXT(LoadStringCharResult);
         DISPATCH_CACHEOP();
@@ -2210,6 +2220,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             FAIL_IC();
           }
         } else {
+          DEFINE_SP_IN_IC();
+
           char16_t c;
           // Guaranteed to be always work because this CacheIR op is
           // always preceded by LinearizeForCharAccess.
@@ -2631,6 +2643,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         JSOp op = cacheIRReader.jsop();
         StringOperandId lhsId = cacheIRReader.stringOperandId();
         StringOperandId rhsId = cacheIRReader.stringOperandId();
+        DEFINE_SP_IN_IC();
         {
           PUSH_IC_FRAME();
           ReservedRooted<JSString*> lhs(
@@ -3120,11 +3133,12 @@ next_ic:
 
 static MOZ_NEVER_INLINE uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
                                             uint64_t arg2, ICCtx& ctx) {
+  DEFINE_SP_IN_IC();
   ICStub* stub = ctx.stub->maybeNext();
   ctx.stub = stub;
   MOZ_ASSERT(stub);
   uint64_t result;
-  CALL_IC(stub->rawJitCode(), ctx, stub, result, ctx.sp, arg0, arg1, arg2);
+  CALL_IC(stub->rawJitCode(), ctx, stub, result, sp, arg0, arg1, arg2);
   return result;
 }
 
@@ -3140,7 +3154,7 @@ static MOZ_NEVER_INLINE uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
     uint64_t retValue = 0;                                       \
     ICStub* stub = ctx.stub;                                     \
     ICFallbackStub* fallback = stub->toFallbackStub();           \
-    StackVal*& sp = ctx.sp;                                      \
+    DEFINE_SP_IN_IC();                                           \
     fallback_body;                                               \
     retValue = ctx.state.res.asRawBits();                        \
     ctx.state.res = UndefinedValue();                            \

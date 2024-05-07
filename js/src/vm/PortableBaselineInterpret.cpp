@@ -4003,6 +4003,7 @@ PBIResult PortableBaselineInterpret(
         Value v = VIRTSP(0).asValue();
         if (v.isBoolean()) {
           VIRTSPWRITE(0, StackVal(BooleanValue(!v.toBoolean())));
+          NEXT_IC();
         } else if (HybridICs) {
           SYNCSP();
           VIRTSPWRITE(0, StackVal(BooleanValue(!ToBoolean(SPHANDLE(0)))));

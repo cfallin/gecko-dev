@@ -417,7 +417,7 @@ class VMFrame {
   (void)sp;                         /* avoid unused-variable warnings */
 
 #define PUSH_IC_FRAME()         \
-  ICCtx& ctx = CTX_IN_IC();     \
+  DEFINE_CTX_IN_IC();           \
   ctx.error = PBIResult::Error; \
   PUSH_EXIT_FRAME_OR_RET(IC_ERROR_SENTINEL())
 #define PUSH_FALLBACK_IC_FRAME() \
@@ -473,6 +473,7 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
 #  define DEFINE_STUB_IN_IC()
 #  define DEFINE_SP_IN_IC() \
     StackVal* sp = reinterpret_cast<StackVal*>(weval_read_global0());
+#  define DEFINE_CTX_IN_IC() ICCtx& ctx = CTX_IN_IC();
 #  define CTX_IN_IC() (*reinterpret_cast<ICCtx*>(weval_read_global1()))
 #  define CALL_IC(jitcode, ctx, stubvalue, result, spvalue, arg0, arg1, arg2) \
     do {                                                                      \
@@ -487,12 +488,12 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
 typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                                ICCtx& ctx);
   
-#define IC_DECL_FOURTH_ARG ICStub* stub
-#define IC_PASS_FOURTH_ARG stub
+#define IC_DECL_FOURTH_ARG ICCtx& ctx
+#define IC_PASS_FOURTH_ARG ctx
 
-#  define DEFINE_CTX_AND_STUB_IN_IC() \
-  ICStub* stub = ctx.stub;
+#  define DEFINE_STUB_IN_IC() ICStub* stub = ctx.stub;
 #  define DEFINE_SP_IN_IC() StackVal*& sp = ctx.sp;
+#  define DEFINE_CTX_IN_IC()
 #  define CTX_IN_IC() ctx
 #  define CALL_IC(jitcode, ctx, stubvalue, result, spvalue, arg0, arg1, arg2) \
     do {                                                                      \
@@ -500,7 +501,7 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
       ctx.stub = stubvalue;                                                   \
       if (ctx.stub->isFallback()) {                                           \
         ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);              \
-        result = func(arg0, arg1, arg2, ctx)                                  \
+        result = func(arg0, arg1, arg2, ctx);                                 \
       } else {                                                                \
         result = ICInterpretOps<false>(arg0, arg1, arg2, ctx);                \
       }                                                                       \
@@ -3172,7 +3173,7 @@ static MOZ_NEVER_INLINE uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
       uint64_t arg0, uint64_t arg1, uint64_t arg2, IC_DECL_FOURTH_ARG) { \
     DEFINE_STUB_IN_IC();                                                 \
     DEFINE_SP_IN_IC();                                                   \
-    ICCtx& ctx = CTX_IN_IC();                                            \
+    DEFINE_CTX_IN_IC(); \
     uint64_t retValue = 0;                                               \
     ICFallbackStub* fallback = stub->toFallbackStub();                   \
     fallback_body;                                                       \

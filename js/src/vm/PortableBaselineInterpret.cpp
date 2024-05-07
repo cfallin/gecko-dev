@@ -3676,6 +3676,14 @@ PBIResult PortableBaselineInterpret(
   auto* icEntries = frame->icScript()->icEntries();
   auto* icEntry = icEntries;
 
+#ifndef ENABLE_JS_PBL_WEVAL
+  bool argsObjAliasesFormals = script->argsObjAliasesFormals();
+#else
+  bool argsObjAliasesFormals = Specialized
+                                   ? (weval_read_specialization_global(0) != 0)
+                                   : script->argsObjAliasesFormals();
+#endif
+
   if (IsRestart) {
     ic_result = restartCode;
     TRACE_PRINTF(
@@ -5547,6 +5555,7 @@ PBIResult PortableBaselineInterpret(
             // 5. Push fake return address, set script, push baseline frame.
             PUSHNATIVE(StackValNative(nullptr));
             script.set(calleeScript);
+            argsObjAliasesFormals = script->argsObjAliasesFormals();
             BaselineFrame* newFrame =
                 ctx.stack.pushFrame(sp, ctx.frameMgr.cxForLocalUseOnly(),
                                     /* envChain = */ func->environment());
@@ -6095,6 +6104,7 @@ PBIResult PortableBaselineInterpret(
           icEntry = frame->interpreterICEntry();
           pc = frame->interpreterPC();
           script.set(frame->script());
+          argsObjAliasesFormals = script->argsObjAliasesFormals();
           entryPC = script->code();
           isd = script->immutableScriptData();
 
@@ -6311,7 +6321,7 @@ PBIResult PortableBaselineInterpret(
 
       CASE(GetArg) {
         unsigned i = GET_ARGNO(pc);
-        if (script->argsObjAliasesFormals()) {
+        if (argsObjAliasesFormals) {
           VIRTPUSH(StackVal(frame->argsObj().arg(i)));
         } else {
           VIRTPUSH(StackVal(frame->unaliasedFormal(i)));
@@ -6435,7 +6445,7 @@ PBIResult PortableBaselineInterpret(
 
       CASE(SetArg) {
         unsigned i = GET_ARGNO(pc);
-        if (script->argsObjAliasesFormals()) {
+        if (argsObjAliasesFormals) {
           frame->argsObj().setArg(i, VIRTSP(0).asValue());
         } else {
           frame->unaliasedFormal(i) = VIRTSP(0).asValue();
@@ -6827,6 +6837,7 @@ unwind:
   icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
   script.set(frame->script());
+  argsObjAliasesFormals = script->argsObjAliasesFormals();
   DISPATCH();
 unwind_error:
   TRACE_PRINTF("unwind_error: fp = %p entryFrame = %p\n", ctx.stack.fp,
@@ -6850,6 +6861,7 @@ unwind_error:
   icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
   script.set(frame->script());
+  argsObjAliasesFormals = script->argsObjAliasesFormals();
   goto error;
 unwind_ret:
   TRACE_PRINTF("unwind_ret: fp = %p entryFrame = %p\n", ctx.stack.fp,
@@ -6874,6 +6886,7 @@ unwind_ret:
   icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
   script.set(frame->script());
+  argsObjAliasesFormals = script->argsObjAliasesFormals();
   from_unwind = true;
   goto do_return;
 
@@ -7042,6 +7055,7 @@ void EnqueueScriptSpecialization(JSScript* script) {
   Weval& weval = script->weval();
   if (!weval.req) {
     using weval::Runtime;
+    using weval::Specialize;
     using weval::SpecializeMemory;
 
     jsbytecode* pc = script->code();
@@ -7051,10 +7065,13 @@ void EnqueueScriptSpecialization(JSScript* script) {
 
     weval.req = weval::weval(
         reinterpret_cast<PBIFunc*>(&weval.func),
-        &PortableBaselineInterpret<true, false, kHybridICsCompiled>, WEVAL_JSOP_ID,
-        /* num_globals = */ 0, Runtime<JSContext*>(), Runtime<State&>(),
-        Runtime<Stack&>(), Runtime<StackVal*>(), Runtime<JSObject*>(),
-        Runtime<Value*>(), SpecializeMemory<jsbytecode*>(pc, pc_len),
+        &PortableBaselineInterpret<true, false, kHybridICsCompiled>,
+        WEVAL_JSOP_ID,
+        /* num_globals = */ 1,
+        Specialize<uint64_t>(script->argsObjAliasesFormals() ? 1 : 0),
+        Runtime<JSContext*>(), Runtime<State&>(), Runtime<Stack&>(),
+        Runtime<StackVal*>(), Runtime<JSObject*>(), Runtime<Value*>(),
+        SpecializeMemory<jsbytecode*>(pc, pc_len),
         SpecializeMemory<ImmutableScriptData*>(isd, isd_len),
         Runtime<jsbytecode*>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),
         Runtime<PBIResult>());

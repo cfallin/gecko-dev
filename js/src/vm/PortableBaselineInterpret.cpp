@@ -88,9 +88,11 @@ using namespace js::jit;
 // Whether we are using the "hybrid" strategy for ICs (see the [SMDOC]
 // in PortableBaselineInterpret.h for more). This is currently a
 // constant, but may become configurable in the future.
-static const bool kHybridICsInterp = false;
 #ifdef ENABLE_JS_PBL_WEVAL
+static const bool kHybridICsInterp = false;
 static const bool kHybridICsCompiled = false;
+#else
+static const bool kHybridICsInterp = true;
 #endif
 
 /*
@@ -415,6 +417,7 @@ class VMFrame {
   (void)sp;                         /* avoid unused-variable warnings */
 
 #define PUSH_IC_FRAME()         \
+  ICCtx& ctx = CTX_IN_IC();     \
   ctx.error = PBIResult::Error; \
   PUSH_EXIT_FRAME_OR_RET(IC_ERROR_SENTINEL())
 #define PUSH_FALLBACK_IC_FRAME() \
@@ -459,29 +462,45 @@ struct ICCtx {
 
 #define IC_ERROR_SENTINEL() (JS::MagicValueUint32(1000).asRawBits())
 
+#ifdef ENABLE_JS_PBL_WEVAL
+
 // Universal signature for an IC stub function.
 typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
-                               ICCtx& ctx);
+                               ICStub* stub);
 
-#ifdef ENABLE_JS_PBL_WEVAL
+#define IC_DECL_FOURTH_ARG ICStub* stub
+#define IC_PASS_FOURTH_ARG stub
+#  define DEFINE_STUB_IN_IC()
 #  define DEFINE_SP_IN_IC() \
     StackVal* sp = reinterpret_cast<StackVal*>(weval_read_global0());
+#  define CTX_IN_IC() (*reinterpret_cast<ICCtx*>(weval_read_global1()))
 #  define CALL_IC(jitcode, ctx, stubvalue, result, spvalue, arg0, arg1, arg2) \
     do {                                                                      \
       weval_write_global0(reinterpret_cast<uint64_t>(spvalue));               \
-      ctx.stub = stubvalue;                                                   \
+      weval_write_global1(reinterpret_cast<uint64_t>(&ctx));                  \
       ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);                \
-      result = func(arg0, arg1, arg2, ctx);                                   \
+      result = func(arg0, arg1, arg2, stubvalue);                             \
     } while (0)
 #else
+
+// Universal signature for an IC stub function.
+typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
+                               ICCtx& ctx);
+  
+#define IC_DECL_FOURTH_ARG ICStub* stub
+#define IC_PASS_FOURTH_ARG stub
+
+#  define DEFINE_CTX_AND_STUB_IN_IC() \
+  ICStub* stub = ctx.stub;
 #  define DEFINE_SP_IN_IC() StackVal*& sp = ctx.sp;
+#  define CTX_IN_IC() ctx
 #  define CALL_IC(jitcode, ctx, stubvalue, result, spvalue, arg0, arg1, arg2) \
     do {                                                                      \
       ctx.sp = spvalue;                                                       \
       ctx.stub = stubvalue;                                                   \
       if (ctx.stub->isFallback()) {                                           \
         ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);              \
-        result = func(arg0, arg1, arg2, ctx);                                 \
+        result = func(arg0, arg1, arg2, ctx)                                  \
       } else {                                                                \
         result = ICInterpretOps<false>(arg0, arg1, arg2, ctx);                \
       }                                                                       \
@@ -508,13 +527,14 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
 #endif
 
 static uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
-                           uint64_t arg2, ICCtx& ctx);
+                           uint64_t arg2, IC_DECL_FOURTH_ARG);
 
 // Interpreter for CacheIR.
 template <bool Specialized>
 uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
-                        ICCtx& ctx) {
-  ICStub* stub = ctx.stub;
+                        IC_DECL_FOURTH_ARG) {
+  DEFINE_STUB_IN_IC();
+
   ICCacheIRStub* cstub = stub->toCacheIRStub();
 
   const CacheIRStubInfo* stubInfo;
@@ -580,8 +600,9 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
   };
   (void)addresses;
 
-#define CACHEOP_TRACE(name) \
-  TRACE_PRINTF("cacheop (frame %p stub %p): " #name "\n", ctx.frame, cstub);
+#define CACHEOP_TRACE(name)                                                  \
+  TRACE_PRINTF("cacheop (frame %p stub %p): " #name "\n", CTX_IN_IC().frame, \
+               cstub);
 
 #define FAIL_IC() goto next_ic;
 
@@ -609,12 +630,12 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
 #ifdef ENABLE_JS_PBL_WEVAL
 
 #  define READ_REG(reg) \
-    (Specialized ? weval_read_reg((reg)) : ctx.icregs.icVals[(reg)])
-#  define WRITE_REG(reg, value)           \
-    if (Specialized) {                    \
-      weval_write_reg((reg), (value));    \
-    } else {                              \
-      ctx.icregs.icVals[(reg)] = (value); \
+    (Specialized ? weval_read_reg((reg)) : CTX_IN_IC().icregs.icVals[(reg)])
+#  define WRITE_REG(reg, value)                   \
+    if (Specialized) {                            \
+      weval_write_reg((reg), (value));            \
+    } else {                                      \
+      CTX_IN_IC().icregs.icVals[(reg)] = (value); \
     }
 
 #  define WEVAL_UPDATE_IC_CTX()                                         \
@@ -625,12 +646,16 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
 
 #else  // ENABLE_JS_PBL_WEVAL
 
-#  define READ_REG(reg) ctx.icregs.icVals[(reg)]
-#  define WRITE_REG(reg, value) ctx.icregs.icVals[(reg)] = (value)
+#  define READ_REG(reg) CTX_IN_IC().icregs.icVals[(reg)]
+#  define WRITE_REG(reg, value) CTX_IN_IC().icregs.icVals[(reg)] = (value)
 
 #  define WEVAL_UPDATE_IC_CTX() ;
 
 #endif  // !ENABLE_JS_PBL_WEVAL
+
+#define IC_RETURN_ERROR(e) \
+  CTX_IN_IC().error = (e); \
+  return IC_ERROR_SENTINEL();
 
   uint64_t retValue = 0;
   CacheOp cacheop;
@@ -906,7 +931,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
 
       CACHEOP_CASE(GuardFuse) {
         RealmFuses::FuseIndex fuseIndex = cacheIRReader.realmFuseIndex();
-        if (!ctx.frameMgr.cxForLocalUseOnly()
+        if (!CTX_IN_IC()
+                 .frameMgr.cxForLocalUseOnly()
                  ->realm()
                  ->realmFuses.getFuseByIndex(fuseIndex)
                  ->intact()) {
@@ -979,7 +1005,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             }
             break;
           case GuardClassKind::WindowProxy:
-            if (object->getClass() != ctx.frameMgr.cxForLocalUseOnly()
+            if (object->getClass() != CTX_IN_IC()
+                                          .frameMgr.cxForLocalUseOnly()
                                           ->runtime()
                                           ->maybeWindowProxyClass()) {
               FAIL_IC();
@@ -1264,8 +1291,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
           MOZ_ASSERT(index <= INT32_MAX);
           result = index;
         } else {
-          if (!GetInt32FromStringPure(ctx.frameMgr.cxForLocalUseOnly(), str,
-                                      &result)) {
+          if (!GetInt32FromStringPure(CTX_IN_IC().frameMgr.cxForLocalUseOnly(),
+                                      str, &result)) {
             FAIL_IC();
           }
         }
@@ -1286,7 +1313,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
           result = Int32Value(index);
         } else {
           double value;
-          if (!StringToNumberPure(ctx.frameMgr.cxForLocalUseOnly(), str,
+          if (!StringToNumberPure(CTX_IN_IC().frameMgr.cxForLocalUseOnly(), str,
                                   &value)) {
             FAIL_IC();
           }
@@ -1314,8 +1341,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         jsid id = jsid::fromRawBits(stubInfo->getStubRawWord(cstub, idOffset));
         GetterSetter* getterSetter = reinterpret_cast<GetterSetter*>(
             stubInfo->getStubRawWord(cstub, getterSetterOffset));
-        if (!ObjectHasGetterSetterPure(ctx.frameMgr.cxForLocalUseOnly(), obj,
-                                       id, getterSetter)) {
+        if (!ObjectHasGetterSetterPure(CTX_IN_IC().frameMgr.cxForLocalUseOnly(),
+                                       obj, id, getterSetter)) {
           FAIL_IC();
         }
         DISPATCH_CACHEOP();
@@ -1613,7 +1640,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         }
         Value result;
         if (!GetNativeDataPropertyPureWithCacheLookup(
-                ctx.frameMgr.cxForLocalUseOnly(), obj, name, nullptr,
+                CTX_IN_IC().frameMgr.cxForLocalUseOnly(), obj, name, nullptr,
                 &result)) {
           FAIL_IC();
         }
@@ -1630,8 +1657,9 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
           FAIL_IC();
         }
         Value values[2] = {id};
-        if (!GetNativeDataPropertyByValuePure(ctx.frameMgr.cxForLocalUseOnly(),
-                                              obj, nullptr, values)) {
+        if (!GetNativeDataPropertyByValuePure(
+                CTX_IN_IC().frameMgr.cxForLocalUseOnly(), obj, nullptr,
+                values)) {
           FAIL_IC();
         }
         retValue = values[1].asRawBits();
@@ -1649,12 +1677,11 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         DEFINE_SP_IN_IC();
         {
           PUSH_IC_FRAME();
-          ReservedRooted<JSObject*> obj0(&ctx.state.obj0, obj);
-          ReservedRooted<Value> value0(&ctx.state.value0, id);
-          ReservedRooted<Value> value1(&ctx.state.value1, rhs);
+          ReservedRooted<JSObject*> obj0(&CTX_IN_IC().state.obj0, obj);
+          ReservedRooted<Value> value0(&CTX_IN_IC().state.value0, id);
+          ReservedRooted<Value> value1(&CTX_IN_IC().state.value1, rhs);
           if (!SetElementMegamorphic<false>(cx, obj0, value0, value1, strict)) {
-            ctx.error = PBIResult::Error;
-            return IC_ERROR_SENTINEL();
+            IC_RETURN_ERROR(PBIResult::Error);
           }
         }
         DISPATCH_CACHEOP();
@@ -1747,8 +1774,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         // only fallible operation here. Note that growSlotsPure is fallible but
         // does not GC. Otherwise this is the same as AddAndStoreDynamicSlot
         // above.
-        if (!NativeObject::growSlotsPure(ctx.frameMgr.cxForLocalUseOnly(), nobj,
-                                         numNewSlots)) {
+        if (!NativeObject::growSlotsPure(
+                CTX_IN_IC().frameMgr.cxForLocalUseOnly(), nobj, numNewSlots)) {
           FAIL_IC();
         }
         obj->setShape(newShape);
@@ -1799,7 +1826,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         } else {
           if (index >= nobj->getDenseCapacity()) {
             if (!NativeObject::addDenseElementPure(
-                    ctx.frameMgr.cxForLocalUseOnly(), nobj)) {
+                    CTX_IN_IC().frameMgr.cxForLocalUseOnly(), nobj)) {
               FAIL_IC();
             }
           }
@@ -1835,7 +1862,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         }
         if (initLength >= aobj->getDenseCapacity()) {
           if (!NativeObject::addDenseElementPure(
-                  ctx.frameMgr.cxForLocalUseOnly(), aobj)) {
+                  CTX_IN_IC().frameMgr.cxForLocalUseOnly(), aobj)) {
             FAIL_IC();
           }
         }
@@ -1922,8 +1949,9 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
           FakeRooted<Value> value0(nullptr, v);
           ObjectOpResult result;
           MOZ_ASSERT(elementType == obj0->type());
-          MOZ_ALWAYS_TRUE(SetTypedArrayElement(ctx.frameMgr.cxForLocalUseOnly(),
-                                               obj0, index, value0, result));
+          MOZ_ALWAYS_TRUE(
+              SetTypedArrayElement(CTX_IN_IC().frameMgr.cxForLocalUseOnly(),
+                                   obj0, index, value0, result));
           MOZ_ALWAYS_TRUE(result.ok());
         }
         DISPATCH_CACHEOP();
@@ -1935,7 +1963,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         BOUNDSCHECK(resultId);
         int32_t input = int32_t(READ_REG(inputId.id()));
         JSLinearString* str =
-            Int32ToStringPure(ctx.frameMgr.cxForLocalUseOnly(), input);
+            Int32ToStringPure(CTX_IN_IC().frameMgr.cxForLocalUseOnly(), input);
         if (str) {
           WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str));
         } else {
@@ -2001,10 +2029,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         {
           PUSH_IC_FRAME();
 
-          if (!ctx.stack.check(sp, sizeof(StackVal) * (totalArgs + 6))) {
-            ReportOverRecursed(ctx.frameMgr.cxForLocalUseOnly());
-            ctx.error = PBIResult::Error;
-            return IC_ERROR_SENTINEL();
+          if (!CTX_IN_IC().stack.check(sp,
+                                       sizeof(StackVal) * (totalArgs + 6))) {
+            ReportOverRecursed(CTX_IN_IC().frameMgr.cxForLocalUseOnly());
+            IC_RETURN_ERROR(PBIResult::Error);
           }
 
           // This will not be an Exit frame but a BaselineStub frame, so
@@ -2029,13 +2057,13 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
 
             // We *also* need an exit frame (the native baseline
             // execution would invoke a trampoline here).
-            StackVal* trampolinePrevFP = ctx.stack.fp;
+            StackVal* trampolinePrevFP = CTX_IN_IC().stack.fp;
             PUSHNATIVE(StackValNative(nullptr));  // fake return address.
-            PUSHNATIVE(StackValNative(ctx.stack.fp));
-            ctx.stack.fp = sp;
+            PUSHNATIVE(StackValNative(CTX_IN_IC().stack.fp));
+            CTX_IN_IC().stack.fp = sp;
             PUSHNATIVE(StackValNative(uint32_t(ExitFrameType::CallNative)));
             cx.getCx()->activation()->asJit()->setJSExitFP(
-                reinterpret_cast<uint8_t*>(ctx.stack.fp));
+                reinterpret_cast<uint8_t*>(CTX_IN_IC().stack.fp));
             cx.getCx()->portableBaselineStack().top =
                 reinterpret_cast<void*>(sp);
 
@@ -2044,12 +2072,11 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                                   : callee->native();
             bool success = native(cx, argc, args);
 
-            ctx.stack.fp = trampolinePrevFP;
+            CTX_IN_IC().stack.fp = trampolinePrevFP;
             POPNNATIVE(4);
 
             if (!success) {
-              ctx.error = PBIResult::Error;
-              return IC_ERROR_SENTINEL();
+              IC_RETURN_ERROR(PBIResult::Error);
             }
             retValue = args[0].asRawBits();
           } else {
@@ -2061,14 +2088,14 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             ImmutableScriptData* isd = script->immutableScriptData();
             PBIResult result;
             Value ret;
-            INVOKE_PBI(result, script,
-                       (PortableBaselineInterpret<false, false, kHybridICsInterp>),
-                       cx, ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-                       reinterpret_cast<Value*>(&ret), pc, isd, nullptr,
-                       nullptr, nullptr, PBIResult::Ok);
+            INVOKE_PBI(
+                result, script,
+                (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
+                CTX_IN_IC().state, CTX_IN_IC().stack, sp,
+                /* envChain = */ nullptr, reinterpret_cast<Value*>(&ret), pc,
+                isd, nullptr, nullptr, nullptr, PBIResult::Ok);
             if (result != PBIResult::Ok) {
-              ctx.error = result;
-              return IC_ERROR_SENTINEL();
+              IC_RETURN_ERROR(result);
             }
             retValue = ret.asRawBits();
           }
@@ -2194,8 +2221,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             PUSH_IC_FRAME();
             JSLinearString* result = LinearizeForCharAccess(cx, str);
             if (!result) {
-              ctx.error = PBIResult::Error;
-              return IC_ERROR_SENTINEL();
+              IC_RETURN_ERROR(PBIResult::Error);
             }
             WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(result));
           }
@@ -2215,7 +2241,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         if (index < 0 || size_t(index) >= str->length()) {
           if (handleOOB) {
             // Return an empty string.
-            result = ctx.frameMgr.cxForLocalUseOnly()->names().empty_;
+            result = CTX_IN_IC().frameMgr.cxForLocalUseOnly()->names().empty_;
           } else {
             FAIL_IC();
           }
@@ -2227,15 +2253,14 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
           // always preceded by LinearizeForCharAccess.
           MOZ_ALWAYS_TRUE(str->getChar(/* cx = */ nullptr, index, &c));
           StaticStrings& sstr =
-            ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
+              CTX_IN_IC().frameMgr.cxForLocalUseOnly()->staticStrings();
           if (sstr.hasUnit(c)) {
             result = sstr.getUnit(c);
           } else {
             PUSH_IC_FRAME();
             result = StringFromCharCode(cx, c);
             if (!result) {
-              ctx.error = PBIResult::Error;
-              return IC_ERROR_SENTINEL();
+              IC_RETURN_ERROR(PBIResult::Error);
             }
           }
         }
@@ -2628,8 +2653,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             nullptr, reinterpret_cast<JSString*>(READ_REG(lhsId.id())));
         FakeRooted<JSString*> rhs(
             nullptr, reinterpret_cast<JSString*>(READ_REG(rhsId.id())));
-        JSString* result =
-            ConcatStrings<NoGC>(ctx.frameMgr.cxForLocalUseOnly(), lhs, rhs);
+        JSString* result = ConcatStrings<NoGC>(
+            CTX_IN_IC().frameMgr.cxForLocalUseOnly(), lhs, rhs);
         if (result) {
           retValue = StringValue(result).asRawBits();
         } else {
@@ -2647,10 +2672,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         {
           PUSH_IC_FRAME();
           ReservedRooted<JSString*> lhs(
-              &ctx.state.str0,
+              &CTX_IN_IC().state.str0,
               reinterpret_cast<JSString*>(READ_REG(lhsId.id())));
           ReservedRooted<JSString*> rhs(
-              &ctx.state.str1,
+              &CTX_IN_IC().state.str1,
               reinterpret_cast<JSString*>(READ_REG(rhsId.id())));
           bool result;
           if (lhs == rhs) {
@@ -2671,8 +2696,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                   break;
                 }
                 if (!StringsEqual<EqualityKind::Equal>(cx, lhs, rhs, &result)) {
-                  ctx.error = PBIResult::Error;
-                  return IC_ERROR_SENTINEL();
+                  IC_RETURN_ERROR(PBIResult::Error);
                 }
                 break;
               case JSOp::Ne:
@@ -2687,36 +2711,31 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                 }
                 if (!StringsEqual<EqualityKind::NotEqual>(cx, lhs, rhs,
                                                           &result)) {
-                  ctx.error = PBIResult::Error;
-                  return IC_ERROR_SENTINEL();
+                  IC_RETURN_ERROR(PBIResult::Error);
                 }
                 break;
               case JSOp::Lt:
                 if (!StringsCompare<ComparisonKind::LessThan>(cx, lhs, rhs,
                                                               &result)) {
-                  ctx.error = PBIResult::Error;
-                  return IC_ERROR_SENTINEL();
+                  IC_RETURN_ERROR(PBIResult::Error);
                 }
                 break;
               case JSOp::Ge:
                 if (!StringsCompare<ComparisonKind::GreaterThanOrEqual>(
                         cx, lhs, rhs, &result)) {
-                  ctx.error = PBIResult::Error;
-                  return IC_ERROR_SENTINEL();
+                  IC_RETURN_ERROR(PBIResult::Error);
                 }
                 break;
               case JSOp::Le:
                 if (!StringsCompare<ComparisonKind::GreaterThanOrEqual>(
                         cx, /* N.B. swapped order */ rhs, lhs, &result)) {
-                  ctx.error = PBIResult::Error;
-                  return IC_ERROR_SENTINEL();
+                  IC_RETURN_ERROR(PBIResult::Error);
                 }
                 break;
               case JSOp::Gt:
                 if (!StringsCompare<ComparisonKind::LessThan>(
                         cx, /* N.B. swapped order */ rhs, lhs, &result)) {
-                  ctx.error = PBIResult::Error;
-                  return IC_ERROR_SENTINEL();
+                  IC_RETURN_ERROR(PBIResult::Error);
                 }
                 break;
               default:
@@ -3128,17 +3147,17 @@ next_ic:
 #ifdef ENABLE_JS_PBL_WEVAL
   weval::pop_context();
 #endif
-  return CallNextIC(arg0, arg1, arg2, ctx);
+  return CallNextIC(arg0, arg1, arg2, IC_PASS_FOURTH_ARG);
 }
 
 static MOZ_NEVER_INLINE uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
-                                            uint64_t arg2, ICCtx& ctx) {
+                                            uint64_t arg2, IC_DECL_FOURTH_ARG) {
+  DEFINE_STUB_IN_IC();
   DEFINE_SP_IN_IC();
-  ICStub* stub = ctx.stub->maybeNext();
-  ctx.stub = stub;
+  stub = stub->maybeNext();
   MOZ_ASSERT(stub);
   uint64_t result;
-  CALL_IC(stub->rawJitCode(), ctx, stub, result, sp, arg0, arg1, arg2);
+  CALL_IC(stub->rawJitCode(), CTX_IN_IC(), stub, result, sp, arg0, arg1, arg2);
   return result;
 }
 
@@ -3148,26 +3167,26 @@ static MOZ_NEVER_INLINE uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
  * -----------------------------------------------
  */
 
-#define DEFINE_IC(kind, arity, fallback_body)                    \
-  static uint64_t MOZ_NEVER_INLINE IC##kind##Fallback(           \
-      uint64_t arg0, uint64_t arg1, uint64_t arg2, ICCtx& ctx) { \
-    uint64_t retValue = 0;                                       \
-    ICStub* stub = ctx.stub;                                     \
-    ICFallbackStub* fallback = stub->toFallbackStub();           \
-    DEFINE_SP_IN_IC();                                           \
-    fallback_body;                                               \
-    retValue = ctx.state.res.asRawBits();                        \
-    ctx.state.res = UndefinedValue();                            \
-    return retValue;                                             \
-  error:                                                         \
-    ctx.error = PBIResult::Error;                                \
-    return IC_ERROR_SENTINEL();                                  \
+#define DEFINE_IC(kind, arity, fallback_body)                            \
+  static uint64_t MOZ_NEVER_INLINE IC##kind##Fallback(                   \
+      uint64_t arg0, uint64_t arg1, uint64_t arg2, IC_DECL_FOURTH_ARG) { \
+    DEFINE_STUB_IN_IC();                                                 \
+    DEFINE_SP_IN_IC();                                                   \
+    ICCtx& ctx = CTX_IN_IC();                                            \
+    uint64_t retValue = 0;                                               \
+    ICFallbackStub* fallback = stub->toFallbackStub();                   \
+    fallback_body;                                                       \
+    retValue = ctx.state.res.asRawBits();                                \
+    ctx.state.res = UndefinedValue();                                    \
+    return retValue;                                                     \
+  error:                                                                 \
+    IC_RETURN_ERROR(PBIResult::Error);                                   \
   }
 
-#define DEFINE_IC_ALIAS(kind, target)                            \
-  static uint64_t MOZ_NEVER_INLINE IC##kind##Fallback(           \
-      uint64_t arg0, uint64_t arg1, uint64_t arg2, ICCtx& ctx) { \
-    return IC##target##Fallback(arg0, arg1, arg2, ctx);          \
+#define DEFINE_IC_ALIAS(kind, target)                                    \
+  static uint64_t MOZ_NEVER_INLINE IC##kind##Fallback(                   \
+      uint64_t arg0, uint64_t arg1, uint64_t arg2, IC_DECL_FOURTH_ARG) { \
+    return IC##target##Fallback(arg0, arg1, arg2, IC_PASS_FOURTH_ARG);   \
   }
 
 #define IC_LOAD_VAL(state_elem, index)                    \

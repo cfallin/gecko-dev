@@ -414,9 +414,12 @@ class VMFrame {
   StackVal* sp = cx.spBelowFrame(); /* shadow the definition */ \
   (void)sp;                         /* avoid unused-variable warnings */
 
-#define PUSH_IC_FRAME() PUSH_EXIT_FRAME_OR_RET(PACK_IC_ERROR(PBIResult::Error))
+#define PUSH_IC_FRAME()         \
+  ctx.error = PBIResult::Error; \
+  PUSH_EXIT_FRAME_OR_RET(IC_ERROR_SENTINEL())
 #define PUSH_FALLBACK_IC_FRAME() \
-  PUSH_EXIT_FRAME_OR_RET(PACK_IC_ERROR(PBIResult::Error))
+  ctx.error = PBIResult::Error;  \
+  PUSH_EXIT_FRAME_OR_RET(IC_ERROR_SENTINEL())
 #define PUSH_EXIT_FRAME()      \
   frame->interpreterPC() = pc; \
   SYNCSP();                    \
@@ -441,6 +444,7 @@ struct ICCtx {
   BaselineFrame* frame;
   StackVal* sp;
   ICStub* stub;
+  PBIResult error;
 
   ICCtx(JSContext* cx, BaselineFrame* frame_, State& state_, Stack& stack_)
       : state(state_),
@@ -449,14 +453,11 @@ struct ICCtx {
         icregs(),
         frame(frame_),
         sp(nullptr),
-        stub(nullptr) {}
+        stub(nullptr),
+        error(PBIResult::Ok) {}
 };
 
-#define PACK_IC_ERROR(pbiresult) \
-  (JS::MagicValueUint32(uint32_t((pbiresult)) + 1000).asRawBits())
-#define IS_IC_ERROR(bits) (Value::fromRawBits((bits)).isMagic())
-#define UNPACK_IC_ERROR(bits) \
-  (static_cast<PBIResult>(Value::fromRawBits((bits)).magicUint32() - 1000))
+#define IC_ERROR_SENTINEL() (JS::MagicValueUint32(1000).asRawBits())
 
 // Universal signature for an IC stub function.
 typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
@@ -1647,7 +1648,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
           ReservedRooted<Value> value0(&ctx.state.value0, id);
           ReservedRooted<Value> value1(&ctx.state.value1, rhs);
           if (!SetElementMegamorphic<false>(cx, obj0, value0, value1, strict)) {
-            return PACK_IC_ERROR(PBIResult::Error);
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
           }
         }
         DISPATCH_CACHEOP();
@@ -1994,7 +1996,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
 
           if (!ctx.stack.check(sp, sizeof(StackVal) * (totalArgs + 6))) {
             ReportOverRecursed(ctx.frameMgr.cxForLocalUseOnly());
-            return PACK_IC_ERROR(PBIResult::Error);
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
           }
 
           // This will not be an Exit frame but a BaselineStub frame, so
@@ -2038,7 +2041,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             POPNNATIVE(4);
 
             if (!success) {
-              return PACK_IC_ERROR(PBIResult::Error);
+              ctx.error = PBIResult::Error;
+              return IC_ERROR_SENTINEL();
             }
             retValue = args[0].asRawBits();
           } else {
@@ -2056,7 +2060,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                        reinterpret_cast<Value*>(&ret), pc, isd, nullptr,
                        nullptr, nullptr, PBIResult::Ok);
             if (result != PBIResult::Ok) {
-              return PACK_IC_ERROR(result);
+              ctx.error = result;
+              return IC_ERROR_SENTINEL();
             }
             retValue = ret.asRawBits();
           }
@@ -2180,7 +2185,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
           PUSH_IC_FRAME();
           JSLinearString* result = LinearizeForCharAccess(cx, str);
           if (!result) {
-            return PACK_IC_ERROR(PBIResult::Error);
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
           }
           WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(result));
         }
@@ -2216,7 +2222,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             PUSH_IC_FRAME();
             result = StringFromCharCode(cx, c);
             if (!result) {
-              return PACK_IC_ERROR(PBIResult::Error);
+              ctx.error = PBIResult::Error;
+              return IC_ERROR_SENTINEL();
             }
           }
         }
@@ -2651,7 +2658,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                   break;
                 }
                 if (!StringsEqual<EqualityKind::Equal>(cx, lhs, rhs, &result)) {
-                  return PACK_IC_ERROR(PBIResult::Error);
+                  ctx.error = PBIResult::Error;
+                  return IC_ERROR_SENTINEL();
                 }
                 break;
               case JSOp::Ne:
@@ -2666,31 +2674,36 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                 }
                 if (!StringsEqual<EqualityKind::NotEqual>(cx, lhs, rhs,
                                                           &result)) {
-                  return PACK_IC_ERROR(PBIResult::Error);
+                  ctx.error = PBIResult::Error;
+                  return IC_ERROR_SENTINEL();
                 }
                 break;
               case JSOp::Lt:
                 if (!StringsCompare<ComparisonKind::LessThan>(cx, lhs, rhs,
                                                               &result)) {
-                  return PACK_IC_ERROR(PBIResult::Error);
+                  ctx.error = PBIResult::Error;
+                  return IC_ERROR_SENTINEL();
                 }
                 break;
               case JSOp::Ge:
                 if (!StringsCompare<ComparisonKind::GreaterThanOrEqual>(
                         cx, lhs, rhs, &result)) {
-                  return PACK_IC_ERROR(PBIResult::Error);
+                  ctx.error = PBIResult::Error;
+                  return IC_ERROR_SENTINEL();
                 }
                 break;
               case JSOp::Le:
                 if (!StringsCompare<ComparisonKind::GreaterThanOrEqual>(
                         cx, /* N.B. swapped order */ rhs, lhs, &result)) {
-                  return PACK_IC_ERROR(PBIResult::Error);
+                  ctx.error = PBIResult::Error;
+                  return IC_ERROR_SENTINEL();
                 }
                 break;
               case JSOp::Gt:
                 if (!StringsCompare<ComparisonKind::LessThan>(
                         cx, /* N.B. swapped order */ rhs, lhs, &result)) {
-                  return PACK_IC_ERROR(PBIResult::Error);
+                  ctx.error = PBIResult::Error;
+                  return IC_ERROR_SENTINEL();
                 }
                 break;
               default:
@@ -3133,7 +3146,8 @@ static MOZ_NEVER_INLINE uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
     ctx.state.res = UndefinedValue();                            \
     return retValue;                                             \
   error:                                                         \
-    return PACK_IC_ERROR(PBIResult::Error);                      \
+    ctx.error = PBIResult::Error;                                \
+    return IC_ERROR_SENTINEL();                                  \
   }
 
 #define DEFINE_IC_ALIAS(kind, target)                            \
@@ -3542,9 +3556,9 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
   SYNCSP();                                                             \
   CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret, sp, \
           ic_arg0, ic_arg1, ic_arg2);                                   \
-  if (IS_IC_ERROR(ic_ret)) {                                            \
+  if (ic_ret == IC_ERROR_SENTINEL()) {                                  \
     WEVAL_POP_CONTEXT();                                                \
-    ic_result = UNPACK_IC_ERROR(ic_ret);                                \
+    ic_result = ctx.error;                                              \
     goto ic_fail;                                                       \
   }                                                                     \
   NEXT_IC();

@@ -374,15 +374,18 @@ class VMFrameManager {
   JSContext* cxForLocalUseOnly() const { return cx; }
 };
 
+struct ICCtx;
+
 class VMFrame {
   JSContext* cx;
   Stack& stack;
   StackVal* exitFP;
   void* prevSavedStack;
+  ICCtx& ctx;
 
  public:
-  VMFrame(VMFrameManager& mgr, Stack& stack_, StackVal* sp)
-      : cx(mgr.cx), stack(stack_) {
+  VMFrame(VMFrameManager& mgr, Stack& stack_, StackVal* sp, ICCtx& ctx_)
+      : cx(mgr.cx), stack(stack_), ctx(ctx_) {
     exitFP = stack.pushExitFrame(sp, mgr.frame);
     if (!exitFP) {
       return;
@@ -400,6 +403,9 @@ class VMFrame {
   ~VMFrame() {
     stack.popExitFrame(exitFP);
     cx->portableBaselineStack().top = prevSavedStack;
+#ifdef ENABLE_JS_PBL_WEVAL
+    weval_write_global1(reinterpret_cast<uint64_t>(&ctx));
+#endif
   }
 
   JSContext* getCx() const { return cx; }
@@ -409,7 +415,7 @@ class VMFrame {
 };
 
 #define PUSH_EXIT_FRAME_OR_RET(value)                           \
-  VMFrame cx(ctx.frameMgr, ctx.stack, sp);                      \
+  VMFrame cx(ctx.frameMgr, ctx.stack, sp, ctx);                 \
   if (!cx.success()) {                                          \
     return value;                                               \
   }                                                             \
@@ -478,7 +484,6 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
 #  define CALL_IC(jitcode, ctx, stubvalue, result, spvalue, arg0, arg1, arg2) \
     do {                                                                      \
       weval_write_global0(reinterpret_cast<uint64_t>(spvalue));               \
-      weval_write_global1(reinterpret_cast<uint64_t>(&ctx));                  \
       ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);                \
       result = func(arg0, arg1, arg2, stubvalue);                             \
     } while (0)
@@ -2101,6 +2106,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             retValue = ret.asRawBits();
           }
         }
+
+#ifndef ENABLE_JS_PBL_WEVAL
+        weval_write_global1(reinterpret_cast<uint64_t>(&ctx));
+#endif
 
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -3725,6 +3734,10 @@ PBIResult PortableBaselineInterpret(
   ICCtx ctx(cx_, frame, state, stack);
   auto* icEntries = frame->icScript()->icEntries();
   auto* icEntry = icEntries;
+
+#ifdef ENABLE_JS_PBL_WEVAL
+  weval_write_global1(reinterpret_cast<uint64_t>(&ctx));
+#endif
 
 #ifndef ENABLE_JS_PBL_WEVAL
   bool argsObjAliasesFormals = script->argsObjAliasesFormals();

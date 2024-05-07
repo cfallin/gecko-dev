@@ -3699,6 +3699,7 @@ PBIResult PortableBaselineInterpret(
                                    ? (weval_read_specialization_global(0) != 0)
                                    : script->argsObjAliasesFormals();
 #endif
+  Value* argv = frame->argv();
 
   if (IsRestart) {
     ic_result = restartCode;
@@ -5583,6 +5584,7 @@ PBIResult PortableBaselineInterpret(
             ctx.frame = frame;
             icEntries = frame->icScript()->icEntries();
             icEntry = frame->interpreterICEntry();
+            argv = frame->argv();
             // 6. Set up PC and SP for callee.
             sp = reinterpret_cast<StackVal*>(frame);
             pc = calleeScript->code();
@@ -6122,6 +6124,7 @@ PBIResult PortableBaselineInterpret(
           pc = frame->interpreterPC();
           script.set(frame->script());
           argsObjAliasesFormals = script->argsObjAliasesFormals();
+          argv = frame->argv();
           entryPC = script->code();
           isd = script->immutableScriptData();
 
@@ -6341,14 +6344,14 @@ PBIResult PortableBaselineInterpret(
         if (argsObjAliasesFormals) {
           VIRTPUSH(StackVal(frame->argsObj().arg(i)));
         } else {
-          VIRTPUSH(StackVal(frame->unaliasedFormal(i)));
+          VIRTPUSH(StackVal(argv[i]));
         }
         END_OP(GetArg);
       }
 
       CASE(GetFrameArg) {
         uint32_t i = GET_ARGNO(pc);
-        VIRTPUSH(StackVal(frame->unaliasedFormal(i, DONT_CHECK_ALIASING)));
+        VIRTPUSH(StackVal(argv[i]));
         END_OP(GetFrameArg);
       }
 
@@ -6465,7 +6468,7 @@ PBIResult PortableBaselineInterpret(
         if (argsObjAliasesFormals) {
           frame->argsObj().setArg(i, VIRTSP(0).asValue());
         } else {
-          frame->unaliasedFormal(i) = VIRTSP(0).asValue();
+          argv[i] = VIRTSP(0).asValue();
         }
         END_OP(SetArg);
       }
@@ -6727,11 +6730,13 @@ PBIResult PortableBaselineInterpret(
         END_OP(Unpick);
       }
       CASE(DebugCheckSelfHosted) {
-        HandleValue val = SPHANDLE(0);
-        {
-          PUSH_EXIT_FRAME();
-          if (!Debug_CheckSelfHosted(cx, val)) {
-            GOTO_ERROR();
+        if (!Specialized) {
+          HandleValue val = SPHANDLE(0);
+          {
+            PUSH_EXIT_FRAME();
+            if (!Debug_CheckSelfHosted(cx, val)) {
+              GOTO_ERROR();
+            }
           }
         }
         END_OP(DebugCheckSelfHosted);
@@ -6855,6 +6860,7 @@ unwind:
   pc = frame->interpreterPC();
   script.set(frame->script());
   argsObjAliasesFormals = script->argsObjAliasesFormals();
+  argv = frame->argv();
   DISPATCH();
 unwind_error:
   TRACE_PRINTF("unwind_error: fp = %p entryFrame = %p\n", ctx.stack.fp,
@@ -6879,6 +6885,7 @@ unwind_error:
   pc = frame->interpreterPC();
   script.set(frame->script());
   argsObjAliasesFormals = script->argsObjAliasesFormals();
+  argv = frame->argv();
   goto error;
 unwind_ret:
   TRACE_PRINTF("unwind_ret: fp = %p entryFrame = %p\n", ctx.stack.fp,
@@ -6904,6 +6911,7 @@ unwind_ret:
   pc = frame->interpreterPC();
   script.set(frame->script());
   argsObjAliasesFormals = script->argsObjAliasesFormals();
+  argv = frame->argv();
   from_unwind = true;
   goto do_return;
 

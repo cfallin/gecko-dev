@@ -210,20 +210,14 @@ uint64_t weval_read_specialization_global(uint32_t index)
  * The stack is tracked abstractly as part of block specialization
  * context, and has entries of the form:
  *
- * enum StackEntry {
- *     /// Some value pushed onto stack. Not actually stored until
- *     /// state is synced.
- *     Value { stackptr: Value, value: Value },
- *     /// Some value loaded from other memory and then pushed onto
- *     /// the stack (e.g., a local).
- *     OtherMem { stackptr: Value, ptr: Value },
+ * /// Some value pushed onto stack. Not actually stored until
+ * /// state is synced.
+ * struct StackEntry {
+ *     /// The address at which the value is stored.
+ *     stackptr: Value,
+ *     /// The value to store (and return from pops/stack-reads).
+ *     value: Value,
  * }
- *
- * When specialization reaches a merge-point, different stack states
- * will result in differently-specialized blocks; hence, we never have
- * to force-synchronize or merge state. This means that fastpaths can
- * keep value in registers *across opcodes*. We do have to be careful
- * not to exponentially explode state.
  */
 
 /* Push a value on the abstract stack; does not yet actually store

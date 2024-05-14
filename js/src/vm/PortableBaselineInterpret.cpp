@@ -2963,6 +2963,20 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(GuardTagNotEqual) {
+        ValOperandId lhsId = cacheIRReader.valOperandId();
+        ValOperandId rhsId = cacheIRReader.valOperandId();
+        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
+        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        if (lhs.asRawBits() == rhs.asRawBits()) {
+          FAIL_IC();
+        }
+        if (lhs.isNumber() && rhs.isNumber()) {
+          FAIL_IC();
+        }
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardNumberToIntPtrIndex)
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
@@ -2983,7 +2997,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
       CACHEOP_CASE_UNIMPL(StringToAtom)
       CACHEOP_CASE_UNIMPL(GuardIndexIsValidUpdateOrAdd)
       CACHEOP_CASE_UNIMPL(GuardIndexIsNotDenseElement)
-      CACHEOP_CASE_UNIMPL(GuardTagNotEqual)
       CACHEOP_CASE_UNIMPL(GuardXrayExpandoShapeAndDefaultProto)
       CACHEOP_CASE_UNIMPL(GuardXrayNoExpando)
       CACHEOP_CASE_UNIMPL(LoadScriptedProxyHandler)

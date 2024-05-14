@@ -440,6 +440,11 @@ struct ICCtx {
   Stack& stack;
   VMFrameManager frameMgr;
   ICRegs icregs;
+  JSObject* envChain;
+  ImmutableScriptData* isd;
+  Value* ret;
+  StackVal* entryFrame;
+  jsbytecode* entryPC;
 
   BaselineFrame* frame;
   StackVal* spbase;
@@ -3706,6 +3711,11 @@ PBIResult PortableBaselineInterpret(
   auto* icEntry = icEntries;
   auto* spbase = sp;
   ctx.spbase = spbase;
+  ctx.envChain = envChain;
+  ctx.isd = isd;
+  ctx.ret = ret;
+  ctx.entryFrame = entryFrame;
+  ctx.entryPC = entryPC;
 
 #ifndef ENABLE_JS_PBL_WEVAL
   bool argsObjAliasesFormals = script->argsObjAliasesFormals();
@@ -5611,7 +5621,9 @@ PBIResult PortableBaselineInterpret(
             ctx.spbase = spbase;
             pc = calleeScript->code();
             entryPC = pc;
+            ctx.entryPC = entryPC;
             isd = calleeScript->immutableScriptData();
+            ctx.isd = isd;
             // 7. Check callee stack space for max stack depth.
             if (!ctx.stack.check(sp,
                                  sizeof(StackVal) * calleeScript->nslots())) {
@@ -6152,7 +6164,9 @@ PBIResult PortableBaselineInterpret(
           argsObjAliasesFormals = script->argsObjAliasesFormals();
           argv = frame->argv();
           entryPC = script->code();
+          ctx.entryPC = entryPC;
           isd = script->immutableScriptData();
+          ctx.isd = isd;
 
           // Adjust caller's stack to complete the call op that PC still points
           // to in that frame (pop args, push return value).
@@ -6792,8 +6806,8 @@ restart:
   // This is a `goto` target so that we exit any on-stack exit frames
   // before restarting, to match previous behavior.
   return PortableBaselineInterpret<false, true, HybridICs>(
-      ctx.frameMgr.cxForLocalUseOnly(), state, stack, sp, envChain, ret, pc,
-      isd, entryPC, frame, entryFrame, restartCode);
+      ctx.frameMgr.cxForLocalUseOnly(), ctx.state, ctx.stack, sp, ctx.envChain,
+      ctx.ret, pc, ctx.isd, ctx.entryPC, frame, ctx.entryFrame, restartCode);
 
 error:
   TRACE_PRINTF("HandleException: frame %p\n", frame);

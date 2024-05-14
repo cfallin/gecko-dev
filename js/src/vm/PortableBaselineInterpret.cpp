@@ -3694,6 +3694,7 @@ PBIResult PortableBaselineInterpret(
 
 #ifndef ENABLE_JS_PBL_WEVAL
   bool argsObjAliasesFormals = script->argsObjAliasesFormals();
+  uint32_t nfixed = script->nfixed();
 #else
   bool argsObjAliasesFormals = Specialized
                                    ? (weval_read_specialization_global(0) != 0)
@@ -3727,8 +3728,10 @@ PBIResult PortableBaselineInterpret(
     return PBIResult::Error;
   }
 
+  SYNCSP();
+  sp -= nfixed;
   for (uint32_t i = 0; i < nfixed; i++) {
-    PUSH(StackVal(UndefinedValue()));
+    sp[i] = StackVal(UndefinedValue());
   }
   ret->setUndefined();
 
@@ -6094,7 +6097,6 @@ PBIResult PortableBaselineInterpret(
         }
         from_unwind = false;
 
-        uint32_t argc = frame->numActualArgs();
         sp = ctx.stack.popFrame();
 
         // If FP is higher than the entry frame now, return; otherwise,
@@ -6105,6 +6107,7 @@ PBIResult PortableBaselineInterpret(
           return ok ? PBIResult::Ok : PBIResult::Error;
         } else {
           TRACE_PRINTF("Return fastpath\n");
+          uint32_t argc = frame->numActualArgs();
           Value innerRet = frame->returnValue();
           TRACE_PRINTF("ret = %" PRIx64 "\n", innerRet.asRawBits());
 

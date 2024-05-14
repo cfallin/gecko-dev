@@ -442,7 +442,8 @@ struct ICCtx {
   ICRegs icregs;
 
   BaselineFrame* frame;
-  uintptr_t spoffset; // negative offset from frame
+  StackVal* spbase;
+  uintptr_t spoffset; // negative offset from spbase
   ICStub* stub;
   PBIResult error;
 
@@ -452,12 +453,13 @@ struct ICCtx {
         frameMgr(cx, frame_),
         icregs(),
         frame(frame_),
+        spbase(nullptr),
         spoffset(0),
         stub(nullptr),
         error(PBIResult::Ok) {}
 
   StackVal* sp() {
-    return reinterpret_cast<StackVal*>(reinterpret_cast<uintptr_t>(frame) -
+    return reinterpret_cast<StackVal*>(reinterpret_cast<uintptr_t>(spbase) -
                                        spoffset);
   }
 };
@@ -3560,20 +3562,20 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 
 #define NEXT_IC() icEntry++
 
-#define INVOKE_IC(kind)                                                     \
-  if (!Specialized) {                                                       \
-    frame->interpreterPC() = pc;                                            \
-  }                                                                         \
-  SYNCSP();                                                                 \
-  CALL_IC(                                                                  \
-      icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret,             \
-      reinterpret_cast<uintptr_t>(frame) - reinterpret_cast<uintptr_t>(sp), \
-      ic_arg0, ic_arg1, ic_arg2);                                           \
-  if (ic_ret == IC_ERROR_SENTINEL()) {                                      \
-    WEVAL_POP_CONTEXT();                                                    \
-    ic_result = ctx.error;                                                  \
-    goto ic_fail;                                                           \
-  }                                                                         \
+#define INVOKE_IC(kind)                                                      \
+  if (!Specialized) {                                                        \
+    frame->interpreterPC() = pc;                                             \
+  }                                                                          \
+  SYNCSP();                                                                  \
+  CALL_IC(                                                                   \
+      icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret,              \
+      reinterpret_cast<uintptr_t>(spbase) - reinterpret_cast<uintptr_t>(sp), \
+      ic_arg0, ic_arg1, ic_arg2);                                            \
+  if (ic_ret == IC_ERROR_SENTINEL()) {                                       \
+    WEVAL_POP_CONTEXT();                                                     \
+    ic_result = ctx.error;                                                   \
+    goto ic_fail;                                                            \
+  }                                                                          \
   NEXT_IC();
 
 #define INVOKE_IC_AND_PUSH(kind) \
@@ -3702,6 +3704,8 @@ PBIResult PortableBaselineInterpret(
   ICCtx ctx(cx_, frame, state, stack);
   auto* icEntries = frame->icScript()->icEntries();
   auto* icEntry = icEntries;
+  auto* spbase = sp;
+  ctx.spbase = spbase;
 
 #ifndef ENABLE_JS_PBL_WEVAL
   bool argsObjAliasesFormals = script->argsObjAliasesFormals();
@@ -5603,6 +5607,8 @@ PBIResult PortableBaselineInterpret(
             argv = frame->argv();
             // 6. Set up PC and SP for callee.
             sp = reinterpret_cast<StackVal*>(frame);
+            spbase = sp;
+            ctx.spbase = spbase;
             pc = calleeScript->code();
             entryPC = pc;
             isd = calleeScript->immutableScriptData();
@@ -6109,6 +6115,8 @@ PBIResult PortableBaselineInterpret(
         from_unwind = false;
 
         sp = ctx.stack.popFrame();
+        spbase = sp;
+        ctx.spbase = spbase;
 
         // If FP is higher than the entry frame now, return; otherwise,
         // do an inline state update.
@@ -6124,6 +6132,8 @@ PBIResult PortableBaselineInterpret(
 
           // Pop exit frame as well.
           sp = ctx.stack.popFrame();
+          spbase = sp;
+          ctx.spbase = spbase;
           // Pop fake return address and descriptor.
           POPNNATIVE(2);
 
@@ -6812,6 +6822,8 @@ error:
         pc = frame->interpreterPC();
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         sp = reinterpret_cast<StackVal*>(rfe.stackPointer);
+        spbase = sp;
+        ctx.spbase = spbase;
         TRACE_PRINTF(" -> finally to pc %p\n", pc);
         PUSH(StackVal(rfe.exception));
         PUSH(StackVal(rfe.exceptionStack));
@@ -6865,6 +6877,8 @@ unwind:
     return PBIResult::Unwind;
   }
   sp = ctx.stack.unwindingSP;
+  spbase = sp;
+  ctx.spbase = spbase;
   ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
@@ -6890,6 +6904,8 @@ unwind_error:
     return PBIResult::Error;
   }
   sp = ctx.stack.unwindingSP;
+  spbase = sp;
+  ctx.spbase = spbase;
   ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
@@ -6916,6 +6932,8 @@ unwind_ret:
     return PBIResult::Ok;
   }
   sp = ctx.stack.unwindingSP;
+  spbase = sp;
+  ctx.spbase = spbase;
   ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());

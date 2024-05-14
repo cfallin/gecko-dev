@@ -3698,6 +3698,8 @@ PBIResult PortableBaselineInterpret(
   bool argsObjAliasesFormals = Specialized
                                    ? (weval_read_specialization_global(0) != 0)
                                    : script->argsObjAliasesFormals();
+  uint32_t nfixed = Specialized ?
+    weval_read_specialization_global(1) : script->nfixed();
 #endif
   Value* argv = frame->argv();
 
@@ -3725,7 +3727,7 @@ PBIResult PortableBaselineInterpret(
     return PBIResult::Error;
   }
 
-  for (uint32_t i = 0; i < script->nfixed(); i++) {
+  for (uint32_t i = 0; i < nfixed; i++) {
     PUSH(StackVal(UndefinedValue()));
   }
   ret->setUndefined();
@@ -7092,10 +7094,11 @@ void EnqueueScriptSpecialization(JSScript* script) {
         reinterpret_cast<PBIFunc*>(&weval.func),
         &PortableBaselineInterpret<true, false, kHybridICsCompiled>,
         WEVAL_JSOP_ID,
-        /* num_globals = */ 1,
+        /* num_globals = */ 2,
         Specialize<uint64_t>(script->argsObjAliasesFormals() ? 1 : 0),
-        Runtime<JSContext*>(), Runtime<State&>(), Runtime<Stack&>(),
-        Runtime<StackVal*>(), Runtime<JSObject*>(), Runtime<Value*>(),
+        Specialize<uint64_t>(script->nfixed()), Runtime<JSContext*>(),
+        Runtime<State&>(), Runtime<Stack&>(), Runtime<StackVal*>(),
+        Runtime<JSObject*>(), Runtime<Value*>(),
         SpecializeMemory<jsbytecode*>(pc, pc_len),
         SpecializeMemory<ImmutableScriptData*>(isd, isd_len),
         Runtime<jsbytecode*>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),

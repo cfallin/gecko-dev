@@ -3262,7 +3262,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
       CACHEOP_CASE_UNIMPL(WrapResult)
       CACHEOP_CASE_UNIMPL(Bailout)
       CACHEOP_CASE_UNIMPL(AssertRecoveredOnBailoutResult) {
-        printf("unknown CacheOp: %s\n", CacheIROpNames[int(cacheop)]);
+        TRACE_PRINTF("unknown CacheOp: %s\n", CacheIROpNames[int(cacheop)]);
         FAIL_IC();
       }
 

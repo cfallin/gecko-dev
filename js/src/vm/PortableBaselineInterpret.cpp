@@ -6133,7 +6133,7 @@ PBIResult PortableBaselineInterpret(
         // If FP is higher than the entry frame now, return; otherwise,
         // do an inline state update.
         if (Specialized || ctx.stack.fp > entryFrame) {
-          *ret = frame->returnValue();
+          *ctx.ret = frame->returnValue();
           TRACE_PRINTF("ret = %" PRIx64 "\n", ret->asRawBits());
           return ok ? PBIResult::Ok : PBIResult::Error;
         } else {
@@ -6942,7 +6942,7 @@ unwind_ret:
   }
   if (reinterpret_cast<uintptr_t>(ctx.stack.unwindingFP) ==
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
-    *ret = frame->returnValue();
+    *ctx.ret = frame->returnValue();
     return PBIResult::Ok;
   }
   sp = ctx.stack.unwindingSP;

@@ -406,8 +406,8 @@ class VMFrame {
   bool success() const { return exitFP != nullptr; }
 };
 
-#define PUSH_EXIT_FRAME_OR_RET(value)                           \
-  VMFrame cx(ctx.frameMgr, ctx.stack, sp);                      \
+#define PUSH_EXIT_FRAME_OR_RET(value, init_sp)                  \
+  VMFrame cx(ctx.frameMgr, ctx.stack, init_sp);                 \
   if (!cx.success()) {                                          \
     return value;                                               \
   }                                                             \
@@ -416,14 +416,14 @@ class VMFrame {
 
 #define PUSH_IC_FRAME()         \
   ctx.error = PBIResult::Error; \
-  PUSH_EXIT_FRAME_OR_RET(IC_ERROR_SENTINEL())
+  PUSH_EXIT_FRAME_OR_RET(IC_ERROR_SENTINEL(), ctx.sp())
 #define PUSH_FALLBACK_IC_FRAME() \
   ctx.error = PBIResult::Error;  \
-  PUSH_EXIT_FRAME_OR_RET(IC_ERROR_SENTINEL())
+  PUSH_EXIT_FRAME_OR_RET(IC_ERROR_SENTINEL(), sp)
 #define PUSH_EXIT_FRAME()      \
   frame->interpreterPC() = pc; \
   SYNCSP();                    \
-  PUSH_EXIT_FRAME_OR_RET(PBIResult::Error)
+  PUSH_EXIT_FRAME_OR_RET(PBIResult::Error, sp)
 
 /*
  * -----------------------------------------------
@@ -442,7 +442,7 @@ struct ICCtx {
   ICRegs icregs;
 
   BaselineFrame* frame;
-  StackVal* sp;
+  uintptr_t spoffset; // negative offset from frame
   ICStub* stub;
   PBIResult error;
 
@@ -452,9 +452,14 @@ struct ICCtx {
         frameMgr(cx, frame_),
         icregs(),
         frame(frame_),
-        sp(nullptr),
+        spoffset(0),
         stub(nullptr),
         error(PBIResult::Ok) {}
+
+  StackVal* sp() {
+    return reinterpret_cast<StackVal*>(reinterpret_cast<uintptr_t>(frame) -
+                                       spoffset);
+  }
 };
 
 #define IC_ERROR_SENTINEL() (JS::MagicValueUint32(1000).asRawBits())
@@ -464,24 +469,26 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                                ICCtx& ctx);
 
 #ifdef ENABLE_JS_PBL_WEVAL
-#  define CALL_IC(jitcode, ctx, stubvalue, result, spvalue, arg0, arg1, arg2) \
-    do {                                                                      \
-      ctx.sp = spvalue;                                                       \
-      ctx.stub = stubvalue;                                                   \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);                \
-      result = func(arg0, arg1, arg2, ctx);                                   \
+#  define CALL_IC(jitcode, ctx, stubvalue, result, spoffvalue, arg0, arg1, \
+                  arg2)                                                    \
+    do {                                                                   \
+      ctx.spoffset = spoffvalue;                                           \
+      ctx.stub = stubvalue;                                                \
+      ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);             \
+      result = func(arg0, arg1, arg2, ctx);                                \
     } while (0)
 #else
-#  define CALL_IC(jitcode, ctx, stubvalue, result, spvalue, arg0, arg1, arg2) \
-    do {                                                                      \
-      ctx.sp = spvalue;                                                       \
-      ctx.stub = stubvalue;                                                   \
-      if (ctx.stub->isFallback()) {                                           \
-        ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);              \
-        result = func(arg0, arg1, arg2, ctx);                                 \
-      } else {                                                                \
-        result = ICInterpretOps<false>(arg0, arg1, arg2, ctx);                \
-      }                                                                       \
+#  define CALL_IC(jitcode, ctx, stubvalue, result, spoffvalue, arg0, arg1, \
+                  arg2)                                                    \
+    do {                                                                   \
+      ctx.spoffset = spoffvalue;                                           \
+      ctx.stub = stubvalue;                                                \
+      if (ctx.stub->isFallback()) {                                        \
+        ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);           \
+        result = func(arg0, arg1, arg2, ctx);                              \
+      } else {                                                             \
+        result = ICInterpretOps<false>(arg0, arg1, arg2, ctx);             \
+      }                                                                    \
     } while (0)
 #endif
 
@@ -513,7 +520,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
                         ICCtx& ctx) {
   ICStub* stub = ctx.stub;
   ICCacheIRStub* cstub = stub->toCacheIRStub();
-  StackVal*& sp = ctx.sp;
 
   const CacheIRStubInfo* stubInfo;
   const uint8_t* code;
@@ -1571,6 +1577,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         ValOperandId resultId = cacheIRReader.valOperandId();
         BOUNDSCHECK(resultId);
         uint8_t slotIndex = cacheIRReader.readByte();
+        StackVal* sp = ctx.sp();
         Value val = sp[slotIndex].asValue();
         TRACE_PRINTF(" -> slot %d: val %" PRIx64 "\n", int(slotIndex),
                      val.asRawBits());
@@ -1584,6 +1591,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         Int32OperandId argcId = cacheIRReader.int32OperandId();
         uint8_t slotIndex = cacheIRReader.readByte();
         int32_t argc = int32_t(READ_REG(argcId.id()));
+        StackVal* sp = ctx.sp();
         Value val = sp[slotIndex + argc].asValue();
         WRITE_REG(resultId.id(), val.asRawBits());
         DISPATCH_CACHEOP();
@@ -1989,7 +1997,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
 
         uint32_t extra = 1 + flags.isConstructing() + isNative;
         uint32_t totalArgs = argc + extra;
-        StackVal* origArgs = sp;
+        StackVal* origArgs = ctx.sp();
 
         {
           PUSH_IC_FRAME();
@@ -3124,7 +3132,8 @@ static MOZ_NEVER_INLINE uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
   ctx.stub = stub;
   MOZ_ASSERT(stub);
   uint64_t result;
-  CALL_IC(stub->rawJitCode(), ctx, stub, result, ctx.sp, arg0, arg1, arg2);
+  CALL_IC(stub->rawJitCode(), ctx, stub, result, ctx.spoffset, arg0, arg1,
+          arg2);
   return result;
 }
 
@@ -3140,7 +3149,7 @@ static MOZ_NEVER_INLINE uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
     uint64_t retValue = 0;                                       \
     ICStub* stub = ctx.stub;                                     \
     ICFallbackStub* fallback = stub->toFallbackStub();           \
-    StackVal*& sp = ctx.sp;                                      \
+    StackVal* sp = ctx.sp();                                     \
     fallback_body;                                               \
     retValue = ctx.state.res.asRawBits();                        \
     ctx.state.res = UndefinedValue();                            \
@@ -3551,18 +3560,20 @@ static EnvironmentObject& getEnvironmentFromCoordinate(
 
 #define NEXT_IC() icEntry++
 
-#define INVOKE_IC(kind)                                                 \
-  if (!Specialized) {                                                   \
-    frame->interpreterPC() = pc;                                        \
-  }                                                                     \
-  SYNCSP();                                                             \
-  CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret, sp, \
-          ic_arg0, ic_arg1, ic_arg2);                                   \
-  if (ic_ret == IC_ERROR_SENTINEL()) {                                  \
-    WEVAL_POP_CONTEXT();                                                \
-    ic_result = ctx.error;                                              \
-    goto ic_fail;                                                       \
-  }                                                                     \
+#define INVOKE_IC(kind)                                                     \
+  if (!Specialized) {                                                       \
+    frame->interpreterPC() = pc;                                            \
+  }                                                                         \
+  SYNCSP();                                                                 \
+  CALL_IC(                                                                  \
+      icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret,             \
+      reinterpret_cast<uintptr_t>(frame) - reinterpret_cast<uintptr_t>(sp), \
+      ic_arg0, ic_arg1, ic_arg2);                                           \
+  if (ic_ret == IC_ERROR_SENTINEL()) {                                      \
+    WEVAL_POP_CONTEXT();                                                    \
+    ic_result = ctx.error;                                                  \
+    goto ic_fail;                                                           \
+  }                                                                         \
   NEXT_IC();
 
 #define INVOKE_IC_AND_PUSH(kind) \

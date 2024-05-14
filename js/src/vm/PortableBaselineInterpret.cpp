@@ -448,7 +448,7 @@ struct ICCtx {
 
   BaselineFrame* frame;
   StackVal* spbase;
-  uintptr_t spoffset; // negative offset from spbase
+  uintptr_t spoffset;  // negative offset from spbase
   ICStub* stub;
   PBIResult error;
 
@@ -518,8 +518,8 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
 #  define INVOKE_PBI(result, script, interp, ...) result = interp(__VA_ARGS__);
 #endif
 
-static uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
-                           uint64_t arg2, ICCtx& ctx);
+static uint64_t CallNextIC(uint64_t arg0, uint64_t arg1, uint64_t arg2,
+                           ICCtx& ctx);
 
 // Interpreter for CacheIR.
 template <bool Specialized>
@@ -537,7 +537,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
     code = stubInfo->code();
   } else {
 #ifdef ENABLE_JS_PBL_WEVAL
-    stubInfo = reinterpret_cast<const CacheIRStubInfo*>(weval_read_specialization_global(0));
+    stubInfo = reinterpret_cast<const CacheIRStubInfo*>(
+        weval_read_specialization_global(0));
     code = reinterpret_cast<uint8_t*>(weval_read_specialization_global(1));
 #else
     stubInfo = cstub->stubInfo();
@@ -1939,6 +1940,50 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(LoadTypedArrayElementExistsResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        IntPtrOperandId indexId = cacheIRReader.intPtrOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        uintptr_t index = uintptr_t(READ_REG(indexId.id()));
+        if (obj->as<TypedArrayObject>().length().isNothing()) {
+          FAIL_IC();
+        }
+        retValue =
+            BooleanValue(index < obj->as<TypedArrayObject>().length().value())
+                .asRawBits();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(LoadTypedArrayElementResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        IntPtrOperandId indexId = cacheIRReader.intPtrOperandId();
+        Scalar::Type elementType = cacheIRReader.scalarType();
+        bool handleOOB = cacheIRReader.readBool();
+        bool forceDoubleForUint32 = cacheIRReader.readBool();
+        (void)elementType;
+        (void)handleOOB;
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        uintptr_t index = uintptr_t(READ_REG(indexId.id()));
+        if (obj->as<TypedArrayObject>().length().isNothing()) {
+          FAIL_IC();
+        }
+        if (index >= obj->as<TypedArrayObject>().length().value()) {
+          FAIL_IC();
+        }
+        Value v;
+        if (!obj->as<TypedArrayObject>().getElementPure(index, &v)) {
+          FAIL_IC();
+        }
+        if (forceDoubleForUint32) {
+          if (v.isInt32()) {
+            v.setNumber(v.toInt32());
+          }
+        }
+        retValue = v.asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(CallInt32ToString) {
         Int32OperandId inputId = cacheIRReader.int32OperandId();
         StringOperandId resultId = cacheIRReader.stringOperandId();
@@ -2069,11 +2114,12 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
             ImmutableScriptData* isd = script->immutableScriptData();
             PBIResult result;
             Value ret;
-            INVOKE_PBI(result, script,
-                       (PortableBaselineInterpret<false, false, kHybridICsInterp>),
-                       cx, ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-                       reinterpret_cast<Value*>(&ret), pc, isd, nullptr,
-                       nullptr, nullptr, PBIResult::Ok);
+            INVOKE_PBI(
+                result, script,
+                (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
+                ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
+                reinterpret_cast<Value*>(&ret), pc, isd, nullptr, nullptr,
+                nullptr, PBIResult::Ok);
             if (result != PBIResult::Ok) {
               ctx.error = result;
               return IC_ERROR_SENTINEL();
@@ -2140,6 +2186,64 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
           FAIL_IC();
         }
         retValue = val.asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(LoadDenseElementHoleResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        Int32OperandId indexId = cacheIRReader.int32OperandId();
+        NativeObject* nobj =
+            reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
+        ObjectElements* elems = nobj->getElementsHeader();
+        int32_t index = int32_t(READ_REG(indexId.id()));
+        if (index < 0 || uint32_t(index) >= nobj->getDenseInitializedLength()) {
+          FAIL_IC();
+        }
+        HeapSlot* slot = &elems->elements()[index];
+        Value val = slot->get();
+        if (val.isMagic()) {
+          val.setUndefined();
+        }
+        retValue = val.asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(LoadDenseElementExistsResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        Int32OperandId indexId = cacheIRReader.int32OperandId();
+        NativeObject* nobj =
+            reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
+        ObjectElements* elems = nobj->getElementsHeader();
+        int32_t index = int32_t(READ_REG(indexId.id()));
+        if (index < 0 || uint32_t(index) >= nobj->getDenseInitializedLength()) {
+          FAIL_IC();
+        }
+        HeapSlot* slot = &elems->elements()[index];
+        Value val = slot->get();
+        if (val.isMagic()) {
+          FAIL_IC();
+        }
+        retValue = BooleanValue(true).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(LoadDenseElementHoleExistsResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        Int32OperandId indexId = cacheIRReader.int32OperandId();
+        NativeObject* nobj =
+            reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
+        ObjectElements* elems = nobj->getElementsHeader();
+        int32_t index = int32_t(READ_REG(indexId.id()));
+        if (index < 0 || uint32_t(index) >= nobj->getDenseInitializedLength()) {
+          retValue = BooleanValue(false).asRawBits();
+        } else {
+          HeapSlot* slot = &elems->elements()[index];
+          Value val = slot->get();
+          retValue = BooleanValue(!val.isMagic()).asRawBits();
+        }
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2230,7 +2334,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
           // always preceded by LinearizeForCharAccess.
           MOZ_ALWAYS_TRUE(str->getChar(/* cx = */ nullptr, index, &c));
           StaticStrings& sstr =
-            ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
+              ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
           if (sstr.hasUnit(c)) {
             result = sstr.getUnit(c);
           } else {
@@ -2777,28 +2881,28 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         double rhs = Value::fromRawBits(READ_REG(rhsId.id())).toNumber();
         bool result;
         switch (op) {
-        case JSOp::Eq:
-        case JSOp::StrictEq:
-          result = lhs == rhs;
-          break;
-        case JSOp::Ne:
-        case JSOp::StrictNe:
-          result = lhs != rhs;
-          break;
-        case JSOp::Lt:
-          result = lhs < rhs;
-          break;
-        case JSOp::Le:
-          result = lhs <= rhs;
-          break;
-        case JSOp::Gt:
-          result = lhs > rhs;
-          break;
-        case JSOp::Ge:
-          result = lhs >= rhs;
-          break;
-        default:
-          MOZ_CRASH("Unexpected opcode");
+          case JSOp::Eq:
+          case JSOp::StrictEq:
+            result = lhs == rhs;
+            break;
+          case JSOp::Ne:
+          case JSOp::StrictNe:
+            result = lhs != rhs;
+            break;
+          case JSOp::Lt:
+            result = lhs < rhs;
+            break;
+          case JSOp::Le:
+            result = lhs <= rhs;
+            break;
+          case JSOp::Gt:
+            result = lhs > rhs;
+            break;
+          case JSOp::Ge:
+            result = lhs >= rhs;
+            break;
+          default:
+            MOZ_CRASH("Unexpected opcode");
         }
         retValue = BooleanValue(result).asRawBits();
         PREDICT_RETURN();
@@ -3002,12 +3106,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
       CACHEOP_CASE_UNIMPL(BindFunctionResult)
       CACHEOP_CASE_UNIMPL(SpecializedBindFunctionResult)
       CACHEOP_CASE_UNIMPL(LoadFixedSlotTypedResult)
-      CACHEOP_CASE_UNIMPL(LoadDenseElementHoleResult)
       CACHEOP_CASE_UNIMPL(CallGetSparseElementResult)
-      CACHEOP_CASE_UNIMPL(LoadDenseElementExistsResult)
-      CACHEOP_CASE_UNIMPL(LoadTypedArrayElementExistsResult)
-      CACHEOP_CASE_UNIMPL(LoadDenseElementHoleExistsResult)
-      CACHEOP_CASE_UNIMPL(LoadTypedArrayElementResult)
       CACHEOP_CASE_UNIMPL(LoadDataViewValueResult)
       CACHEOP_CASE_UNIMPL(StoreDataViewValueResult)
       CACHEOP_CASE_UNIMPL(LoadArgumentsObjectArgHoleResult)
@@ -3106,7 +3205,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
       CACHEOP_CASE_UNIMPL(WrapResult)
       CACHEOP_CASE_UNIMPL(Bailout)
       CACHEOP_CASE_UNIMPL(AssertRecoveredOnBailoutResult) {
-        TRACE_PRINTF("unknown CacheOp: %s\n", CacheIROpNames[int(cacheop)]);
+        printf("unknown CacheOp: %s\n", CacheIROpNames[int(cacheop)]);
         FAIL_IC();
       }
 
@@ -3724,8 +3823,8 @@ PBIResult PortableBaselineInterpret(
   bool argsObjAliasesFormals = Specialized
                                    ? (weval_read_specialization_global(0) != 0)
                                    : script->argsObjAliasesFormals();
-  uint32_t nfixed = Specialized ?
-    weval_read_specialization_global(1) : script->nfixed();
+  uint32_t nfixed =
+      Specialized ? weval_read_specialization_global(1) : script->nfixed();
 #endif
   Value* argv = frame->argv();
 
@@ -7041,8 +7140,9 @@ bool PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   jsbytecode* pc = script->code();
   ImmutableScriptData* isd = script->immutableScriptData();
   PBIResult ret;
-  INVOKE_PBI(ret, script, (PortableBaselineInterpret<false, false, kHybridICsInterp>),
-             cx, state, stack, sp, envChain, result, pc, isd, nullptr, nullptr,
+  INVOKE_PBI(ret, script,
+             (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
+             state, stack, sp, envChain, result, pc, isd, nullptr, nullptr,
              nullptr, PBIResult::Ok);
   switch (ret) {
     case PBIResult::Ok:

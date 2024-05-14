@@ -2944,6 +2944,52 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(CompareObjectResult) {
+        JSOp op = cacheIRReader.jsop();
+        ObjOperandId lhsId = cacheIRReader.objOperandId();
+        ObjOperandId rhsId = cacheIRReader.objOperandId();
+        (void)op;
+        JSObject* lhs = reinterpret_cast<JSObject*>(READ_REG(lhsId.id()));
+        JSObject* rhs = reinterpret_cast<JSObject*>(READ_REG(rhsId.id()));
+        switch (op) {
+        case JSOp::Eq:
+        case JSOp::StrictEq:
+          retValue = BooleanValue(lhs == rhs).asRawBits();
+          break;
+        case JSOp::Ne:
+        case JSOp::StrictNe:
+          retValue = BooleanValue(lhs != rhs).asRawBits();
+          break;
+        default:
+          FAIL_IC();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(CompareSymbolResult) {
+        JSOp op = cacheIRReader.jsop();
+        SymbolOperandId lhsId = cacheIRReader.symbolOperandId();
+        SymbolOperandId rhsId = cacheIRReader.symbolOperandId();
+        (void)op;
+        JS::Symbol* lhs = reinterpret_cast<JS::Symbol*>(READ_REG(lhsId.id()));
+        JS::Symbol* rhs = reinterpret_cast<JS::Symbol*>(READ_REG(rhsId.id()));
+        switch (op) {
+        case JSOp::Eq:
+        case JSOp::StrictEq:
+          retValue = BooleanValue(lhs == rhs).asRawBits();
+          break;
+        case JSOp::Ne:
+        case JSOp::StrictNe:
+          retValue = BooleanValue(lhs != rhs).asRawBits();
+          break;
+        default:
+          FAIL_IC();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(AssertPropertyLookup) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t idOffset = cacheIRReader.stubOffset();
@@ -3180,8 +3226,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, uint64_t arg2,
       CACHEOP_CASE_UNIMPL(NewArrayObjectResult)
       CACHEOP_CASE_UNIMPL(CallStringObjectConcatResult)
       CACHEOP_CASE_UNIMPL(CallIsSuspendedGeneratorResult)
-      CACHEOP_CASE_UNIMPL(CompareObjectResult)
-      CACHEOP_CASE_UNIMPL(CompareSymbolResult)
       CACHEOP_CASE_UNIMPL(CompareBigIntResult)
       CACHEOP_CASE_UNIMPL(CompareBigIntInt32Result)
       CACHEOP_CASE_UNIMPL(CompareBigIntNumberResult)

@@ -497,7 +497,7 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);           \
         result = func(arg0, arg1, stubvalue, ctx);                         \
       } else {                                                             \
-        result = ICInterpretOps<false>(arg0, arg1, arg2, ctx);             \
+        result = ICInterpretOps<false>(arg0, arg1, stubvalue, ctx);        \
       }                                                                    \
     } while (0)
 #endif
@@ -3264,7 +3264,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(WrapResult)
       CACHEOP_CASE_UNIMPL(Bailout)
       CACHEOP_CASE_UNIMPL(AssertRecoveredOnBailoutResult) {
-        TRACE_PRINTF("unknown CacheOp: %s\n", CacheIROpNames[int(cacheop)]);
+        printf("unknown CacheOp: %s\n", CacheIROpNames[int(cacheop)]);
         FAIL_IC();
       }
 

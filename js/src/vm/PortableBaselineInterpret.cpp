@@ -440,16 +440,27 @@ struct ICCtx {
   Stack& stack;
   VMFrameManager frameMgr;
   ICRegs icregs;
+
+  // Values we keep in ICCtx rather than separate locals in the main
+  // interpreter body in order to reduce register pressure.
   JSObject* envChain;
   ImmutableScriptData* isd;
   Value* ret;
   StackVal* entryFrame;
   jsbytecode* entryPC;
 
+  // Values that we pass as auxiliary arguments to ICs; they either
+  // change infrequently (`frame`) or we want to minimize argument
+  // count to fit into registers on more limited architectures
+  // (e.g. wasm32 on Wasmtime, with only 4 integer argument
+  // registers).
   BaselineFrame* frame;
   StackVal* spbase;
+  // We pass `sp` as two parts, `spbase` and `spoffset`, so that IC
+  // sites in specialized function bodies can constant-propagate
+  // `spoffset` and compile down to a single store of a constant to
+  // `spoffset` (while `spbase` never changes).
   uintptr_t spoffset;  // negative offset from spbase
-  ICStub* stub;
   PBIResult error;
   uint64_t arg2;
 
@@ -461,7 +472,6 @@ struct ICCtx {
         frame(frame_),
         spbase(nullptr),
         spoffset(0),
-        stub(nullptr),
         error(PBIResult::Ok) {}
 
   StackVal* sp() {
@@ -493,7 +503,7 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, ICStub* stub,
     do {                                                                   \
       ctx.spoffset = spoffvalue;                                           \
       ctx.arg2 = arg2value;                                                \
-      if (ctx.stub->isFallback()) {                                        \
+      if (stubvalue->isFallback()) {                                       \
         ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);           \
         result = func(arg0, arg1, stubvalue, ctx);                         \
       } else {                                                             \
@@ -3899,7 +3909,6 @@ PBIResult PortableBaselineInterpret(
   uint32_t nfixed =
       Specialized ? weval_read_specialization_global(1) : script->nfixed();
 #endif
-  Value* argv = frame->argv();
 
   if (IsRestart) {
     ic_result = restartCode;
@@ -5786,7 +5795,6 @@ PBIResult PortableBaselineInterpret(
             ctx.frame = frame;
             icEntries = frame->icScript()->icEntries();
             icEntry = frame->interpreterICEntry();
-            argv = frame->argv();
             // 6. Set up PC and SP for callee.
             sp = reinterpret_cast<StackVal*>(frame);
             spbase = sp;
@@ -6334,7 +6342,6 @@ PBIResult PortableBaselineInterpret(
           pc = frame->interpreterPC();
           script.set(frame->script());
           argsObjAliasesFormals = script->argsObjAliasesFormals();
-          argv = frame->argv();
           entryPC = script->code();
           ctx.entryPC = entryPC;
           isd = script->immutableScriptData();
@@ -6556,14 +6563,14 @@ PBIResult PortableBaselineInterpret(
         if (argsObjAliasesFormals) {
           VIRTPUSH(StackVal(frame->argsObj().arg(i)));
         } else {
-          VIRTPUSH(StackVal(argv[i]));
+          VIRTPUSH(StackVal(frame->argv()[i]));
         }
         END_OP(GetArg);
       }
 
       CASE(GetFrameArg) {
         uint32_t i = GET_ARGNO(pc);
-        VIRTPUSH(StackVal(argv[i]));
+        VIRTPUSH(StackVal(frame->argv()[i]));
         END_OP(GetFrameArg);
       }
 
@@ -6680,7 +6687,7 @@ PBIResult PortableBaselineInterpret(
         if (argsObjAliasesFormals) {
           frame->argsObj().setArg(i, VIRTSP(0).asValue());
         } else {
-          argv[i] = VIRTSP(0).asValue();
+          frame->argv()[i] = VIRTSP(0).asValue();
         }
         END_OP(SetArg);
       }
@@ -7076,7 +7083,6 @@ unwind:
   pc = frame->interpreterPC();
   script.set(frame->script());
   argsObjAliasesFormals = script->argsObjAliasesFormals();
-  argv = frame->argv();
   DISPATCH();
 unwind_error:
   TRACE_PRINTF("unwind_error: fp = %p entryFrame = %p\n", ctx.stack.fp,
@@ -7103,7 +7109,6 @@ unwind_error:
   pc = frame->interpreterPC();
   script.set(frame->script());
   argsObjAliasesFormals = script->argsObjAliasesFormals();
-  argv = frame->argv();
   goto error;
 unwind_ret:
   TRACE_PRINTF("unwind_ret: fp = %p entryFrame = %p\n", ctx.stack.fp,
@@ -7131,7 +7136,6 @@ unwind_ret:
   pc = frame->interpreterPC();
   script.set(frame->script());
   argsObjAliasesFormals = script->argsObjAliasesFormals();
-  argv = frame->argv();
   from_unwind = true;
   goto do_return;
 

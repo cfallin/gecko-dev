@@ -473,7 +473,7 @@ struct ICCtx {
 #define IC_ERROR_SENTINEL() (JS::MagicValueUint32(1000).asRawBits())
 
 // Universal signature for an IC stub function.
-  typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, ICStub* stub,
+typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, ICStub* stub,
                                ICCtx& ctx);
 
 #ifdef ENABLE_JS_PBL_WEVAL
@@ -521,7 +521,7 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
 #  define INVOKE_PBI(result, script, interp, ...) result = interp(__VA_ARGS__);
 #endif
 
-  static uint64_t CallNextIC(uint64_t arg0, uint64_t arg1, ICStub* stub,
+static uint64_t CallNextIC(uint64_t arg0, uint64_t arg1, ICStub* stub,
                            ICCtx& ctx);
 
 // Interpreter for CacheIR.
@@ -2954,21 +2954,21 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         JSObject* lhs = reinterpret_cast<JSObject*>(READ_REG(lhsId.id()));
         JSObject* rhs = reinterpret_cast<JSObject*>(READ_REG(rhsId.id()));
         switch (op) {
-        case JSOp::Eq:
-        case JSOp::StrictEq:
-          retValue = BooleanValue(lhs == rhs).asRawBits();
-          break;
-        case JSOp::Ne:
-        case JSOp::StrictNe:
-          retValue = BooleanValue(lhs != rhs).asRawBits();
-          break;
-        default:
-          FAIL_IC();
+          case JSOp::Eq:
+          case JSOp::StrictEq:
+            retValue = BooleanValue(lhs == rhs).asRawBits();
+            break;
+          case JSOp::Ne:
+          case JSOp::StrictNe:
+            retValue = BooleanValue(lhs != rhs).asRawBits();
+            break;
+          default:
+            FAIL_IC();
         }
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
-      
+
       CACHEOP_CASE(CompareSymbolResult) {
         JSOp op = cacheIRReader.jsop();
         SymbolOperandId lhsId = cacheIRReader.symbolOperandId();
@@ -2977,16 +2977,16 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         JS::Symbol* lhs = reinterpret_cast<JS::Symbol*>(READ_REG(lhsId.id()));
         JS::Symbol* rhs = reinterpret_cast<JS::Symbol*>(READ_REG(rhsId.id()));
         switch (op) {
-        case JSOp::Eq:
-        case JSOp::StrictEq:
-          retValue = BooleanValue(lhs == rhs).asRawBits();
-          break;
-        case JSOp::Ne:
-        case JSOp::StrictNe:
-          retValue = BooleanValue(lhs != rhs).asRawBits();
-          break;
-        default:
-          FAIL_IC();
+          case JSOp::Eq:
+          case JSOp::StrictEq:
+            retValue = BooleanValue(lhs == rhs).asRawBits();
+            break;
+          case JSOp::Ne:
+          case JSOp::StrictNe:
+            retValue = BooleanValue(lhs != rhs).asRawBits();
+            break;
+          default:
+            FAIL_IC();
         }
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -3656,7 +3656,7 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
              ? env->as<EnvironmentObject>()
              : env->as<DebugEnvironmentProxy>().environment();
 }
-#endif  
+#endif
 
 #ifndef __wasi__
 #  define DEBUG_CHECK()                                                   \

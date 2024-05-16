@@ -3265,12 +3265,15 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         uint32_t siteOffset = cacheIRReader.stubOffset();
         (void)numFixedSlots;
         (void)numDynamicSlots;
-        SharedShape* shape = reinterpret_cast<SharedShape*>(stubInfo->getStubRawWord(cstub, shapeOffset));
-        gc::AllocSite* site = reinterpret_cast<gc::AllocSite*>(stubInfo->getStubRawWord(cstub, siteOffset));
+        SharedShape* shape = reinterpret_cast<SharedShape*>(
+            stubInfo->getStubRawWord(cstub, shapeOffset));
+        gc::AllocSite* site = reinterpret_cast<gc::AllocSite*>(
+            stubInfo->getStubRawWord(cstub, siteOffset));
         {
           PUSH_IC_FRAME();
           Rooted<SharedShape*> rootedShape(cx, shape);
-          auto* result = NewPlainObjectBaselineFallback(cx, rootedShape, allocKind, site);
+          auto* result =
+              NewPlainObjectBaselineFallback(cx, rootedShape, allocKind, site);
           if (!result) {
             FAIL_IC();
           }
@@ -3279,8 +3282,49 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
-         
-      CACHEOP_CASE_UNIMPL(NewArrayObjectResult)
+
+      CACHEOP_CASE(NewArrayObjectResult) {
+        uint32_t arrayLength = cacheIRReader.uint32Immediate();
+        uint32_t shapeOffset = cacheIRReader.stubOffset();
+        uint32_t siteOffset = cacheIRReader.stubOffset();
+        (void)shapeOffset;
+        gc::AllocSite* site = reinterpret_cast<gc::AllocSite*>(
+            stubInfo->getStubRawWord(cstub, siteOffset));
+        gc::AllocKind allocKind = GuessArrayGCKind(arrayLength);
+        MOZ_ASSERT(
+            CanChangeToBackgroundAllocKind(allocKind, &ArrayObject::class_));
+        allocKind = ForegroundToBackgroundAllocKind(allocKind);
+        {
+          PUSH_IC_FRAME();
+          auto* result =
+              NewArrayObjectBaselineFallback(cx, arrayLength, allocKind, site);
+          if (!result) {
+            FAIL_IC();
+          }
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(NewArrayFromLengthResult) {
+        uint32_t templateObjectOffset = cacheIRReader.stubOffset();
+        Int32OperandId lengthId = cacheIRReader.int32OperandId();
+        ArrayObject* templateObject = reinterpret_cast<ArrayObject*>(
+            stubInfo->getStubRawWord(cstub, templateObjectOffset));
+        int32_t length = int32_t(READ_REG(lengthId.id()));
+        {
+          PUSH_IC_FRAME();
+          Rooted<ArrayObject*> templateObjectRooted(cx, templateObject);
+          auto* result = ArrayConstructorOneArg(cx, templateObjectRooted, length);
+          if (!result) {
+            FAIL_IC();
+          }
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
 
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
@@ -3335,7 +3379,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(NewStringIteratorResult)
       CACHEOP_CASE_UNIMPL(NewRegExpStringIteratorResult)
       CACHEOP_CASE_UNIMPL(ObjectCreateResult)
-      CACHEOP_CASE_UNIMPL(NewArrayFromLengthResult)
       CACHEOP_CASE_UNIMPL(NewTypedArrayFromLengthResult)
       CACHEOP_CASE_UNIMPL(NewTypedArrayFromArrayBufferResult)
       CACHEOP_CASE_UNIMPL(NewTypedArrayFromArrayResult)

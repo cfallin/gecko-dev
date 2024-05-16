@@ -3035,8 +3035,28 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE_UNIMPL(GuardNumberToIntPtrIndex)
-      CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
+      CACHEOP_CASE(GuardNumberToIntPtrIndex) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        bool supportOOB = cacheIRReader.readBool();
+        (void)supportOOB;
+        IntPtrOperandId resultId = cacheIRReader.intPtrOperandId();
+        double input = Value::fromRawBits(READ_REG(inputId.id())).toNumber();
+        // For simplicity, support only uint32 range for now. This
+        // covers 32-bit and 64-bit systems.
+        if (input < 0.0 || input >= (1L << 32)) {
+          FAIL_IC();
+        }
+        uintptr_t result = static_cast<uintptr_t>(input);
+        // Convert back and compare to detect rounded fractional
+        // parts.
+        if (static_cast<double>(result) != input) {
+          FAIL_IC();
+        }
+        WRITE_REG(resultId.id(), uint64_t(result));
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE_UNIMPL(GuardToUint8Clamped);
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
       CACHEOP_CASE_UNIMPL(CallRegExpSearcherResult)

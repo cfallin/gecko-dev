@@ -21,6 +21,7 @@
 
 #include "builtin/DataViewObject.h"
 #include "builtin/MapObject.h"
+#include "builtin/Object.h"
 #include "builtin/String.h"
 #include "debugger/DebugAPI.h"
 #include "jit/BaselineFrame.h"
@@ -3326,6 +3327,21 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(ObjectToStringResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        {
+          PUSH_IC_FRAME();
+          auto* result = ObjectClassToString(cx, obj);
+          if (!result) {
+            FAIL_IC();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -3425,7 +3441,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(MathFunctionNumberResult)
       CACHEOP_CASE_UNIMPL(NumberParseIntResult)
       CACHEOP_CASE_UNIMPL(DoubleParseIntResult)
-      CACHEOP_CASE_UNIMPL(ObjectToStringResult)
       CACHEOP_CASE_UNIMPL(ReflectGetPrototypeOfResult)
       CACHEOP_CASE_UNIMPL(AtomicsCompareExchangeResult)
       CACHEOP_CASE_UNIMPL(AtomicsExchangeResult)

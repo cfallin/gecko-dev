@@ -3040,6 +3040,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         bool supportOOB = cacheIRReader.readBool();
         (void)supportOOB;
         IntPtrOperandId resultId = cacheIRReader.intPtrOperandId();
+        BOUNDSCHECK(resultId);
         double input = Value::fromRawBits(READ_REG(inputId.id())).toNumber();
         // For simplicity, support only uint32 range for now. This
         // covers 32-bit and 64-bit systems.
@@ -3080,6 +3081,102 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(PackedArrayPopResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ArrayObject* aobj =
+            reinterpret_cast<ArrayObject*>(READ_REG(objId.id()));
+        ObjectElements* elements = aobj->getElementsHeader();
+        if (!elements->isPacked() || elements->hasNonwritableArrayLength() ||
+            elements->isNotExtensible() || elements->maybeInIteration()) {
+          FAIL_IC();
+        }
+        size_t len = aobj->length();
+        if (len != aobj->getDenseInitializedLength()) {
+          FAIL_IC();
+        }
+        if (len == 0) {
+          retValue = UndefinedValue().asRawBits();
+        } else {
+          HeapSlot* slot = &elements->elements()[len - 1];
+          retValue = slot->get().asRawBits();
+          len--;
+          aobj->setLength(len);
+          aobj->setDenseInitializedLength(len);
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(PackedArrayShiftResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ArrayObject* aobj =
+            reinterpret_cast<ArrayObject*>(READ_REG(objId.id()));
+        ObjectElements* elements = aobj->getElementsHeader();
+        if (!elements->isPacked() || elements->hasNonwritableArrayLength() ||
+            elements->isNotExtensible() || elements->maybeInIteration()) {
+          FAIL_IC();
+        }
+        size_t len = aobj->length();
+        if (len != aobj->getDenseInitializedLength()) {
+          FAIL_IC();
+        }
+        if (len == 0) {
+          retValue = UndefinedValue().asRawBits();
+        } else {
+          HeapSlot* slot = &elements->elements()[0];
+          retValue = slot->get().asRawBits();
+          ArrayShiftMoveElements(aobj);
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(PackedArraySliceResult) {
+        uint32_t templateObjectOffset = cacheIRReader.stubOffset();
+        ObjOperandId arrayId = cacheIRReader.objOperandId();
+        Int32OperandId beginId = cacheIRReader.int32OperandId();
+        Int32OperandId endId = cacheIRReader.int32OperandId();
+        (void)templateObjectOffset;
+        ArrayObject* aobj =
+            reinterpret_cast<ArrayObject*>(READ_REG(arrayId.id()));
+        int32_t begin = int32_t(READ_REG(beginId.id()));
+        int32_t end = int32_t(READ_REG(endId.id()));
+        if (!aobj->getElementsHeader()->isPacked()) {
+          FAIL_IC();
+        }
+        {
+          PUSH_IC_FRAME();
+          Rooted<JSObject*> arr(cx, aobj);
+          JSObject* ret = ArraySliceDense(cx, arr, begin, end, nullptr);
+          if (!ret) {
+            FAIL_IC();
+          }
+          retValue = ObjectValue(*ret).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(IsPackedArrayResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        if (!obj->is<ArrayObject>()) {
+          retValue = BooleanValue(false).asRawBits();
+          PREDICT_RETURN();
+          DISPATCH_CACHEOP();
+        }
+        ArrayObject* aobj =
+            reinterpret_cast<ArrayObject*>(READ_REG(objId.id()));
+        if (aobj->length() != aobj->getDenseInitializedLength()) {
+          retValue = BooleanValue(false).asRawBits();
+          PREDICT_RETURN();
+          DISPATCH_CACHEOP();
+        }
+        retValue = BooleanValue(aobj->denseElementsArePacked()).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped);
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -3116,13 +3213,9 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(AddSlotAndCallAddPropHook)
       CACHEOP_CASE_UNIMPL(ArrayJoinResult)
       CACHEOP_CASE_UNIMPL(ObjectKeysResult)
-      CACHEOP_CASE_UNIMPL(PackedArrayPopResult)
-      CACHEOP_CASE_UNIMPL(PackedArrayShiftResult)
-      CACHEOP_CASE_UNIMPL(PackedArraySliceResult)
       CACHEOP_CASE_UNIMPL(ArgumentsSliceResult)
       CACHEOP_CASE_UNIMPL(IsArrayResult)
       CACHEOP_CASE_UNIMPL(StoreFixedSlotUndefinedResult)
-      CACHEOP_CASE_UNIMPL(IsPackedArrayResult)
       CACHEOP_CASE_UNIMPL(IsCallableResult)
       CACHEOP_CASE_UNIMPL(IsConstructorResult)
       CACHEOP_CASE_UNIMPL(IsCrossRealmArrayConstructorResult)

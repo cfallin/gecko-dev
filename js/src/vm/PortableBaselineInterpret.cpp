@@ -3056,6 +3056,30 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(LoadTypeOfObjectResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        const JSClass* cls = obj->getClass();
+        if (cls->isProxyObject()) {
+          FAIL_IC();
+        }
+        if (obj->is<JSFunction>()) {
+          retValue =
+              StringValue(ctx.frameMgr.cxForLocalUseOnly()->names().function)
+                  .asRawBits();
+        } else if (cls->emulatesUndefined()) {
+          retValue =
+              StringValue(ctx.frameMgr.cxForLocalUseOnly()->names().undefined)
+                  .asRawBits();
+        } else {
+          retValue =
+              StringValue(ctx.frameMgr.cxForLocalUseOnly()->names().object)
+                  .asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped);
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -3231,7 +3255,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(LoadUndefined)
       CACHEOP_CASE_UNIMPL(LoadConstantString)
       CACHEOP_CASE_UNIMPL(LoadInstanceOfObjectResult)
-      CACHEOP_CASE_UNIMPL(LoadTypeOfObjectResult)
       CACHEOP_CASE_UNIMPL(BigIntAddResult)
       CACHEOP_CASE_UNIMPL(BigIntSubResult)
       CACHEOP_CASE_UNIMPL(BigIntMulResult)

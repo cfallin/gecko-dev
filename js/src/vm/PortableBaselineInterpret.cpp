@@ -3146,7 +3146,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         }
         {
           PUSH_IC_FRAME();
-          Rooted<JSObject*> arr(cx, aobj);
+          ReservedRooted<JSObject*> arr(&ctx.state.obj0, aobj);
           JSObject* ret = ArraySliceDense(cx, arr, begin, end, nullptr);
           if (!ret) {
             FAIL_IC();
@@ -3200,6 +3200,24 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(ObjectToIteratorResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        uint32_t enumeratorsAddr = cacheIRReader.stubOffset();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        (void)enumeratorsAddr;
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSObject*> rootedObj(&ctx.state.obj0, obj);
+          auto* iter = GetIterator(cx, rootedObj);
+          if (!iter) {
+            FAIL_IC();
+          }
+          retValue = ObjectValue(*iter).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped);
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -3227,7 +3245,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(MegamorphicStoreSlot)
       CACHEOP_CASE_UNIMPL(MegamorphicHasPropResult)
       CACHEOP_CASE_UNIMPL(SmallObjectVariableKeyHasOwnResult)
-      CACHEOP_CASE_UNIMPL(ObjectToIteratorResult)
       CACHEOP_CASE_UNIMPL(ValueToIteratorResult)
       CACHEOP_CASE_UNIMPL(LoadDOMExpandoValue)
       CACHEOP_CASE_UNIMPL(LoadDOMExpandoValueGuardGeneration)

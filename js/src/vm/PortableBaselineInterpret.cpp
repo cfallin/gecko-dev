@@ -3244,6 +3244,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ValOperandId resultId = cacheIRReader.numberOperandId();
         BOUNDSCHECK(resultId);
         WRITE_REG(resultId.id(), UndefinedValue().asRawBits());
+        DISPATCH_CACHEOP();
       }
       
       CACHEOP_CASE(LoadConstantString) {
@@ -3253,9 +3254,35 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         JSString* str = reinterpret_cast<JSString*>(
           stubInfo->getStubRawWord(cstub, valOffset));
         WRITE_REG(resultId.id(), reinterpret_cast<uint64_t>(str));
+        DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE_UNIMPL(GuardToUint8Clamped);
+      CACHEOP_CASE(NewPlainObjectResult) {
+        uint32_t numFixedSlots = cacheIRReader.uint32Immediate();
+        uint32_t numDynamicSlots = cacheIRReader.uint32Immediate();
+        gc::AllocKind allocKind = cacheIRReader.allocKind();
+        uint32_t shapeOffset = cacheIRReader.stubOffset();
+        uint32_t siteOffset = cacheIRReader.stubOffset();
+        (void)numFixedSlots;
+        (void)numDynamicSlots;
+        SharedShape* shape = reinterpret_cast<SharedShape*>(stubInfo->getStubRawWord(cstub, shapeOffset));
+        gc::AllocSite* site = reinterpret_cast<gc::AllocSite*>(stubInfo->getStubRawWord(cstub, siteOffset));
+        {
+          PUSH_IC_FRAME();
+          Rooted<SharedShape*> rootedShape(cx, shape);
+          auto* result = NewPlainObjectBaselineFallback(cx, rootedShape, allocKind, site);
+          if (!result) {
+            FAIL_IC();
+          }
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+         
+      CACHEOP_CASE_UNIMPL(NewArrayObjectResult)
+
+      CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
       CACHEOP_CASE_UNIMPL(CallRegExpSearcherResult)
@@ -3440,8 +3467,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(BigIntDecResult)
       CACHEOP_CASE_UNIMPL(LoadBigIntTruthyResult)
       CACHEOP_CASE_UNIMPL(LoadValueTruthyResult)
-      CACHEOP_CASE_UNIMPL(NewPlainObjectResult)
-      CACHEOP_CASE_UNIMPL(NewArrayObjectResult)
       CACHEOP_CASE_UNIMPL(CallStringObjectConcatResult)
       CACHEOP_CASE_UNIMPL(CallIsSuspendedGeneratorResult)
       CACHEOP_CASE_UNIMPL(CompareBigIntResult)

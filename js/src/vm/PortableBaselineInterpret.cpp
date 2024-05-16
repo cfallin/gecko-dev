@@ -3218,6 +3218,43 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(LoadUndefinedResult) {
+        retValue = UndefinedValue().asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(LoadDoubleConstant) {
+        uint32_t valOffset = cacheIRReader.stubOffset();
+        NumberOperandId resultId = cacheIRReader.numberOperandId();
+        BOUNDSCHECK(resultId);
+        WRITE_REG(resultId.id(), stubInfo->getStubRawInt64(cstub, valOffset));
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(LoadBooleanConstant) {
+        bool val = cacheIRReader.readBool();
+        BooleanOperandId resultId = cacheIRReader.booleanOperandId();
+        BOUNDSCHECK(resultId);
+        WRITE_REG(resultId.id(), val ? 1 : 0);
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(LoadUndefined) {
+        ValOperandId resultId = cacheIRReader.numberOperandId();
+        BOUNDSCHECK(resultId);
+        WRITE_REG(resultId.id(), UndefinedValue().asRawBits());
+      }
+      
+      CACHEOP_CASE(LoadConstantString) {
+        uint32_t valOffset = cacheIRReader.stubOffset();
+        StringOperandId resultId = cacheIRReader.stringOperandId();
+        BOUNDSCHECK(resultId);
+        JSString* str = reinterpret_cast<JSString*>(
+          stubInfo->getStubRawWord(cstub, valOffset));
+        WRITE_REG(resultId.id(), reinterpret_cast<uint64_t>(str));
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped);
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -3380,11 +3417,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(CallNativeGetElementResult)
       CACHEOP_CASE_UNIMPL(CallNativeGetElementSuperResult)
       CACHEOP_CASE_UNIMPL(GetNextMapSetEntryForIteratorResult)
-      CACHEOP_CASE_UNIMPL(LoadUndefinedResult)
-      CACHEOP_CASE_UNIMPL(LoadDoubleConstant)
-      CACHEOP_CASE_UNIMPL(LoadBooleanConstant)
-      CACHEOP_CASE_UNIMPL(LoadUndefined)
-      CACHEOP_CASE_UNIMPL(LoadConstantString)
       CACHEOP_CASE_UNIMPL(LoadInstanceOfObjectResult)
       CACHEOP_CASE_UNIMPL(BigIntAddResult)
       CACHEOP_CASE_UNIMPL(BigIntSubResult)

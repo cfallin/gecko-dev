@@ -3176,6 +3176,29 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
+      
+      CACHEOP_CASE(LoadArgumentsObjectLengthResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ArgumentsObject* obj = reinterpret_cast<ArgumentsObject*>(READ_REG(objId.id()));
+        if (obj->hasOverriddenLength()) {
+          FAIL_IC();
+        }
+        retValue = Int32Value(obj->initialLength()).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(LoadArgumentsObjectLength) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        Int32OperandId resultId = cacheIRReader.int32OperandId();
+        BOUNDSCHECK(resultId);
+        ArgumentsObject* obj = reinterpret_cast<ArgumentsObject*>(READ_REG(objId.id()));
+        if (obj->hasOverriddenLength()) {
+          FAIL_IC();
+        }
+        WRITE_REG(resultId.id(), obj->initialLength());
+        DISPATCH_CACHEOP();
+      }
 
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped);
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
@@ -3319,8 +3342,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(StoreDataViewValueResult)
       CACHEOP_CASE_UNIMPL(LoadArgumentsObjectArgHoleResult)
       CACHEOP_CASE_UNIMPL(LoadArgumentsObjectArgExistsResult)
-      CACHEOP_CASE_UNIMPL(LoadArgumentsObjectLengthResult)
-      CACHEOP_CASE_UNIMPL(LoadArgumentsObjectLength)
       CACHEOP_CASE_UNIMPL(LoadFunctionLengthResult)
       CACHEOP_CASE_UNIMPL(LoadFunctionNameResult)
       CACHEOP_CASE_UNIMPL(LoadBoundFunctionNumArgs)

@@ -301,6 +301,7 @@ struct Stack {
 struct ICRegs {
   static const int kMaxICVals = 16;
   uint64_t icVals[kMaxICVals];
+  uint64_t origVals[kMaxICVals];
   int extraArgs;
 
   ICRegs() {}
@@ -642,6 +643,23 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       ctx.icregs.icVals[(reg)] = (value); \
     }
 
+#  define SAVE_REG_BEFORE_UNBOX(reg)                                      \
+    do {                                                                  \
+      if (Specialized) {                                                  \
+        weval_write_reg((reg) + ICRegs::kMaxVals, weval_read_reg((reg))); \
+      } else {                                                            \
+        ctx.icregs.origVals[(reg)] = ctx.icregs.icVals[(reg)];            \
+      }                                                                   \
+      savedOriginalValue |= (1UL << (reg));                               \
+    } while (0)
+#  define READ_VALUE_REG(reg)                                                  \
+    (Specialized                                                               \
+         ? ((savedOriginalValue & (1UL << (reg)))                              \
+                ? weval_read_reg((reg) + ICRegs::kMaxVals)                     \
+                : weval_read_reg((reg)))                                       \
+         : ((savedOriginalValue & (1UL << (reg))) ? ctx.icregs.origVals[(reg)] \
+                                                  : ctx.icregs.icVals[(reg)]))
+
 #  define WEVAL_UPDATE_IC_CTX()                                         \
     if (Specialized) {                                                  \
       weval::update_context(                                            \
@@ -652,6 +670,13 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #  define READ_REG(reg) ctx.icregs.icVals[(reg)]
 #  define WRITE_REG(reg, value) ctx.icregs.icVals[(reg)] = (value)
+#  define SAVE_REG_BEFORE_UNBOX(reg)                         \
+    do {                                                     \
+      ctx.icregs.origVals[(reg)] = ctx.icregs.icVals[(reg)]; \
+      savedOriginalValue |= (1UL << (reg));                  \
+    } while (0)
+#  define READ_VALUE_REG(reg) \
+  ((savedOriginalValue & (1UL << (reg))) ? ctx.icregs.origVals[(reg)] : ctx.icregs.icVals[(reg)])
 
 #  define WEVAL_UPDATE_IC_CTX() ;
 
@@ -659,6 +684,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
   uint64_t retValue = 0;
   CacheOp cacheop;
+  uint64_t savedOriginalValue = 0;  // bitmask.
 
 #ifdef ENABLE_JS_PBL_WEVAL
   weval::push_context(
@@ -691,6 +717,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (!v.isObject()) {
           FAIL_IC();
         }
+        SAVE_REG_BEFORE_UNBOX(inputId.id());
         WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(&v.toObject()));
         PREDICT_NEXT(GuardShape);
         PREDICT_NEXT(GuardSpecificFunction);
@@ -739,6 +766,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (!v.isBoolean()) {
           FAIL_IC();
         }
+        SAVE_REG_BEFORE_UNBOX(inputId.id());
         WRITE_REG(inputId.id(), v.toBoolean() ? 1 : 0);
         DISPATCH_CACHEOP();
       }
@@ -749,6 +777,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (!v.isString()) {
           FAIL_IC();
         }
+        SAVE_REG_BEFORE_UNBOX(inputId.id());
         WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toString()));
         PREDICT_NEXT(GuardToString);
         DISPATCH_CACHEOP();
@@ -760,6 +789,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (!v.isSymbol()) {
           FAIL_IC();
         }
+        SAVE_REG_BEFORE_UNBOX(inputId.id());
         WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toSymbol()));
         PREDICT_NEXT(GuardSpecificSymbol);
         DISPATCH_CACHEOP();
@@ -771,6 +801,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (!v.isBigInt()) {
           FAIL_IC();
         }
+        SAVE_REG_BEFORE_UNBOX(inputId.id());
         WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toBigInt()));
         DISPATCH_CACHEOP();
       }
@@ -3276,7 +3307,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           auto* result =
               NewPlainObjectBaselineFallback(cx, rootedShape, allocKind, site);
           if (!result) {
-            FAIL_IC();
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
           }
           retValue = ObjectValue(*result).asRawBits();
         }
@@ -3300,7 +3332,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           auto* result =
               NewArrayObjectBaselineFallback(cx, arrayLength, allocKind, site);
           if (!result) {
-            FAIL_IC();
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
           }
           retValue = ObjectValue(*result).asRawBits();
         }
@@ -3319,7 +3352,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           Rooted<ArrayObject*> templateObjectRooted(cx, templateObject);
           auto* result = ArrayConstructorOneArg(cx, templateObjectRooted, length);
           if (!result) {
-            FAIL_IC();
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
           }
           retValue = ObjectValue(*result).asRawBits();
         }
@@ -3337,6 +3371,59 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             FAIL_IC();
           }
           retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(CallNativeGetterResult) {
+        ValOperandId receiverId = cacheIRReader.valOperandId();
+        uint32_t getterOffset = cacheIRReader.stubOffset();
+        bool sameRealm = cacheIRReader.readBool();
+        uint32_t nargsAndFlagsOffset = cacheIRReader.stubOffset();
+        (void)sameRealm;
+        (void)nargsAndFlagsOffset;
+        Value receiver = Value::fromRawBits(READ_VALUE_REG(receiverId.id()));
+        JSFunction* getter = reinterpret_cast<JSFunction*>(
+            stubInfo->getStubRawWord(cstub, getterOffset));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSFunction*> getterRooted(&ctx.state.fun0, getter);
+          ReservedRooted<Value> receiverRooted(&ctx.state.value0, receiver);
+          ReservedRooted<Value> resultRooted(&ctx.state.value1);
+          if (!CallNativeGetter(cx, getterRooted, receiverRooted,
+                                &resultRooted)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = resultRooted.asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(CallNativeSetter) {
+        ValOperandId receiverId = cacheIRReader.valOperandId();
+        uint32_t setterOffset = cacheIRReader.stubOffset();
+        ObjOperandId rhsId = cacheIRReader.objOperandId();
+        bool sameRealm = cacheIRReader.readBool();
+        uint32_t nargsAndFlagsOffset = cacheIRReader.stubOffset();
+        (void)sameRealm;
+        (void)nargsAndFlagsOffset;
+        JSObject* receiver =
+            reinterpret_cast<JSObject*>(READ_REG(receiverId.id()));
+        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        JSFunction* setter = reinterpret_cast<JSFunction*>(
+            stubInfo->getStubRawWord(cstub, setterOffset));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSFunction*> setterRooted(&ctx.state.fun0, setter);
+          ReservedRooted<JSObject*> receiverRooted(&ctx.state.obj0, receiver);
+          ReservedRooted<Value> rhsRooted(&ctx.state.value1, rhs);
+          if (!CallNativeSetter(cx, setterRooted, receiverRooted, rhsRooted)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
         }
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -3452,7 +3539,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(AtomicsLoadResult)
       CACHEOP_CASE_UNIMPL(AtomicsStoreResult)
       CACHEOP_CASE_UNIMPL(AtomicsIsLockFreeResult)
-      CACHEOP_CASE_UNIMPL(CallNativeSetter)
       CACHEOP_CASE_UNIMPL(CallScriptedSetter)
       CACHEOP_CASE_UNIMPL(CallInlinedSetter)
       CACHEOP_CASE_UNIMPL(CallDOMSetter)
@@ -3493,7 +3579,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(FrameIsConstructingResult)
       CACHEOP_CASE_UNIMPL(CallScriptedGetterResult)
       CACHEOP_CASE_UNIMPL(CallInlinedGetterResult)
-      CACHEOP_CASE_UNIMPL(CallNativeGetterResult)
       CACHEOP_CASE_UNIMPL(CallDOMGetterResult)
       CACHEOP_CASE_UNIMPL(ProxyGetResult)
       CACHEOP_CASE_UNIMPL(ProxyGetByValueResult)

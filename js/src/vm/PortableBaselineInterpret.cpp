@@ -3429,6 +3429,40 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(LoadInstanceOfObjectResult) {
+        ValOperandId lhsId = cacheIRReader.valOperandId();
+        ObjOperandId protoId = cacheIRReader.objOperandId();
+        Value lhs = Value::fromRawBits(READ_VALUE_REG(lhsId.id()));
+        JSObject* rhsProto = reinterpret_cast<JSObject*>(READ_REG(protoId.id()));
+        if (!lhs.isObject()) {
+          retValue = BooleanValue(false).asRawBits();
+          PREDICT_RETURN();
+          DISPATCH_CACHEOP();
+        }
+
+        JSObject* lhsObj = &lhs.toObject();
+        bool result = false;
+        while (true) {
+          TaggedProto proto = lhsObj->taggedProto();
+          if (proto.isDynamic()) {
+            FAIL_IC();
+          }
+          JSObject* protoObj = proto.toObjectOrNull();
+          if (!protoObj) {
+            result = false;
+            break;
+          }
+          if (protoObj == rhsProto) {
+            result = true;
+            break;
+          }
+          lhsObj = protoObj;
+        }
+        retValue = BooleanValue(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -3587,7 +3621,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(CallNativeGetElementResult)
       CACHEOP_CASE_UNIMPL(CallNativeGetElementSuperResult)
       CACHEOP_CASE_UNIMPL(GetNextMapSetEntryForIteratorResult)
-      CACHEOP_CASE_UNIMPL(LoadInstanceOfObjectResult)
       CACHEOP_CASE_UNIMPL(BigIntAddResult)
       CACHEOP_CASE_UNIMPL(BigIntSubResult)
       CACHEOP_CASE_UNIMPL(BigIntMulResult)

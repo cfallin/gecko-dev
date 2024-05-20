@@ -624,6 +624,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 #define PREDICT_NEXT(name)                                       \
   if (!Specialized && cacheIRReader.peekOp() == CacheOp::name) { \
     cacheIRReader.readOp();                                      \
+    cacheop = CacheOp::name;                                     \
     goto cacheop_##name;                                         \
   }
 
@@ -2358,7 +2359,30 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE(LoadStringCharResult) {
+      CACHEOP_CASE(LinearizeForCodePointAccess) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        Int32OperandId indexId = cacheIRReader.int32OperandId();
+        StringOperandId resultId = cacheIRReader.stringOperandId();
+        BOUNDSCHECK(resultId);
+        JSString* str = reinterpret_cast<JSLinearString*>(READ_REG(strId.id()));
+        (void)indexId;
+
+        WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str));
+        if (str->isRope()) {
+          PUSH_IC_FRAME();
+          JSLinearString* result = LinearizeForCharAccess(cx, str);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(result));
+        }
+        PREDICT_NEXT(LoadStringCodePointResult);
+        DISPATCH_CACHEOP();        
+      }
+
+      CACHEOP_CASE(LoadStringCharResult)
+      CACHEOP_CASE(LoadStringAtResult) {
         StringOperandId strId = cacheIRReader.stringOperandId();
         Int32OperandId indexId = cacheIRReader.int32OperandId();
         bool handleOOB = cacheIRReader.readBool();
@@ -2368,8 +2392,13 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         JSString* result = nullptr;
         if (index < 0 || size_t(index) >= str->length()) {
           if (handleOOB) {
-            // Return an empty string.
-            result = ctx.frameMgr.cxForLocalUseOnly()->names().empty_;
+            if (cacheop == CacheOp::LoadStringCharResult) {
+              // Return an empty string.
+              retValue = StringValue(ctx.frameMgr.cxForLocalUseOnly()->names().empty_).asRawBits();
+            } else {
+              // Return `undefined`.
+              retValue = UndefinedValue().asRawBits();
+            }
           } else {
             FAIL_IC();
           }
@@ -2390,8 +2419,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
               return IC_ERROR_SENTINEL();
             }
           }
+          retValue = StringValue(result).asRawBits();
         }
-        retValue = StringValue(result).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2433,8 +2462,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         Value result;
         if (index < 0 || size_t(index) >= str->length()) {
           if (handleOOB) {
-            // Return NaN.
-            result = JS::NaNValue();
+            // Return undefined.
+            result = UndefinedValue();
           } else {
             FAIL_IC();
           }
@@ -3528,20 +3557,202 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           }
           retValue = StringValue(result).asRawBits();
         }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
       }
       
-      CACHEOP_CASE_UNIMPL(StringIncludesResult)
-      CACHEOP_CASE_UNIMPL(StringIndexOfResult)
-      CACHEOP_CASE_UNIMPL(StringLastIndexOfResult)
-      CACHEOP_CASE_UNIMPL(StringStartsWithResult)
-      CACHEOP_CASE_UNIMPL(StringEndsWithResult)
-      CACHEOP_CASE_UNIMPL(StringToLowerCaseResult)
-      CACHEOP_CASE_UNIMPL(StringToUpperCaseResult)
-      CACHEOP_CASE_UNIMPL(StringTrimResult)
-      CACHEOP_CASE_UNIMPL(StringTrimStartResult)
-      CACHEOP_CASE_UNIMPL(StringTrimEndResult)
-      CACHEOP_CASE_UNIMPL(LinearizeForCodePointAccess)
-      CACHEOP_CASE_UNIMPL(LoadStringAtResult)
+      CACHEOP_CASE(StringIncludesResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        StringOperandId searchStrId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        JSString* searchStr = reinterpret_cast<JSString*>(READ_REG(searchStrId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          ReservedRooted<JSString*> str1(&ctx.state.str1, searchStr);
+          bool result = false;
+          if (!StringIncludes(cx, str0, str1, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = BooleanValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(StringIndexOfResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        StringOperandId searchStrId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        JSString* searchStr = reinterpret_cast<JSString*>(READ_REG(searchStrId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          ReservedRooted<JSString*> str1(&ctx.state.str1, searchStr);
+          int32_t result = 0;
+          if (!StringIndexOf(cx, str0, str1, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = Int32Value(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(StringLastIndexOfResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        StringOperandId searchStrId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        JSString* searchStr = reinterpret_cast<JSString*>(READ_REG(searchStrId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          ReservedRooted<JSString*> str1(&ctx.state.str1, searchStr);
+          int32_t result = 0;
+          if (!StringLastIndexOf(cx, str0, str1, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = Int32Value(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(StringStartsWithResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        StringOperandId searchStrId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        JSString* searchStr = reinterpret_cast<JSString*>(READ_REG(searchStrId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          ReservedRooted<JSString*> str1(&ctx.state.str1, searchStr);
+          bool result = false;
+          if (!StringStartsWith(cx, str0, str1, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = BooleanValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(StringEndsWithResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        StringOperandId searchStrId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        JSString* searchStr = reinterpret_cast<JSString*>(READ_REG(searchStrId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          ReservedRooted<JSString*> str1(&ctx.state.str1, searchStr);
+          bool result = false;
+          if (!StringEndsWith(cx, str0, str1, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = BooleanValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(StringToLowerCaseResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          auto* result = StringToLowerCase(cx, str0);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(StringToUpperCaseResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          auto* result = StringToUpperCase(cx, str0);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(StringTrimResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          auto* result = StringTrim(cx, str0);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(StringTrimStartResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          auto* result = StringTrimStart(cx, str0);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(StringTrimEndResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          auto* result = StringTrimEnd(cx, str0);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE_UNIMPL(CallSubstringKernelResult)
+      CACHEOP_CASE_UNIMPL(StringReplaceStringResult)
+      CACHEOP_CASE_UNIMPL(StringSplitStringResult)
+      CACHEOP_CASE_UNIMPL(StringToAtom)
+      CACHEOP_CASE_UNIMPL(IdToStringOrSymbol)
+      CACHEOP_CASE_UNIMPL(NewStringIteratorResult)        
+      
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -3551,20 +3762,15 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(RegExpBuiltinExecMatchResult)
       CACHEOP_CASE_UNIMPL(RegExpBuiltinExecTestResult)
       CACHEOP_CASE_UNIMPL(RegExpFlagResult)
-      CACHEOP_CASE_UNIMPL(CallSubstringKernelResult)
-      CACHEOP_CASE_UNIMPL(StringReplaceStringResult)
-      CACHEOP_CASE_UNIMPL(StringSplitStringResult)
       CACHEOP_CASE_UNIMPL(RegExpPrototypeOptimizableResult)
       CACHEOP_CASE_UNIMPL(RegExpInstanceOptimizableResult)
       CACHEOP_CASE_UNIMPL(GetFirstDollarIndexResult)
       CACHEOP_CASE_UNIMPL(GuardIsFixedLengthTypedArray)
-      CACHEOP_CASE_UNIMPL(StringToAtom)
       CACHEOP_CASE_UNIMPL(GuardIndexIsValidUpdateOrAdd)
       CACHEOP_CASE_UNIMPL(GuardIndexIsNotDenseElement)
       CACHEOP_CASE_UNIMPL(GuardXrayExpandoShapeAndDefaultProto)
       CACHEOP_CASE_UNIMPL(GuardXrayNoExpando)
       CACHEOP_CASE_UNIMPL(LoadScriptedProxyHandler)
-      CACHEOP_CASE_UNIMPL(IdToStringOrSymbol)
       CACHEOP_CASE_UNIMPL(DoubleToUint8Clamped)
       CACHEOP_CASE_UNIMPL(MegamorphicStoreSlot)
       CACHEOP_CASE_UNIMPL(MegamorphicHasPropResult)
@@ -3592,7 +3798,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(TypedArrayElementSizeResult)
       CACHEOP_CASE_UNIMPL(GuardHasAttachedArrayBuffer)
       CACHEOP_CASE_UNIMPL(NewArrayIteratorResult)
-      CACHEOP_CASE_UNIMPL(NewStringIteratorResult)
       CACHEOP_CASE_UNIMPL(NewRegExpStringIteratorResult)
       CACHEOP_CASE_UNIMPL(ObjectCreateResult)
       CACHEOP_CASE_UNIMPL(NewTypedArrayFromLengthResult)

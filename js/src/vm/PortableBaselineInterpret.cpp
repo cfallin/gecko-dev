@@ -319,6 +319,7 @@ struct State {
   RootedObject obj2;
   RootedString str0;
   RootedString str1;
+  RootedString str2;
   RootedScript script0;
   Rooted<PropertyName*> name0;
   Rooted<jsid> id0;
@@ -337,6 +338,7 @@ struct State {
         obj2(cx),
         str0(cx),
         str1(cx),
+        str2(cx),
         script0(cx),
         name0(cx),
         id0(cx),
@@ -3746,10 +3748,81 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
       
-      CACHEOP_CASE_UNIMPL(CallSubstringKernelResult)
-      CACHEOP_CASE_UNIMPL(StringReplaceStringResult)
-      CACHEOP_CASE_UNIMPL(StringSplitStringResult)
-      CACHEOP_CASE_UNIMPL(StringToAtom)
+      CACHEOP_CASE(CallSubstringKernelResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        Int32OperandId beginId = cacheIRReader.int32OperandId();
+        Int32OperandId lengthId = cacheIRReader.int32OperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        int32_t begin = int32_t(READ_REG(beginId.id()));
+        int32_t length = int32_t(READ_REG(lengthId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          auto* result = SubstringKernel(cx, str0, begin, length);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(StringReplaceStringResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        StringOperandId patternId = cacheIRReader.stringOperandId();
+        StringOperandId replacementId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        JSString* pattern = reinterpret_cast<JSString*>(READ_REG(patternId.id()));
+        JSString* replacement = reinterpret_cast<JSString*>(READ_REG(replacementId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          ReservedRooted<JSString*> str1(&ctx.state.str1, pattern);
+          ReservedRooted<JSString*> str2(&ctx.state.str2, replacement);
+          auto* result = StringReplace(cx, str0, str1, str2);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(StringSplitStringResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        StringOperandId separatorId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        JSString* separator = reinterpret_cast<JSString*>(READ_REG(separatorId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          ReservedRooted<JSString*> str1(&ctx.state.str1, separator);
+          auto* result = StringSplitString(cx, str0, str1, INT32_MAX);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+        
+      CACHEOP_CASE(StringToAtom) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        JSAtom* result = AtomizeStringNoGC(ctx.frameMgr.cxForLocalUseOnly(), str);
+        if (!result) {
+          FAIL_IC();
+        }
+        WRITE_REG(strId.id(), reinterpret_cast<uint64_t>(result));
+        DISPATCH_CACHEOP();
+      }
+      
       CACHEOP_CASE_UNIMPL(IdToStringOrSymbol)
       CACHEOP_CASE_UNIMPL(NewStringIteratorResult)        
       

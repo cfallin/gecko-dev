@@ -36,6 +36,7 @@
 #include "jit/VMFunctions.h"
 #include "proxy/DeadObjectProxy.h"
 #include "proxy/DOMProxy.h"
+#include "util/Unicode.h"
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
 #include "vm/EnvironmentObject.h"
@@ -2422,6 +2423,33 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(LoadStringCodePointResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        Int32OperandId indexId = cacheIRReader.int32OperandId();
+        bool handleOOB = cacheIRReader.readBool();
+
+        JSString* str = reinterpret_cast<JSLinearString*>(READ_REG(strId.id()));
+        int32_t index = int32_t(READ_REG(indexId.id()));
+        Value result;
+        if (index < 0 || size_t(index) >= str->length()) {
+          if (handleOOB) {
+            // Return NaN.
+            result = JS::NaNValue();
+          } else {
+            FAIL_IC();
+          }
+        } else {
+          char32_t c;
+          // Guaranteed to be always work because this CacheIR op is
+          // always preceded by LinearizeForCharAccess.
+          MOZ_ALWAYS_TRUE(str->getCodePoint(/* cx = */ nullptr, index, &c));
+          result = Int32Value(c);
+        }
+        retValue = result.asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(LoadStringLengthResult) {
         StringOperandId strId = cacheIRReader.stringOperandId();
         JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
@@ -3463,6 +3491,57 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(StringFromCharCodeResult) {
+        Int32OperandId codeId = cacheIRReader.int32OperandId();
+        uint32_t code = uint32_t(READ_REG(codeId.id()));
+        StaticStrings& sstr =
+          ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
+        if (sstr.hasUnit(code)) {
+          retValue = StringValue(sstr.getUnit(code)).asRawBits();
+        } else {
+          PUSH_IC_FRAME();
+          auto* result = StringFromCharCode(cx, code);
+          if (!result) {
+            FAIL_IC();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(StringFromCodePointResult) {
+        Int32OperandId codeId = cacheIRReader.int32OperandId();
+        uint32_t code = uint32_t(READ_REG(codeId.id()));
+        if (code > unicode::NonBMPMax) {
+          FAIL_IC();
+        }
+        StaticStrings& sstr =
+          ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
+        if (sstr.hasUnit(code)) {
+          retValue = StringValue(sstr.getUnit(code)).asRawBits();
+        } else {
+          PUSH_IC_FRAME();
+          auto* result = StringFromCodePoint(cx, code);
+          if (!result) {
+            FAIL_IC();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+      }
+      
+      CACHEOP_CASE_UNIMPL(StringIncludesResult)
+      CACHEOP_CASE_UNIMPL(StringIndexOfResult)
+      CACHEOP_CASE_UNIMPL(StringLastIndexOfResult)
+      CACHEOP_CASE_UNIMPL(StringStartsWithResult)
+      CACHEOP_CASE_UNIMPL(StringEndsWithResult)
+      CACHEOP_CASE_UNIMPL(StringToLowerCaseResult)
+      CACHEOP_CASE_UNIMPL(StringToUpperCaseResult)
+      CACHEOP_CASE_UNIMPL(StringTrimResult)
+      CACHEOP_CASE_UNIMPL(StringTrimStartResult)
+      CACHEOP_CASE_UNIMPL(StringTrimEndResult)
+      CACHEOP_CASE_UNIMPL(LinearizeForCodePointAccess)
+      CACHEOP_CASE_UNIMPL(LoadStringAtResult)
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -3520,21 +3599,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(NewTypedArrayFromArrayBufferResult)
       CACHEOP_CASE_UNIMPL(NewTypedArrayFromArrayResult)
       CACHEOP_CASE_UNIMPL(NewStringObjectResult)
-      CACHEOP_CASE_UNIMPL(StringFromCharCodeResult)
-      CACHEOP_CASE_UNIMPL(StringFromCodePointResult)
-      CACHEOP_CASE_UNIMPL(StringIncludesResult)
-      CACHEOP_CASE_UNIMPL(StringIndexOfResult)
-      CACHEOP_CASE_UNIMPL(StringLastIndexOfResult)
-      CACHEOP_CASE_UNIMPL(StringStartsWithResult)
-      CACHEOP_CASE_UNIMPL(StringEndsWithResult)
-      CACHEOP_CASE_UNIMPL(StringToLowerCaseResult)
-      CACHEOP_CASE_UNIMPL(StringToUpperCaseResult)
-      CACHEOP_CASE_UNIMPL(StringTrimResult)
-      CACHEOP_CASE_UNIMPL(StringTrimStartResult)
-      CACHEOP_CASE_UNIMPL(StringTrimEndResult)
-      CACHEOP_CASE_UNIMPL(LinearizeForCodePointAccess)
-      CACHEOP_CASE_UNIMPL(LoadStringAtResult)
-      CACHEOP_CASE_UNIMPL(LoadStringCodePointResult)
       CACHEOP_CASE_UNIMPL(ToRelativeStringIndex)
       CACHEOP_CASE_UNIMPL(MathAbsInt32Result)
       CACHEOP_CASE_UNIMPL(MathAbsNumberResult)

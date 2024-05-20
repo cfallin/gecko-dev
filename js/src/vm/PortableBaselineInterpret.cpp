@@ -2296,6 +2296,26 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(GuardIndexIsNotDenseElement) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        Int32OperandId indexId = cacheIRReader.int32OperandId();
+        NativeObject* nobj =
+            reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
+        ObjectElements* elems = nobj->getElementsHeader();
+        int32_t index = int32_t(READ_REG(indexId.id()));
+        if (index < 0 || uint32_t(index) >= nobj->getDenseInitializedLength()) {
+          // OK -- not in the dense index range.
+        } else {
+          HeapSlot* slot = &elems->elements()[index];
+          Value val = slot->get();
+          if (!val.isMagic()) {
+            // Not a magic value -- not the hole, so guard fails.
+            FAIL_IC();
+          }
+        }
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(LoadInt32ArrayLengthResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         ArrayObject* aobj =
@@ -3881,7 +3901,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(GetFirstDollarIndexResult)
       CACHEOP_CASE_UNIMPL(GuardIsFixedLengthTypedArray)
       CACHEOP_CASE_UNIMPL(GuardIndexIsValidUpdateOrAdd)
-      CACHEOP_CASE_UNIMPL(GuardIndexIsNotDenseElement)
       CACHEOP_CASE_UNIMPL(GuardXrayExpandoShapeAndDefaultProto)
       CACHEOP_CASE_UNIMPL(GuardXrayNoExpando)
       CACHEOP_CASE_UNIMPL(LoadScriptedProxyHandler)

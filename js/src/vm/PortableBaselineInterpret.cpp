@@ -3823,8 +3823,49 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
       
-      CACHEOP_CASE_UNIMPL(IdToStringOrSymbol)
-      CACHEOP_CASE_UNIMPL(NewStringIteratorResult)        
+      CACHEOP_CASE(IdToStringOrSymbol) {
+        ValOperandId resultId = cacheIRReader.valOperandId();
+        ValOperandId idId = cacheIRReader.valOperandId();
+        BOUNDSCHECK(resultId);
+        Value id = Value::fromRawBits(READ_VALUE_REG(idId.id()));
+        if (id.isString() || id.isSymbol()) {
+          WRITE_REG(resultId.id(), id.asRawBits());
+        } else if (id.isInt32()) {
+          int32_t idInt = id.toInt32();
+          StaticStrings& sstr =
+            ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
+          if (sstr.hasInt(idInt)) {
+            WRITE_REG(resultId.id(), StringValue(sstr.getInt(idInt)).asRawBits());
+          } else {
+            PUSH_IC_FRAME();
+            auto* result = Int32ToStringPure(cx, idInt);
+            if (!result) {
+              ctx.error = PBIResult::Error;
+              return IC_ERROR_SENTINEL();
+            }
+            WRITE_REG(resultId.id(), StringValue(result).asRawBits());
+          }
+        } else {
+          FAIL_IC();
+        }
+        DISPATCH_CACHEOP();
+      }
+        
+      CACHEOP_CASE(NewStringIteratorResult) {
+        uint32_t templateObjectOffset = cacheIRReader.stubOffset();
+        (void)templateObjectOffset;
+        {
+          PUSH_IC_FRAME();
+          auto* result = NewStringIterator(cx);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
       
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)

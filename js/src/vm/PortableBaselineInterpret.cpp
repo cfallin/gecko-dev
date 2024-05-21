@@ -549,6 +549,22 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
 static uint64_t CallNextIC(uint64_t arg0, uint64_t arg1, ICStub* stub,
                            ICCtx& ctx);
 
+static double DoubleMinMax(bool isMax, double first, double second) {
+  if (std::isnan(first) || std::isnan(second)) {
+    return JS::GenericNaN();
+  } else if (first == 0 && second == 0) {
+    // -0 and 0 compare as equal, but we have to distinguish
+    // them here: min(-0, 0) = -0, max(-0, 0) = 0.
+    bool firstPos = !std::signbit(first);
+    bool secondPos = !std::signbit(second);
+    bool sign = isMax ? (firstPos || secondPos) : (firstPos && secondPos);
+    return sign ? 0.0 : -0.0;
+  } else {
+    return isMax ? ((first >= second) ? first : second)
+                 : ((first <= second) ? first : second);
+  }
+}
+
 // Interpreter for CacheIR.
 template <bool Specialized>
 uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
@@ -3535,21 +3551,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         BOUNDSCHECK(resultId);
         double first = READ_VALUE_REG(firstId.id()).toNumber();
         double second = READ_VALUE_REG(secondId.id()).toNumber();
-        double result;
-        if (std::isnan(first) || std::isnan(second)) {
-          result = JS::GenericNaN();
-        } else if (first == 0 && second == 0) {
-          // -0 and 0 compare as equal, but we have to distinguish
-          // them here: min(-0, 0) = -0, max(-0, 0) = 0.
-          bool firstPos = !std::signbit(first);
-          bool secondPos = !std::signbit(second);
-          bool sign = isMax ? (firstPos || secondPos) : (firstPos && secondPos);
-          result = sign ? 0.0 : -0.0;
-        } else {
-          result = isMax ?
-            ((first >= second) ? first : second) :
-            ((first <= second) ? first : second);
-        }
+        double result = DoubleMinMax(isMax, first, second);
         WRITE_VALUE_REG(resultId.id(), DoubleValue(result));
         DISPATCH_CACHEOP();
       }
@@ -3588,7 +3590,38 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
       
-      CACHEOP_CASE(NumberMinMaxArrayResult) {}
+      CACHEOP_CASE(NumberMinMaxArrayResult) {
+        ObjOperandId arrayId = cacheIRReader.objOperandId();
+        bool isMax = cacheIRReader.readBool();
+        // ICs that use this opcode depend on implicit unboxing due to
+        // type-overload on ObjOperandId when a value is loaded
+        // directly from an argument slot. We explicitly unbox here.
+        NativeObject* nobj = reinterpret_cast<NativeObject*>(
+            &READ_VALUE_REG(arrayId.id()).toObject());
+        uint32_t len = nobj->getDenseInitializedLength();
+        if (len == 0) {
+          FAIL_IC();
+        }
+        ObjectElements* elems = nobj->getElementsHeader();
+        double accum = 0;
+        for (uint32_t i = 0; i < len; i++) {
+          HeapSlot* slot = &elems->elements()[i];
+          Value val = slot->get();
+          if (!val.isNumber()) {
+            FAIL_IC();
+          }
+          double valDouble = val.toNumber();
+          if (i > 0) {
+            accum = DoubleMinMax(isMax, accum, valDouble);
+          } else {
+            accum = valDouble;
+          }
+        }
+        retValue = DoubleValue(accum).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
       CACHEOP_CASE(MathFunctionNumberResult) {}
       CACHEOP_CASE(NumberParseIntResult) {}
       CACHEOP_CASE(DoubleParseIntResult) {

@@ -46,6 +46,7 @@
 #include "vm/Interpreter.h"
 #include "vm/Iteration.h"
 #include "vm/JitActivation.h"
+#include "vm/JSObject.h"
 #include "vm/JSScript.h"
 #include "vm/Opcodes.h"
 #include "vm/PlainObject.h"
@@ -2322,9 +2323,14 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE(LoadFixedSlotResult) {
+      CACHEOP_CASE(LoadFixedSlotResult)
+      CACHEOP_CASE(LoadFixedSlotTypedResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t offsetOffset = cacheIRReader.stubOffset();
+        if (cacheop == CacheOp::LoadFixedSlotTypedResult) {
+          // Type is unused here.
+          (void)cacheIRReader.valueType();
+        }
         uintptr_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
         NativeObject* nobj =
             reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
@@ -4567,6 +4573,48 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(IsCrossRealmArrayConstructorResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        bool result =
+            obj->shape()->realm() !=
+                ctx.frameMgr.cxForLocalUseOnly()->realm() &&
+            obj->is<JSFunction>() &&
+            obj->as<JSFunction>().nativeUnchecked() == &js::ArrayConstructor;
+        retValue = BooleanValue(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(IsTypedArrayResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        bool isPossiblyWrapped = cacheIRReader.readBool();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        if (IsTypedArrayClass(obj->getClass())) {
+          retValue = BooleanValue(true).asRawBits();
+        } else if (isPossiblyWrapped) {
+          PUSH_IC_FRAME();
+          bool result;
+          if (!IsPossiblyWrappedTypedArray(cx, obj, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = BooleanValue(result).asRawBits();
+        } else {
+          retValue = BooleanValue(false).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(IsTypedArrayConstructorResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        retValue = BooleanValue(IsTypedArrayConstructor(obj)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -4597,9 +4645,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(ObjectKeysResult)
       CACHEOP_CASE_UNIMPL(ArgumentsSliceResult)
       CACHEOP_CASE_UNIMPL(StoreFixedSlotUndefinedResult)
-      CACHEOP_CASE_UNIMPL(IsCrossRealmArrayConstructorResult)
-      CACHEOP_CASE_UNIMPL(IsTypedArrayResult)
-      CACHEOP_CASE_UNIMPL(IsTypedArrayConstructorResult)
       CACHEOP_CASE_UNIMPL(ArrayBufferViewByteOffsetInt32Result)
       CACHEOP_CASE_UNIMPL(ArrayBufferViewByteOffsetDoubleResult)
       CACHEOP_CASE_UNIMPL(TypedArrayByteLengthInt32Result)
@@ -4643,7 +4688,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 #endif
       CACHEOP_CASE_UNIMPL(BindFunctionResult)
       CACHEOP_CASE_UNIMPL(SpecializedBindFunctionResult)
-      CACHEOP_CASE_UNIMPL(LoadFixedSlotTypedResult)
       CACHEOP_CASE_UNIMPL(CallGetSparseElementResult)
       CACHEOP_CASE_UNIMPL(LoadDataViewValueResult)
       CACHEOP_CASE_UNIMPL(StoreDataViewValueResult)

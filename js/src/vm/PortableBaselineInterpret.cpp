@@ -4691,7 +4691,63 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
       
-      CACHEOP_CASE_UNIMPL(MegamorphicHasPropResult)
+      CACHEOP_CASE_UNIMPL(MegamorphicHasPropResult) {
+        FAIL_IC();
+      }
+
+      CACHEOP_CASE(ArrayJoinResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        StringOperandId sepId = cacheIRReader.stringOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        JSString* sep = reinterpret_cast<JSString*>(READ_REG(sepId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSObject*> obj0(&ctx.state.obj0, obj);
+          ReservedRooted<JSString*> str0(&ctx.state.str0, sep);
+          auto* result = ArrayJoin(cx, obj0, str0);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(ObjectKeysResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSObject*> obj0(&ctx.state.obj0, obj);
+          auto* result = ObjectKeys(cx, obj0);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(ObjectCreateResult) {
+        uint32_t templateOffset = cacheIRReader.stubOffset();
+        PlainObject* templateObj = reinterpret_cast<PlainObject*>(stubInfo->getStubRawWord(cstub, templateOffset));
+        {
+          PUSH_IC_FRAME();
+          Rooted<PlainObject*> templateRooted(cx, templateObj);
+          auto* result = ObjectCreateWithTemplate(cx, templateRooted);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
 
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
@@ -4717,14 +4773,11 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(LoadDOMExpandoValueIgnoreGeneration)
       CACHEOP_CASE_UNIMPL(GuardDOMExpandoMissingOrGuardShape)
       CACHEOP_CASE_UNIMPL(AddSlotAndCallAddPropHook)
-      CACHEOP_CASE_UNIMPL(ArrayJoinResult)
-      CACHEOP_CASE_UNIMPL(ObjectKeysResult)
       CACHEOP_CASE_UNIMPL(ArgumentsSliceResult)
       CACHEOP_CASE_UNIMPL(StoreFixedSlotUndefinedResult)
       CACHEOP_CASE_UNIMPL(GuardHasAttachedArrayBuffer)
       CACHEOP_CASE_UNIMPL(NewArrayIteratorResult)
       CACHEOP_CASE_UNIMPL(NewRegExpStringIteratorResult)
-      CACHEOP_CASE_UNIMPL(ObjectCreateResult)
       CACHEOP_CASE_UNIMPL(NewStringObjectResult)
       CACHEOP_CASE_UNIMPL(ToRelativeStringIndex)
       CACHEOP_CASE_UNIMPL(ReflectGetPrototypeOfResult)

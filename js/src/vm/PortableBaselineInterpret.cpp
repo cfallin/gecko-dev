@@ -3518,7 +3518,33 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
       
-      CACHEOP_CASE(NumberMinMax) {}
+      CACHEOP_CASE(NumberMinMax) {
+        bool isMax = cacheIRReader.readBool();
+        NumberOperandId firstId = cacheIRReader.numberOperandId();
+        NumberOperandId secondId = cacheIRReader.numberOperandId();
+        NumberOperandId resultId = cacheIRReader.numberOperandId();
+        BOUNDSCHECK(resultId);
+        double first = READ_VALUE_REG(firstId.id()).toNumber();
+        double second = READ_VALUE_REG(secondId.id()).toNumber();
+        double result;
+        if (std::isnan(first) || std::isnan(second)) {
+          result = JS::GenericNaN();
+        } else if (first == 0 && second == 0) {
+          // -0 and 0 compare as equal, but we have to distinguish
+          // them here: min(-0, 0) = -0, max(-0, 0) = 0.
+          bool firstPos = !std::signbit(first);
+          bool secondPos = !std::signbit(second);
+          bool sign = isMax ? (firstPos || secondPos) : (firstPos && secondPos);
+          result = sign ? 0.0 : -0.0;
+        } else {
+          result = isMax ?
+            ((first >= second) ? first : second) :
+            ((first <= second) ? first : second);
+        }
+        WRITE_VALUE_REG(resultId.id(), DoubleValue(result));
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(Int32MinMaxArrayResult) {}
       CACHEOP_CASE(NumberMinMaxArrayResult) {}
       CACHEOP_CASE(MathFunctionNumberResult) {}

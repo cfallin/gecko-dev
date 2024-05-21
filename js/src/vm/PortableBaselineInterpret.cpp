@@ -2197,7 +2197,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         bool isSetter = cacheop == CacheOp::CallScriptedSetter;
         ValOperandId receiverId = cacheIRReader.valOperandId();
         uint32_t getterSetterOffset = cacheIRReader.stubOffset();
-        ValOperandId rhsId = isSetter ? cacheIRReader.valOperandId() : ValOperandId();
+        ValOperandId rhsId =
+            isSetter ? cacheIRReader.valOperandId() : ValOperandId();
         bool sameRealm = cacheIRReader.readBool();
         uint32_t nargsAndFlagsOffset = cacheIRReader.stubOffset();
         (void)nargsAndFlagsOffset;

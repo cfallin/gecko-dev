@@ -3272,6 +3272,118 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(MathAbsInt32Result) {
+        Int32OperandId inputId = cacheIRReader.int32OperandId();
+        int32_t input = int32_t(READ_REG(inputId.id()));
+        if (input == INT32_MIN) {
+          FAIL_IC();
+        }
+        if (input < 0) {
+          input = -input;
+        }
+        retValue = Int32Value(input).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathAbsNumberResult) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        retValue = DoubleValue(fabs(input)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathClz32Result) {
+        Int32OperandId inputId = cacheIRReader.int32OperandId();
+        int32_t input = int32_t(READ_REG(inputId.id()));
+        int32_t result =
+            (input == 0) ? 32 : mozilla::CountLeadingZeroes32(input);
+        retValue = Int32Value(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathSignInt32Result) {
+        Int32OperandId inputId = cacheIRReader.int32OperandId();
+        int32_t input = int32_t(READ_REG(inputId.id()));
+        int32_t result = (input == 0) ? 0 : ((input > 0) ? 1 : -1);
+        retValue = Int32Value(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathSignNumberResult) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        double result = 0;
+        if (std::isnan(input)) {
+          result = JS::GenericNaN();
+        } else if (input == 0 && std::signbit(input)) {
+          result = -0.0;
+        } else if (input == 0) {
+          result = 0;
+        } else if (input > 0) {
+          result = 1;
+        } else {
+          result = -1;
+        }
+        retValue = DoubleValue(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathSignNumberToInt32Result) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        int32_t result = 0;
+        if (std::isnan(input) || (input == 0.0 && std::signbit(input))) {
+          FAIL_IC();
+        } else if (input == 0) {
+          result = 0;
+        } else if (input > 0) {
+          result = 1;
+        } else {
+          result = -1;
+        }
+        retValue = Int32Value(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathImulResult) {
+        Int32OperandId lhsId = cacheIRReader.int32OperandId();
+        Int32OperandId rhsId = cacheIRReader.int32OperandId();
+        int32_t lhs = int32_t(READ_REG(lhsId.id()));
+        int32_t rhs = int32_t(READ_REG(rhsId.id()));
+        int32_t result = lhs * rhs;
+        retValue = Int32Value(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathFRoundNumberResult) {}
+      CACHEOP_CASE(MathRandomResult) {}
+      CACHEOP_CASE(MathHypot2NumberResult) {}
+      CACHEOP_CASE(MathHypot3NumberResult) {}
+      CACHEOP_CASE(MathHypot4NumberResult) {}
+      CACHEOP_CASE(MathAtan2NumberResult) {}
+      CACHEOP_CASE(MathFloorNumberResult) {}
+      CACHEOP_CASE(MathCeilNumberResult) {}
+      CACHEOP_CASE(MathTruncNumberResult) {}
+      CACHEOP_CASE(MathFloorToInt32Result) {}
+      CACHEOP_CASE(MathCeilToInt32Result) {}
+      CACHEOP_CASE(MathTruncToInt32Result) {}
+      CACHEOP_CASE(MathRoundToInt32Result) {}
+      CACHEOP_CASE(NumberMinMax) {}
+      CACHEOP_CASE(Int32MinMaxArrayResult) {}
+      CACHEOP_CASE(NumberMinMaxArrayResult) {}
+      CACHEOP_CASE(MathFunctionNumberResult) {}
+      CACHEOP_CASE(NumberParseIntResult) {}
+      CACHEOP_CASE(DoubleParseIntResult) {
+        FAIL_IC();
+      }
+
       CACHEOP_CASE(GuardTagNotEqual) {
         ValueTagOperandId lhsId = cacheIRReader.valueTagOperandId();
         ValueTagOperandId rhsId = cacheIRReader.valueTagOperandId();
@@ -4137,32 +4249,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(NewTypedArrayFromArrayResult)
       CACHEOP_CASE_UNIMPL(NewStringObjectResult)
       CACHEOP_CASE_UNIMPL(ToRelativeStringIndex)
-      CACHEOP_CASE_UNIMPL(MathAbsInt32Result)
-      CACHEOP_CASE_UNIMPL(MathAbsNumberResult)
-      CACHEOP_CASE_UNIMPL(MathClz32Result)
-      CACHEOP_CASE_UNIMPL(MathSignInt32Result)
-      CACHEOP_CASE_UNIMPL(MathSignNumberResult)
-      CACHEOP_CASE_UNIMPL(MathSignNumberToInt32Result)
-      CACHEOP_CASE_UNIMPL(MathImulResult)
-      CACHEOP_CASE_UNIMPL(MathFRoundNumberResult)
-      CACHEOP_CASE_UNIMPL(MathRandomResult)
-      CACHEOP_CASE_UNIMPL(MathHypot2NumberResult)
-      CACHEOP_CASE_UNIMPL(MathHypot3NumberResult)
-      CACHEOP_CASE_UNIMPL(MathHypot4NumberResult)
-      CACHEOP_CASE_UNIMPL(MathAtan2NumberResult)
-      CACHEOP_CASE_UNIMPL(MathFloorNumberResult)
-      CACHEOP_CASE_UNIMPL(MathCeilNumberResult)
-      CACHEOP_CASE_UNIMPL(MathTruncNumberResult)
-      CACHEOP_CASE_UNIMPL(MathFloorToInt32Result)
-      CACHEOP_CASE_UNIMPL(MathCeilToInt32Result)
-      CACHEOP_CASE_UNIMPL(MathTruncToInt32Result)
-      CACHEOP_CASE_UNIMPL(MathRoundToInt32Result)
-      CACHEOP_CASE_UNIMPL(NumberMinMax)
-      CACHEOP_CASE_UNIMPL(Int32MinMaxArrayResult)
-      CACHEOP_CASE_UNIMPL(NumberMinMaxArrayResult)
-      CACHEOP_CASE_UNIMPL(MathFunctionNumberResult)
-      CACHEOP_CASE_UNIMPL(NumberParseIntResult)
-      CACHEOP_CASE_UNIMPL(DoubleParseIntResult)
       CACHEOP_CASE_UNIMPL(ReflectGetPrototypeOfResult)
       CACHEOP_CASE_UNIMPL(AtomicsCompareExchangeResult)
       CACHEOP_CASE_UNIMPL(AtomicsExchangeResult)

@@ -4783,6 +4783,52 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(CallNumberToString) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        StringOperandId resultId = cacheIRReader.stringOperandId();
+        BOUNDSCHECK(resultId);
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        {
+          PUSH_IC_FRAME();
+          auto* result = NumberToStringPure(cx, input);
+          if (!result) {
+            FAIL_IC();
+          }
+          WRITE_REG(resultId.id(), reinterpret_cast<uint64_t>(result), STRING);
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(Int32ToStringWithBaseResult) {
+        Int32OperandId inputId = cacheIRReader.int32OperandId();
+        Int32OperandId baseId = cacheIRReader.int32OperandId();
+        int32_t input = int32_t(READ_REG(inputId.id()));
+        int32_t base = int32_t(READ_REG(baseId.id()));
+        {
+          PUSH_IC_FRAME();
+          auto* result = Int32ToStringWithBase(cx, input, base, true);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = StringValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(BooleanToString) {
+        BooleanOperandId inputId = cacheIRReader.booleanOperandId();
+        StringOperandId resultId = cacheIRReader.stringOperandId();
+        BOUNDSCHECK(resultId);
+        bool input = READ_REG(inputId.id()) != 0;
+        auto& names = ctx.frameMgr.cxForLocalUseOnly()->names();
+        JSString* result = input ? names.true_ : names.false_;
+        WRITE_REG(resultId.id(), reinterpret_cast<uint64_t>(result), STRING);
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -4830,9 +4876,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(ProxySet)
       CACHEOP_CASE_UNIMPL(ProxySetByValue)
       CACHEOP_CASE_UNIMPL(CallAddOrUpdateSparseElementHelper)
-      CACHEOP_CASE_UNIMPL(CallNumberToString)
-      CACHEOP_CASE_UNIMPL(Int32ToStringWithBaseResult)
-      CACHEOP_CASE_UNIMPL(BooleanToString)
       CACHEOP_CASE_UNIMPL(CallBoundScriptedFunction)
       CACHEOP_CASE_UNIMPL(CallWasmFunction)
       CACHEOP_CASE_UNIMPL(GuardWasmArg)

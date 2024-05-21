@@ -301,8 +301,17 @@ struct Stack {
 
 struct ICRegs {
   static const int kMaxICVals = 16;
+  // Values can be split across two OR'd halves: unboxed bits and
+  // tags.  We mostly rely on the CacheIRWriter/Reader typed OperandId
+  // system to ensure "type safety" in CacheIR w.r.t. unboxing: the
+  // existence of an ObjOperandId implies that the value is unboxed,
+  // so `icVals` contains a pointer (reinterpret-casted to a
+  // `uint64_t`) and `icTags` contains the tag bits. An operator that
+  // requires a tagged Value can OR the two together (this corresponds
+  // to `useValueRegister` rather than `useRegister` in the native
+  // bavseline compiler).
   uint64_t icVals[kMaxICVals];
-  uint64_t origVals[kMaxICVals];
+  uint64_t icTags[kMaxICVals]; // Shifted tags.
   int extraArgs;
 
   ICRegs() {}
@@ -640,29 +649,28 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #  define READ_REG(reg) \
     (Specialized ? weval_read_reg((reg)) : ctx.icregs.icVals[(reg)])
-#  define WRITE_REG(reg, value)           \
-    if (Specialized) {                    \
-      weval_write_reg((reg), (value));    \
-    } else {                              \
-      ctx.icregs.icVals[(reg)] = (value); \
+#  define WRITE_REG(reg, value, tagtype)                                      \
+    if (Specialized) {                                                        \
+      weval_write_reg((reg), (value));                                        \
+      weval_write_reg((reg) + ICRegs::kMaxVals, JSVAL_SHIFTED_TAG_##tagtype); \
+    } else {                                                                  \
+      ctx.icregs.icVals[(reg)] = (value);                                     \
+      ctx.icregs.icTags[(reg)] = JSVAL_SHIFTED_TAG_##tagtype;                 \
     }
 
-#  define SAVE_REG_BEFORE_UNBOX(reg)                                      \
-    do {                                                                  \
-      if (Specialized) {                                                  \
-        weval_write_reg((reg) + ICRegs::kMaxVals, weval_read_reg((reg))); \
-      } else {                                                            \
-        ctx.icregs.origVals[(reg)] = ctx.icregs.icVals[(reg)];            \
-      }                                                                   \
-      savedOriginalValue |= (1UL << (reg));                               \
-    } while (0)
-#  define READ_VALUE_REG(reg)                                                  \
-    (Specialized                                                               \
-         ? ((savedOriginalValue & (1UL << (reg)))                              \
-                ? weval_read_reg((reg) + ICRegs::kMaxVals)                     \
-                : weval_read_reg((reg)))                                       \
-         : ((savedOriginalValue & (1UL << (reg))) ? ctx.icregs.origVals[(reg)] \
-                                                  : ctx.icregs.icVals[(reg)]))
+#  define READ_VALUE_REG(reg)                                     \
+    Value::fromRawBits(                                           \
+        Specialized ? (weval_read_reg((reg) + ICRegs::kMaxVals) | \
+                       weval_read_reg((reg)))                     \
+                    : (ctx.icregs.icTags[(reg)] | ctx.icregs.icVals[(reg)]))
+#  define WRITE_VALUE_REG(reg, value)                             \
+    if (Specialized) weval_write_reg((reg), (value).asRawBits()); \
+    weval_write_reg((reg) + ICRegs::kMaxVals, 0);                 \
+    }                                                             \
+    else {                                                        \
+      ctx.icregs.icVals[(reg)] = (value).asRawBits();             \
+      ctx.icregs.icTags[(reg)] = 0;                               \
+    }
 
 #  define WEVAL_UPDATE_IC_CTX()                                         \
     if (Specialized) {                                                  \
@@ -678,27 +686,18 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
                    ctx.icregs.icVals[(reg)]);                 \
       ctx.icregs.icVals[(reg)];                               \
     })
-#  define WRITE_REG(reg, value)                                \
-    do {                                                       \
-      uint64_t write_reg_value = (value);                      \
-      ctx.icregs.icVals[(reg)] = write_reg_value;              \
-      TRACE_PRINTF("WRITE_REG(%d): %" PRIx64 "\n", int((reg)), \
-                   write_reg_value);                           \
+#  define WRITE_REG(reg, value, tagtype)                      \
+    do {                                                      \
+      ctx.icregs.icVals[(reg)] = (value);                     \
+      ctx.icregs.icTags[(reg)] = JSVAL_SHIFTED_TAG_##tagtype; \
     } while (0)
-#  define SAVE_REG_BEFORE_UNBOX(reg)                         \
-    do {                                                     \
-      ctx.icregs.origVals[(reg)] = ctx.icregs.icVals[(reg)]; \
-      savedOriginalValue |= (1UL << (reg));                  \
+#  define READ_VALUE_REG(reg) \
+    Value::fromRawBits(ctx.icregs.icVals[(reg)] | ctx.icregs.icTags[(reg)])
+#  define WRITE_VALUE_REG(reg, value)                 \
+    do {                                              \
+      ctx.icregs.icVals[(reg)] = (value).asRawBits(); \
+      ctx.icregs.icTags[(reg)] = 0;                   \
     } while (0)
-#  define READ_VALUE_REG(reg)                                                 \
-    ({                                                                        \
-      uint64_t read_value_reg =                                               \
-          ((savedOriginalValue & (1UL << (reg))) ? ctx.icregs.origVals[(reg)] \
-                                                 : ctx.icregs.icVals[(reg)]); \
-      TRACE_PRINTF("READ_VALUE_REG(%d): %" PRIx64 "\n", int((reg)),           \
-                   read_value_reg);                                           \
-      read_value_reg;                                                         \
-    })
 
 #  define WEVAL_UPDATE_IC_CTX() ;
 
@@ -706,16 +705,15 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
   uint64_t retValue = 0;
   CacheOp cacheop;
-  uint64_t savedOriginalValue = 0;  // bitmask.
 
 #ifdef ENABLE_JS_PBL_WEVAL
   weval::push_context(
       reinterpret_cast<uint32_t>(cacheIRReader.currentPosition()));
 #endif
 
-  WRITE_REG(0, arg0);
-  WRITE_REG(1, arg1);
-  WRITE_REG(2, ctx.arg2);
+  WRITE_VALUE_REG(0, Value::fromRawBits(arg0));
+  WRITE_VALUE_REG(1, Value::fromRawBits(arg1));
+  WRITE_VALUE_REG(2, Value::fromRawBits(ctx.arg2));
 
   DISPATCH_CACHEOP();
 
@@ -733,14 +731,13 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(GuardToObject) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         TRACE_PRINTF("GuardToObject: icVal %" PRIx64 "\n",
                      READ_REG(inputId.id()));
         if (!v.isObject()) {
           FAIL_IC();
         }
-        SAVE_REG_BEFORE_UNBOX(inputId.id());
-        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(&v.toObject()));
+        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(&v.toObject()), OBJECT);
         PREDICT_NEXT(GuardShape);
         PREDICT_NEXT(GuardSpecificFunction);
         DISPATCH_CACHEOP();
@@ -748,7 +745,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(GuardIsNullOrUndefined) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         if (!v.isNullOrUndefined()) {
           FAIL_IC();
         }
@@ -757,7 +754,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(GuardIsNull) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         if (!v.isNull()) {
           FAIL_IC();
         }
@@ -766,7 +763,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(GuardIsUndefined) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         if (!v.isUndefined()) {
           FAIL_IC();
         }
@@ -775,7 +772,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(GuardIsNotUninitializedLexical) {
         ValOperandId valId = cacheIRReader.valOperandId();
-        Value val = Value::fromRawBits(READ_REG(valId.id()));
+        Value val = READ_VALUE_REG(valId.id());
         if (val == MagicValue(JS_UNINITIALIZED_LEXICAL)) {
           FAIL_IC();
         }
@@ -784,53 +781,49 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(GuardToBoolean) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         if (!v.isBoolean()) {
           FAIL_IC();
         }
-        SAVE_REG_BEFORE_UNBOX(inputId.id());
-        WRITE_REG(inputId.id(), v.toBoolean() ? 1 : 0);
+        WRITE_REG(inputId.id(), v.toBoolean() ? 1 : 0, BOOLEAN);
         DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(GuardToString) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         if (!v.isString()) {
           FAIL_IC();
         }
-        SAVE_REG_BEFORE_UNBOX(inputId.id());
-        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toString()));
+        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toString()), STRING);
         PREDICT_NEXT(GuardToString);
         DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(GuardToSymbol) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         if (!v.isSymbol()) {
           FAIL_IC();
         }
-        SAVE_REG_BEFORE_UNBOX(inputId.id());
-        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toSymbol()));
+        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toSymbol()), SYMBOL);
         PREDICT_NEXT(GuardSpecificSymbol);
         DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(GuardToBigInt) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         if (!v.isBigInt()) {
           FAIL_IC();
         }
-        SAVE_REG_BEFORE_UNBOX(inputId.id());
-        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toBigInt()));
+        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toBigInt()), BIGINT);
         DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(GuardIsNumber) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         if (!v.isNumber()) {
           FAIL_IC();
         }
@@ -839,7 +832,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(GuardToInt32) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         TRACE_PRINTF("GuardToInt32 (%d): icVal %" PRIx64 "\n", inputId.id(),
                      READ_REG(inputId.id()));
         if (!v.isInt32()) {
@@ -855,7 +848,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(GuardToNonGCThing) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value input = Value::fromRawBits(READ_REG(inputId.id()));
+        Value input = READ_VALUE_REG(inputId.id());
         if (input.isGCThing()) {
           FAIL_IC();
         }
@@ -866,11 +859,11 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ValOperandId inputId = cacheIRReader.valOperandId();
         Int32OperandId resultId = cacheIRReader.int32OperandId();
         BOUNDSCHECK(resultId);
-        Value v = Value::fromRawBits(READ_REG(inputId.id()));
+        Value v = READ_VALUE_REG(inputId.id());
         if (!v.isBoolean()) {
           FAIL_IC();
         }
-        WRITE_REG(resultId.id(), v.toBoolean() ? 1 : 0);
+        WRITE_REG(resultId.id(), v.toBoolean() ? 1 : 0, INT32);
         DISPATCH_CACHEOP();
       }
 
@@ -878,15 +871,15 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ValOperandId inputId = cacheIRReader.valOperandId();
         Int32OperandId resultId = cacheIRReader.int32OperandId();
         BOUNDSCHECK(resultId);
-        Value val = Value::fromRawBits(READ_REG(inputId.id()));
+        Value val = READ_VALUE_REG(inputId.id());
         if (val.isInt32()) {
-          WRITE_REG(resultId.id(), val.toInt32());
+          WRITE_REG(resultId.id(), val.toInt32(), INT32);
           DISPATCH_CACHEOP();
         } else if (val.isDouble()) {
           double doubleVal = val.toDouble();
           if (doubleVal >= double(INT32_MIN) &&
               doubleVal <= double(INT32_MAX)) {
-            WRITE_REG(resultId.id(), int32_t(doubleVal));
+            WRITE_REG(resultId.id(), int32_t(doubleVal), INT32);
             DISPATCH_CACHEOP();
           }
         }
@@ -899,7 +892,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         BOUNDSCHECK(resultId);
         int32_t input = int32_t(READ_REG(inputId.id()));
         // Note that this must sign-extend to pointer width:
-        WRITE_REG(resultId.id(), intptr_t(input));
+        WRITE_REG(resultId.id(), intptr_t(input), OBJECT);
         DISPATCH_CACHEOP();
       }
 
@@ -907,9 +900,9 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ValOperandId inputId = cacheIRReader.valOperandId();
         Int32OperandId resultId = cacheIRReader.int32OperandId();
         BOUNDSCHECK(resultId);
-        Value input = Value::fromRawBits(READ_REG(inputId.id()));
+        Value input = READ_VALUE_REG(inputId.id());
         if (input.isInt32()) {
-          WRITE_REG(resultId.id(), Int32Value(input.toInt32()).asRawBits());
+          WRITE_REG(resultId.id(), input.toInt32(), INT32);
           DISPATCH_CACHEOP();
         } else if (input.isDouble()) {
           double doubleVal = input.toDouble();
@@ -917,8 +910,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           // bits.
           if (doubleVal >= double(INT64_MIN) &&
               doubleVal <= double(INT64_MAX)) {
-            WRITE_REG(resultId.id(),
-                      Int32Value(int64_t(doubleVal)).asRawBits());
+            WRITE_REG(resultId.id(), int64_t(doubleVal), INT32);
             DISPATCH_CACHEOP();
           }
         }
@@ -928,7 +920,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(GuardNonDoubleType) {
         ValOperandId inputId = cacheIRReader.valOperandId();
         ValueType type = cacheIRReader.valueType();
-        Value val = Value::fromRawBits(READ_REG(inputId.id()));
+        Value val = READ_VALUE_REG(inputId.id());
         switch (type) {
           case ValueType::String:
             if (!val.isString()) {
@@ -1326,7 +1318,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             FAIL_IC();
           }
         }
-        WRITE_REG(resultId.id(), result);
+        WRITE_REG(resultId.id(), result, INT32);
         DISPATCH_CACHEOP();
       }
 
@@ -1347,7 +1339,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             FAIL_IC();
           }
         }
-        WRITE_REG(resultId.id(), result);
+        WRITE_REG(resultId.id(), result, INT32);
         DISPATCH_CACHEOP();
       }
 
@@ -1370,7 +1362,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           }
           result = DoubleValue(value);
         }
-        WRITE_REG(resultId.id(), result.asRawBits());
+        WRITE_VALUE_REG(resultId.id(), result);
         DISPATCH_CACHEOP();
       }
 
@@ -1380,7 +1372,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         BOUNDSCHECK(resultId);
         uint64_t boolean = READ_REG(booleanId.id());
         MOZ_ASSERT((boolean & ~1) == 0);
-        WRITE_REG(resultId.id(), Int32Value(boolean).asRawBits());
+        WRITE_VALUE_REG(resultId.id(), BooleanValue(boolean));
         DISPATCH_CACHEOP();
       }
 
@@ -1487,7 +1479,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         GCPtr<Value>* slot = reinterpret_cast<GCPtr<Value>*>(
             reinterpret_cast<uintptr_t>(obj) + offset);
         Value actual = slot->get();
-        WRITE_REG(resultId.id(), actual.asRawBits());
+        WRITE_VALUE_REG(resultId.id(), actual);
         DISPATCH_CACHEOP();
       }
 
@@ -1503,7 +1495,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         // Note that unlike similar opcodes, LoadDynamicSlot takes a slot index
         // rather than a byte offset.
         Value actual = slots[slot];
-        WRITE_REG(resultId.id(), actual.asRawBits());
+        WRITE_VALUE_REG(resultId.id(), actual);
         DISPATCH_CACHEOP();
       }
 
@@ -1590,7 +1582,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         BOUNDSCHECK(resultId);
         uint32_t objOffset = cacheIRReader.stubOffset();
         intptr_t obj = stubInfo->getStubRawWord(cstub, objOffset);
-        WRITE_REG(resultId.id(), obj);
+        WRITE_REG(resultId.id(), obj, OBJECT);
         PREDICT_NEXT(GuardShape);
         DISPATCH_CACHEOP();
       }
@@ -1602,7 +1594,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ObjOperandId receiverObjId = cacheIRReader.objOperandId();
         (void)receiverObjId;
         intptr_t obj = stubInfo->getStubRawWord(cstub, protoObjOffset);
-        WRITE_REG(resultId.id(), obj);
+        WRITE_REG(resultId.id(), obj, OBJECT);
         PREDICT_NEXT(GuardShape);
         DISPATCH_CACHEOP();
       }
@@ -1614,7 +1606,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         NativeObject* nobj =
             reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
         WRITE_REG(resultId.id(),
-                  reinterpret_cast<uintptr_t>(nobj->staticPrototype()));
+                  reinterpret_cast<uint64_t>(nobj->staticPrototype()), OBJECT);
         DISPATCH_CACHEOP();
       }
 
@@ -1624,7 +1616,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         BOUNDSCHECK(resultId);
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
         JSObject* env = &obj->as<EnvironmentObject>().enclosingEnvironment();
-        WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(env));
+        WRITE_REG(resultId.id(), reinterpret_cast<uint64_t>(env), OBJECT);
         DISPATCH_CACHEOP();
       }
 
@@ -1634,7 +1626,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         BOUNDSCHECK(resultId);
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
         JSObject* target = &obj->as<ProxyObject>().private_().toObject();
-        WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(target));
+        WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(target), OBJECT);
         DISPATCH_CACHEOP();
       }
 
@@ -1642,8 +1634,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ValOperandId valId = cacheIRReader.valOperandId();
         ValueTagOperandId resultId = cacheIRReader.valueTagOperandId();
         BOUNDSCHECK(resultId);
-        Value val = Value::fromRawBits(READ_REG(valId.id()));
-        WRITE_REG(resultId.id(), val.extractNonDoubleType());
+        Value val = READ_VALUE_REG(valId.id());
+        WRITE_REG(resultId.id(), val.extractNonDoubleType(), INT32);
         DISPATCH_CACHEOP();
       }
 
@@ -1655,7 +1647,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         Value val = sp[slotIndex].asValue();
         TRACE_PRINTF(" -> slot %d: val %" PRIx64 "\n", int(slotIndex),
                      val.asRawBits());
-        WRITE_REG(resultId.id(), val.asRawBits());
+        WRITE_VALUE_REG(resultId.id(), val);
         DISPATCH_CACHEOP();
       }
 
@@ -1667,7 +1659,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         int32_t argc = int32_t(READ_REG(argcId.id()));
         StackVal* sp = ctx.sp();
         Value val = sp[slotIndex + argc].asValue();
-        WRITE_REG(resultId.id(), val.asRawBits());
+        WRITE_VALUE_REG(resultId.id(), val);
         DISPATCH_CACHEOP();
       }
 
@@ -1675,8 +1667,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         NumberOperandId inputId = cacheIRReader.numberOperandId();
         Int32OperandId resultId = cacheIRReader.int32OperandId();
         BOUNDSCHECK(resultId);
-        Value input = Value::fromRawBits(READ_REG(inputId.id()));
-        WRITE_REG(resultId.id(), JS::ToInt32(input.toNumber()));
+        Value input = READ_VALUE_REG(inputId.id());
+        WRITE_REG(resultId.id(), JS::ToInt32(input.toNumber()), INT32);
         DISPATCH_CACHEOP();
       }
 
@@ -1703,7 +1695,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ObjOperandId objId = cacheIRReader.objOperandId();
         ValOperandId idId = cacheIRReader.valOperandId();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        Value id = Value::fromRawBits(READ_REG(idId.id()));
+        Value id = READ_VALUE_REG(idId.id());
         if (!obj->shape()->isNative()) {
           FAIL_IC();
         }
@@ -1722,8 +1714,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ValOperandId rhsId = cacheIRReader.valOperandId();
         bool strict = cacheIRReader.readBool();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        Value id = Value::fromRawBits(READ_REG(idId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value id = READ_VALUE_REG(idId.id());
+        Value rhs = READ_VALUE_REG(rhsId.id());
         {
           PUSH_IC_FRAME();
           ReservedRooted<JSObject*> obj0(&ctx.state.obj0, obj);
@@ -1746,7 +1738,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
         GCPtr<Value>* slot = reinterpret_cast<GCPtr<Value>*>(
             reinterpret_cast<uintptr_t>(nobj) + offset);
-        Value val = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value val = READ_VALUE_REG(rhsId.id());
         slot->set(val);
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -1760,7 +1752,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         NativeObject* nobj =
             reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
         HeapSlot* slots = nobj->getSlotsUnchecked();
-        Value val = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value val = READ_VALUE_REG(rhsId.id());
         size_t dynSlot = offset / sizeof(Value);
         size_t slot = dynSlot + nobj->numFixedSlots();
         slots[dynSlot].set(nobj, HeapSlot::Slot, slot, val);
@@ -1775,7 +1767,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         uint32_t newShapeOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
         int32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value rhs = READ_VALUE_REG(rhsId.id());
         Shape* newShape = reinterpret_cast<Shape*>(
             stubInfo->getStubRawWord(cstub, newShapeOffset));
         obj->setShape(newShape);
@@ -1793,7 +1785,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         uint32_t newShapeOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
         int32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value rhs = READ_VALUE_REG(rhsId.id());
         Shape* newShape = reinterpret_cast<Shape*>(
             stubInfo->getStubRawWord(cstub, newShapeOffset));
         NativeObject* nobj = &obj->as<NativeObject>();
@@ -1814,7 +1806,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         uint32_t numNewSlotsOffset = cacheIRReader.stubOffset();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
         int32_t offset = stubInfo->getStubRawInt32(cstub, offsetOffset);
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value rhs = READ_VALUE_REG(rhsId.id());
         Shape* newShape = reinterpret_cast<Shape*>(
             stubInfo->getStubRawWord(cstub, newShapeOffset));
         int32_t numNewSlots =
@@ -1852,7 +1844,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (slot->get().isMagic()) {
           FAIL_IC();
         }
-        Value val = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value val = READ_VALUE_REG(rhsId.id());
         slot->set(nobj, HeapSlot::Element, index + elems->numShiftedElements(),
                   val);
         PREDICT_RETURN();
@@ -1866,7 +1858,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         bool handleAdd = cacheIRReader.readBool();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
         uint32_t index = uint32_t(READ_REG(indexId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value rhs = READ_VALUE_REG(rhsId.id());
         NativeObject* nobj = &obj->as<NativeObject>();
         uint32_t initLength = nobj->getDenseInitializedLength();
         if (index < initLength) {
@@ -1904,7 +1896,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ObjOperandId objId = cacheIRReader.objOperandId();
         ValOperandId rhsId = cacheIRReader.valOperandId();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value rhs = READ_VALUE_REG(rhsId.id());
         ArrayObject* aobj = &obj->as<ArrayObject>();
         uint32_t initLength = aobj->getDenseInitializedLength();
         if (aobj->length() != initLength) {
@@ -1926,7 +1918,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(IsObjectResult) {
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value val = Value::fromRawBits(READ_REG(inputId.id()));
+        Value val = READ_VALUE_REG(inputId.id());
         retValue = BooleanValue(val.isObject()).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -1941,7 +1933,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         int32_t lhs = int32_t(READ_REG(firstId.id()));
         int32_t rhs = int32_t(READ_REG(secondId.id()));
         int32_t result = ((lhs > rhs) ^ isMax) ? rhs : lhs;
-        WRITE_REG(resultId.id(), result);
+        WRITE_REG(resultId.id(), result, INT32);
         DISPATCH_CACHEOP();
       }
 
@@ -2058,7 +2050,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         JSLinearString* str =
             Int32ToStringPure(ctx.frameMgr.cxForLocalUseOnly(), input);
         if (str) {
-          WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str));
+          WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str), STRING);
         } else {
           FAIL_IC();
         }
@@ -2209,14 +2201,12 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         uint32_t nargsAndFlagsOffset = cacheIRReader.stubOffset();
         (void)nargsAndFlagsOffset;
 
-        Value receiver =
-            isSetter ? ObjectValue(*reinterpret_cast<JSObject*>(
-                           READ_REG(receiverId.id())))
-                     : Value::fromRawBits(READ_VALUE_REG(receiverId.id()));
+        Value receiver = isSetter ? ObjectValue(*reinterpret_cast<JSObject*>(
+                                        READ_REG(receiverId.id())))
+                                  : READ_VALUE_REG(receiverId.id());
         JSFunction* callee = reinterpret_cast<JSFunction*>(
             stubInfo->getStubRawWord(cstub, getterSetterOffset));
-        Value rhs = isSetter ? Value::fromRawBits(READ_VALUE_REG(rhsId.id()))
-                             : UndefinedValue();
+        Value rhs = isSetter ? READ_VALUE_REG(rhsId.id()) : UndefinedValue();
 
         if (!sameRealm) {
           FAIL_IC();
@@ -2441,7 +2431,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (length > uint32_t(INT32_MAX)) {
           FAIL_IC();
         }
-        WRITE_REG(resultId.id(), length);
+        WRITE_REG(resultId.id(), length, INT32);
         DISPATCH_CACHEOP();
       }
 
@@ -2469,7 +2459,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         JSString* str = reinterpret_cast<JSLinearString*>(READ_REG(strId.id()));
         (void)indexId;
 
-        WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str));
+        WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str), STRING);
         if (str->isRope()) {
           PUSH_IC_FRAME();
           JSLinearString* result = LinearizeForCharAccess(cx, str);
@@ -2477,7 +2467,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             ctx.error = PBIResult::Error;
             return IC_ERROR_SENTINEL();
           }
-          WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(result));
+          WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(result), STRING);
         }
         PREDICT_NEXT(LoadStringCharResult);
         DISPATCH_CACHEOP();
@@ -2491,7 +2481,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         JSString* str = reinterpret_cast<JSLinearString*>(READ_REG(strId.id()));
         (void)indexId;
 
-        WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str));
+        WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str), STRING);
         if (str->isRope()) {
           PUSH_IC_FRAME();
           JSLinearString* result = LinearizeForCharAccess(cx, str);
@@ -2499,7 +2489,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             ctx.error = PBIResult::Error;
             return IC_ERROR_SENTINEL();
           }
-          WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(result));
+          WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(result), STRING);
         }
         PREDICT_NEXT(LoadStringCodePointResult);
         DISPATCH_CACHEOP();
@@ -2653,7 +2643,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(LoadDoubleResult) {
         NumberOperandId valId = cacheIRReader.numberOperandId();
-        Value val = Value::fromRawBits(READ_REG(valId.id()));
+        Value val = READ_VALUE_REG(valId.id());
         if (val.isInt32()) {
           val = DoubleValue(val.toInt32());
         }
@@ -2683,7 +2673,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         Int32OperandId resultId = cacheIRReader.int32OperandId();
         BOUNDSCHECK(resultId);
         uint32_t value = stubInfo->getStubRawInt32(cstub, valOffset);
-        WRITE_REG(resultId.id(), value);
+        WRITE_REG(resultId.id(), value, INT32);
         DISPATCH_CACHEOP();
       }
 
@@ -2699,8 +2689,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(DoubleAddResult) {
         NumberOperandId lhsId = cacheIRReader.numberOperandId();
         NumberOperandId rhsId = cacheIRReader.numberOperandId();
-        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value lhs = READ_VALUE_REG(lhsId.id());
+        Value rhs = READ_VALUE_REG(rhsId.id());
         retValue = DoubleValue(lhs.toNumber() + rhs.toNumber()).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -2709,8 +2699,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(DoubleSubResult) {
         NumberOperandId lhsId = cacheIRReader.numberOperandId();
         NumberOperandId rhsId = cacheIRReader.numberOperandId();
-        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value lhs = READ_VALUE_REG(lhsId.id());
+        Value rhs = READ_VALUE_REG(rhsId.id());
         retValue = DoubleValue(lhs.toNumber() - rhs.toNumber()).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -2719,8 +2709,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(DoubleMulResult) {
         NumberOperandId lhsId = cacheIRReader.numberOperandId();
         NumberOperandId rhsId = cacheIRReader.numberOperandId();
-        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value lhs = READ_VALUE_REG(lhsId.id());
+        Value rhs = READ_VALUE_REG(rhsId.id());
         retValue = DoubleValue(lhs.toNumber() * rhs.toNumber()).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
@@ -2729,10 +2719,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(DoubleDivResult) {
         NumberOperandId lhsId = cacheIRReader.numberOperandId();
         NumberOperandId rhsId = cacheIRReader.numberOperandId();
-        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value lhs = READ_VALUE_REG(lhsId.id());
+        Value rhs = READ_VALUE_REG(rhsId.id());
         retValue =
-            DoubleValue(NumberDiv(lhs.toNumber(), rhs.toNumber())).asRawBits();
+          DoubleValue(NumberDiv(lhs.toNumber(), rhs.toNumber())).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2740,10 +2730,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(DoubleModResult) {
         NumberOperandId lhsId = cacheIRReader.numberOperandId();
         NumberOperandId rhsId = cacheIRReader.numberOperandId();
-        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value lhs = READ_VALUE_REG(lhsId.id());
+        Value rhs = READ_VALUE_REG(rhsId.id());
         retValue =
-            DoubleValue(NumberMod(lhs.toNumber(), rhs.toNumber())).asRawBits();
+          DoubleValue(NumberMod(lhs.toNumber(), rhs.toNumber())).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2751,10 +2741,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(DoublePowResult) {
         NumberOperandId lhsId = cacheIRReader.numberOperandId();
         NumberOperandId rhsId = cacheIRReader.numberOperandId();
-        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value lhs = READ_VALUE_REG(lhsId.id());
+        Value rhs = READ_VALUE_REG(rhsId.id());
         retValue =
-            DoubleValue(ecmaPow(lhs.toNumber(), rhs.toNumber())).asRawBits();
+          DoubleValue(ecmaPow(lhs.toNumber(), rhs.toNumber())).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2911,7 +2901,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(LoadDoubleTruthyResult) {
         NumberOperandId inputId = cacheIRReader.numberOperandId();
-        double input = Value::fromRawBits(READ_REG(inputId.id())).toNumber();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
         // NaN is falsy, not truthy; `input != input` ensures we avoid
         // NaNs.
         retValue = BooleanValue(input != 0.0 && input == input).asRawBits();
@@ -3104,8 +3094,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         JSOp op = cacheIRReader.jsop();
         NumberOperandId lhsId = cacheIRReader.numberOperandId();
         NumberOperandId rhsId = cacheIRReader.numberOperandId();
-        double lhs = Value::fromRawBits(READ_REG(lhsId.id())).toNumber();
-        double rhs = Value::fromRawBits(READ_REG(rhsId.id())).toNumber();
+        double lhs = READ_VALUE_REG(lhsId.id()).toNumber();
+        double rhs = READ_VALUE_REG(rhsId.id()).toNumber();
         bool result;
         switch (op) {
           case JSOp::Eq:
@@ -3140,7 +3130,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         JSOp op = cacheIRReader.jsop();
         bool isUndefined = cacheIRReader.readBool();
         ValOperandId inputId = cacheIRReader.valOperandId();
-        Value val = Value::fromRawBits(READ_REG(inputId.id()));
+        Value val = READ_VALUE_REG(inputId.id());
         if (val.isObject() && val.toObject().getClass()->isProxyObject()) {
           FAIL_IC();
         }
@@ -3230,21 +3220,22 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(MathSqrtNumberResult) {
         NumberOperandId inputId = cacheIRReader.numberOperandId();
-        double input = Value::fromRawBits(READ_REG(inputId.id())).toNumber();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
         retValue = NumberValue(sqrt(input)).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(GuardTagNotEqual) {
-        ValOperandId lhsId = cacheIRReader.valOperandId();
-        ValOperandId rhsId = cacheIRReader.valOperandId();
-        Value lhs = Value::fromRawBits(READ_REG(lhsId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
-        if (lhs.asRawBits() == rhs.asRawBits()) {
+        ValueTagOperandId lhsId = cacheIRReader.valueTagOperandId();
+        ValueTagOperandId rhsId = cacheIRReader.valueTagOperandId();
+        int32_t lhs = int32_t(READ_REG(lhsId.id()));
+        int32_t rhs = int32_t(READ_REG(rhsId.id()));
+        if (lhs == rhs) {
           FAIL_IC();
         }
-        if (lhs.isNumber() && rhs.isNumber()) {
+        if (JSValueTag(lhs) <= JSVAL_TAG_INT32 ||
+            JSValueTag(rhs) <= JSVAL_TAG_INT32) {
           FAIL_IC();
         }
         DISPATCH_CACHEOP();
@@ -3256,7 +3247,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         (void)supportOOB;
         IntPtrOperandId resultId = cacheIRReader.intPtrOperandId();
         BOUNDSCHECK(resultId);
-        double input = Value::fromRawBits(READ_REG(inputId.id())).toNumber();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
         // For simplicity, support only uint32 range for now. This
         // covers 32-bit and 64-bit systems.
         if (input < 0.0 || input >= (1L << 32)) {
@@ -3268,7 +3259,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (static_cast<double>(result) != input) {
           FAIL_IC();
         }
-        WRITE_REG(resultId.id(), uint64_t(result));
+        WRITE_REG(resultId.id(), uint64_t(result), OBJECT);
         DISPATCH_CACHEOP();
       }
 
@@ -3413,7 +3404,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (obj->hasOverriddenLength()) {
           FAIL_IC();
         }
-        WRITE_REG(resultId.id(), obj->initialLength());
+        WRITE_REG(resultId.id(), obj->initialLength(), INT32);
         DISPATCH_CACHEOP();
       }
 
@@ -3445,7 +3436,9 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         uint32_t valOffset = cacheIRReader.stubOffset();
         NumberOperandId resultId = cacheIRReader.numberOperandId();
         BOUNDSCHECK(resultId);
-        WRITE_REG(resultId.id(), stubInfo->getStubRawInt64(cstub, valOffset));
+        WRITE_VALUE_REG(
+            resultId.id(),
+            Value::fromRawBits(stubInfo->getStubRawInt64(cstub, valOffset)));
         DISPATCH_CACHEOP();
       }
 
@@ -3453,14 +3446,14 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         bool val = cacheIRReader.readBool();
         BooleanOperandId resultId = cacheIRReader.booleanOperandId();
         BOUNDSCHECK(resultId);
-        WRITE_REG(resultId.id(), val ? 1 : 0);
+        WRITE_REG(resultId.id(), val ? 1 : 0, BOOLEAN);
         DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(LoadUndefined) {
         ValOperandId resultId = cacheIRReader.numberOperandId();
         BOUNDSCHECK(resultId);
-        WRITE_REG(resultId.id(), UndefinedValue().asRawBits());
+        WRITE_VALUE_REG(resultId.id(), UndefinedValue());
         DISPATCH_CACHEOP();
       }
 
@@ -3470,7 +3463,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         BOUNDSCHECK(resultId);
         JSString* str = reinterpret_cast<JSString*>(
             stubInfo->getStubRawWord(cstub, valOffset));
-        WRITE_REG(resultId.id(), reinterpret_cast<uint64_t>(str));
+        WRITE_REG(resultId.id(), reinterpret_cast<uint64_t>(str), STRING);
         DISPATCH_CACHEOP();
       }
 
@@ -3569,7 +3562,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         uint32_t nargsAndFlagsOffset = cacheIRReader.stubOffset();
         (void)sameRealm;
         (void)nargsAndFlagsOffset;
-        Value receiver = Value::fromRawBits(READ_VALUE_REG(receiverId.id()));
+        Value receiver = READ_VALUE_REG(receiverId.id());
         JSFunction* getter = reinterpret_cast<JSFunction*>(
             stubInfo->getStubRawWord(cstub, getterOffset));
         {
@@ -3598,7 +3591,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         (void)nargsAndFlagsOffset;
         JSObject* receiver =
             reinterpret_cast<JSObject*>(READ_REG(receiverId.id()));
-        Value rhs = Value::fromRawBits(READ_REG(rhsId.id()));
+        Value rhs = READ_VALUE_REG(rhsId.id());
         JSFunction* setter = reinterpret_cast<JSFunction*>(
             stubInfo->getStubRawWord(cstub, setterOffset));
         {
@@ -3618,7 +3611,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(LoadInstanceOfObjectResult) {
         ValOperandId lhsId = cacheIRReader.valOperandId();
         ObjOperandId protoId = cacheIRReader.objOperandId();
-        Value lhs = Value::fromRawBits(READ_VALUE_REG(lhsId.id()));
+        Value lhs = READ_VALUE_REG(lhsId.id());
         JSObject* rhsProto =
             reinterpret_cast<JSObject*>(READ_REG(protoId.id()));
         if (!lhs.isObject()) {
@@ -3954,7 +3947,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (!result) {
           FAIL_IC();
         }
-        WRITE_REG(strId.id(), reinterpret_cast<uint64_t>(result));
+        WRITE_REG(strId.id(), reinterpret_cast<uint64_t>(result), STRING);
         DISPATCH_CACHEOP();
       }
 
@@ -3962,16 +3955,15 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ValOperandId resultId = cacheIRReader.valOperandId();
         ValOperandId idId = cacheIRReader.valOperandId();
         BOUNDSCHECK(resultId);
-        Value id = Value::fromRawBits(READ_VALUE_REG(idId.id()));
+        Value id = READ_VALUE_REG(idId.id());
         if (id.isString() || id.isSymbol()) {
-          WRITE_REG(resultId.id(), id.asRawBits());
+          WRITE_VALUE_REG(resultId.id(), id);
         } else if (id.isInt32()) {
           int32_t idInt = id.toInt32();
           StaticStrings& sstr =
               ctx.frameMgr.cxForLocalUseOnly()->staticStrings();
           if (sstr.hasInt(idInt)) {
-            WRITE_REG(resultId.id(),
-                      StringValue(sstr.getInt(idInt)).asRawBits());
+            WRITE_VALUE_REG(resultId.id(), StringValue(sstr.getInt(idInt)));
           } else {
             PUSH_IC_FRAME();
             auto* result = Int32ToStringPure(cx, idInt);
@@ -3979,7 +3971,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
               ctx.error = PBIResult::Error;
               return IC_ERROR_SENTINEL();
             }
-            WRITE_REG(resultId.id(), StringValue(result).asRawBits());
+            WRITE_VALUE_REG(resultId.id(), StringValue(result));
           }
         } else {
           FAIL_IC();
@@ -4005,7 +3997,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(IsArrayResult) {
         ValOperandId valId = cacheIRReader.valOperandId();
-        Value val = Value::fromRawBits(READ_VALUE_REG(valId.id()));
+        Value val = READ_VALUE_REG(valId.id());
         if (!val.isObject()) {
           retValue = BooleanValue(false).asRawBits();
         } else {
@@ -4021,7 +4013,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
       CACHEOP_CASE(IsCallableResult) {
         ValOperandId valId = cacheIRReader.valOperandId();
-        Value val = Value::fromRawBits(READ_VALUE_REG(valId.id()));
+        Value val = READ_VALUE_REG(valId.id());
         if (!val.isObject()) {
           retValue = BooleanValue(false).asRawBits();
         } else {

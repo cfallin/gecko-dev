@@ -17,6 +17,7 @@
 #include "mozilla/Maybe.h"
 #include <algorithm>
 
+#include "fdlibm.h"
 #include "jsapi.h"
 
 #include "builtin/DataViewObject.h"
@@ -3362,15 +3363,98 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE(MathFRoundNumberResult) {}
-      CACHEOP_CASE(MathRandomResult) {}
-      CACHEOP_CASE(MathHypot2NumberResult) {}
-      CACHEOP_CASE(MathHypot3NumberResult) {}
-      CACHEOP_CASE(MathHypot4NumberResult) {}
-      CACHEOP_CASE(MathAtan2NumberResult) {}
-      CACHEOP_CASE(MathFloorNumberResult) {}
-      CACHEOP_CASE(MathCeilNumberResult) {}
-      CACHEOP_CASE(MathTruncNumberResult) {}
+      CACHEOP_CASE(MathFRoundNumberResult) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        retValue = DoubleValue(double(float(input))).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathRandomResult) {
+        uint32_t rngOffset = cacheIRReader.stubOffset();
+        auto* rng = reinterpret_cast<mozilla::non_crypto::XorShift128PlusRNG*>(
+            stubInfo->getStubRawWord(cstub, rngOffset));
+        retValue = DoubleValue(rng->nextDouble()).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathHypot2NumberResult) {
+        NumberOperandId firstId = cacheIRReader.numberOperandId();
+        double first = READ_VALUE_REG(firstId.id()).toNumber();
+        NumberOperandId secondId = cacheIRReader.numberOperandId();
+        double second = READ_VALUE_REG(secondId.id()).toNumber();
+        retValue = DoubleValue(ecmaHypot(first, second)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(MathHypot3NumberResult) {
+        NumberOperandId firstId = cacheIRReader.numberOperandId();
+        double first = READ_VALUE_REG(firstId.id()).toNumber();
+        NumberOperandId secondId = cacheIRReader.numberOperandId();
+        double second = READ_VALUE_REG(secondId.id()).toNumber();
+        NumberOperandId thirdId = cacheIRReader.numberOperandId();
+        double third = READ_VALUE_REG(thirdId.id()).toNumber();
+        retValue = DoubleValue(hypot3(first, second, third)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(MathHypot4NumberResult) {
+        NumberOperandId firstId = cacheIRReader.numberOperandId();
+        double first = READ_VALUE_REG(firstId.id()).toNumber();
+        NumberOperandId secondId = cacheIRReader.numberOperandId();
+        double second = READ_VALUE_REG(secondId.id()).toNumber();
+        NumberOperandId thirdId = cacheIRReader.numberOperandId();
+        double third = READ_VALUE_REG(thirdId.id()).toNumber();
+        NumberOperandId fourthId = cacheIRReader.numberOperandId();
+        double fourth = READ_VALUE_REG(fourthId.id()).toNumber();
+        retValue =
+            DoubleValue(hypot4(first, second, third, fourth)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(MathAtan2NumberResult) {
+        NumberOperandId lhsId = cacheIRReader.numberOperandId();
+        double lhs = READ_VALUE_REG(lhsId.id()).toNumber();
+        NumberOperandId rhsId = cacheIRReader.numberOperandId();
+        double rhs = READ_VALUE_REG(rhsId.id()).toNumber();
+        retValue =
+          DoubleValue(ecmaAtan2(lhs, rhs)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(MathFloorNumberResult) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        double result = fdlibm_floor(input);
+        retValue = DoubleValue(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(MathCeilNumberResult) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        double result = fdlibm_ceil(input);
+        retValue = DoubleValue(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(MathTruncNumberResult) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        double result = fdlibm_trunc(input);
+        retValue = DoubleValue(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
       CACHEOP_CASE(MathFloorToInt32Result) {}
       CACHEOP_CASE(MathCeilToInt32Result) {}
       CACHEOP_CASE(MathTruncToInt32Result) {}

@@ -1220,6 +1220,15 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(GuardIsFixedLengthTypedArray) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        if (!IsFixedLengthTypedArrayClass(obj->getClass())) {
+          FAIL_IC();
+        }
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(GuardHasProxyHandler) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t handlerOffset = cacheIRReader.stubOffset();
@@ -4570,7 +4579,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(RegExpPrototypeOptimizableResult)
       CACHEOP_CASE_UNIMPL(RegExpInstanceOptimizableResult)
       CACHEOP_CASE_UNIMPL(GetFirstDollarIndexResult)
-      CACHEOP_CASE_UNIMPL(GuardIsFixedLengthTypedArray)
       CACHEOP_CASE_UNIMPL(GuardIndexIsValidUpdateOrAdd)
       CACHEOP_CASE_UNIMPL(GuardXrayExpandoShapeAndDefaultProto)
       CACHEOP_CASE_UNIMPL(GuardXrayNoExpando)

@@ -3455,10 +3455,69 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
       
-      CACHEOP_CASE(MathFloorToInt32Result) {}
-      CACHEOP_CASE(MathCeilToInt32Result) {}
-      CACHEOP_CASE(MathTruncToInt32Result) {}
-      CACHEOP_CASE(MathRoundToInt32Result) {}
+      CACHEOP_CASE(MathFloorToInt32Result) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        if (input == 0.0 && std::signbit(input)) {
+          FAIL_IC();
+        }
+        double result = fdlibm_floor(input);
+        int32_t intResult = int32_t(result);
+        if (double(intResult) != result) {
+          FAIL_IC();
+        }
+        retValue = Int32Value(intResult).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(MathCeilToInt32Result) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        if (input > -1.0 && std::signbit(input)) {
+          FAIL_IC();
+        }
+        double result = fdlibm_ceil(input);
+        int32_t intResult = int32_t(result);
+        if (double(intResult) != result) {
+          FAIL_IC();
+        }
+        retValue = Int32Value(intResult).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(MathTruncToInt32Result) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        if (input == 0.0 && std::signbit(input)) {
+          FAIL_IC();
+        }
+        double result = fdlibm_trunc(input);
+        int32_t intResult = int32_t(result);
+        if (double(intResult) != result) {
+          FAIL_IC();
+        }
+        retValue = Int32Value(intResult).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(MathRoundToInt32Result) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        if (input == 0.0 && std::signbit(input)) {
+          FAIL_IC();
+        }
+        int32_t intResult = int32_t(input);
+        if (double(intResult) != input) {
+          FAIL_IC();
+        }
+        retValue = Int32Value(intResult).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
       CACHEOP_CASE(NumberMinMax) {}
       CACHEOP_CASE(Int32MinMaxArrayResult) {}
       CACHEOP_CASE(NumberMinMaxArrayResult) {}

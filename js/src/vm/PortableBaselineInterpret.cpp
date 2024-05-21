@@ -3622,8 +3622,35 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
       
-      CACHEOP_CASE(MathFunctionNumberResult) {}
-      CACHEOP_CASE(NumberParseIntResult) {}
+      CACHEOP_CASE(MathFunctionNumberResult) {
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        UnaryMathFunction fun = cacheIRReader.unaryMathFunction();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        auto funPtr = GetUnaryMathFunctionPtr(fun);
+        retValue = DoubleValue(funPtr(input)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(NumberParseIntResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        Int32OperandId radixId = cacheIRReader.int32OperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        int32_t radix = int32_t(READ_REG(radixId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> str0(&ctx.state.str0, str);
+          ReservedRooted<Value> result(&ctx.state.value0);
+          if (!NumberParseInt(cx, str0, radix, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = result.asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
       CACHEOP_CASE(DoubleParseIntResult) {
         FAIL_IC();
       }

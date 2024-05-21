@@ -668,24 +668,26 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #  define READ_REG(reg) \
     (Specialized ? weval_read_reg((reg)) : ctx.icregs.icVals[(reg)])
-#  define WRITE_REG(reg, value, tagtype)                                      \
-    if (Specialized) {                                                        \
-      weval_write_reg((reg), (value));                                        \
-      weval_write_reg((reg) + ICRegs::kMaxVals, JSVAL_SHIFTED_TAG_##tagtype); \
-    } else {                                                                  \
-      ctx.icregs.icVals[(reg)] = (value);                                     \
-      ctx.icregs.icTags[(reg)] = JSVAL_SHIFTED_TAG_##tagtype;                 \
+#  define WRITE_REG(reg, value, tagtype)                                 \
+    if (Specialized) {                                                   \
+      weval_write_reg((reg), (value));                                   \
+      weval_write_reg((reg) + ICRegs::kMaxICVals,                        \
+                      uint64_t(JSVAL_TAG_##tagtype) << JSVAL_TAG_SHIFT); \
+    } else {                                                             \
+      ctx.icregs.icVals[(reg)] = (value);                                \
+      ctx.icregs.icTags[(reg)] = uint64_t(JSVAL_TAG_##tagtype)           \
+                                 << JSVAL_TAG_SHIFT;                     \
     }
 
-#  define READ_VALUE_REG(reg)                                     \
-    Value::fromRawBits(                                           \
-        Specialized ? (weval_read_reg((reg) + ICRegs::kMaxVals) | \
-                       weval_read_reg((reg)))                     \
+#  define READ_VALUE_REG(reg)                                       \
+    Value::fromRawBits(                                             \
+        Specialized ? (weval_read_reg((reg) + ICRegs::kMaxICVals) | \
+                       weval_read_reg((reg)))                       \
                     : (ctx.icregs.icTags[(reg)] | ctx.icregs.icVals[(reg)]))
 #  define WRITE_VALUE_REG(reg, value)                 \
     if (Specialized) {                                \
       weval_write_reg((reg), (value).asRawBits());    \
-      weval_write_reg((reg) + ICRegs::kMaxVals, 0);   \
+      weval_write_reg((reg) + ICRegs::kMaxICVals, 0); \
     } else {                                          \
       ctx.icregs.icVals[(reg)] = (value).asRawBits(); \
       ctx.icregs.icTags[(reg)] = 0;                   \
@@ -711,7 +713,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       TRACE_PRINTF("WRITE_REG(%d, " #tagtype "): %" PRIx64 "\n", (reg), \
                    write_value);                                        \
       ctx.icregs.icVals[(reg)] = write_value;                           \
-      ctx.icregs.icTags[(reg)] = JSVAL_SHIFTED_TAG_##tagtype;           \
+      ctx.icregs.icTags[(reg)] = uint64_t(JSVAL_TAG_##tagtype)          \
+                                 << JSVAL_TAG_SHIFT;                    \
     } while (0)
 #  define READ_VALUE_REG(reg)                                              \
     ({                                                                     \
@@ -2234,7 +2237,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       }
 
       CACHEOP_CASE(CallScriptedGetterResult)
-      CACHEOP_CASE(CallScriptedSetter) {
+      CACHEOP_CASE_FALLTHROUGH(CallScriptedSetter) {
         bool isSetter = cacheop == CacheOp::CallScriptedSetter;
         ObjOperandId receiverId = cacheIRReader.objOperandId();
         uint32_t getterSetterOffset = cacheIRReader.stubOffset();
@@ -2325,7 +2328,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       }
 
       CACHEOP_CASE(LoadFixedSlotResult)
-      CACHEOP_CASE(LoadFixedSlotTypedResult) {
+      CACHEOP_CASE_FALLTHROUGH(LoadFixedSlotTypedResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t offsetOffset = cacheIRReader.stubOffset();
         if (cacheop == CacheOp::LoadFixedSlotTypedResult) {
@@ -2592,7 +2595,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       }
 
       CACHEOP_CASE(LoadStringCharResult)
-      CACHEOP_CASE(LoadStringAtResult) {
+      CACHEOP_CASE_FALLTHROUGH(LoadStringAtResult) {
         StringOperandId strId = cacheIRReader.stringOperandId();
         Int32OperandId indexId = cacheIRReader.int32OperandId();
         bool handleOOB = cacheIRReader.readBool();
@@ -3712,7 +3715,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         double input = READ_VALUE_REG(inputId.id()).toNumber();
         // For simplicity, support only uint32 range for now. This
         // covers 32-bit and 64-bit systems.
-        if (input < 0.0 || input >= (1L << 32)) {
+        if (input < 0.0 || input >= (uint64_t(1) << 32)) {
           FAIL_IC();
         }
         uintptr_t result = static_cast<uintptr_t>(input);

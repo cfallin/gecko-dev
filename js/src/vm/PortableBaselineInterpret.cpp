@@ -2192,28 +2192,31 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(CallScriptedGetterResult)
       CACHEOP_CASE(CallScriptedSetter) {
-        ObjOperandId receiverId = cacheIRReader.objOperandId();
-        uint32_t setterOffset = cacheIRReader.stubOffset();
-        ValOperandId rhsId = cacheIRReader.valOperandId();
+        bool isSetter = cacheop == CacheOp::CallScriptedSetter;
+        ValOperandId receiverId = cacheIRReader.valOperandId();
+        uint32_t getterSetterOffset = cacheIRReader.stubOffset();
+        ValOperandId rhsId = isSetter ? cacheIRReader.valOperandId() : ValOperandId();
         bool sameRealm = cacheIRReader.readBool();
         uint32_t nargsAndFlagsOffset = cacheIRReader.stubOffset();
         (void)nargsAndFlagsOffset;
 
-        JSObject* receiver =
-            reinterpret_cast<JSObject*>(READ_REG(receiverId.id()));
+        Value receiver = Value::fromRawBits(READ_VALUE_REG(receiverId.id()));
         JSFunction* callee = reinterpret_cast<JSFunction*>(
-            stubInfo->getStubRawWord(cstub, setterOffset));
-        Value rhs = Value::fromRawBits(READ_VALUE_REG(rhsId.id()));
+            stubInfo->getStubRawWord(cstub, getterSetterOffset));
+        Value rhs = isSetter ? Value::fromRawBits(READ_VALUE_REG(rhsId.id()))
+                             : UndefinedValue();
 
         if (!sameRealm) {
           FAIL_IC();
         }
 
         // For now, fail any arg-underflow case.
-        if (callee->nargs() != 1) {
+        if (callee->nargs() != isSetter ? 1 : 0) {
           TRACE_PRINTF(
-              "failing: setter does not have exactly 1 arg (has %d instead)\n",
+              "failing: getter/setter does not have exactly 0/1 arg (has %d "
+              "instead)\n",
               int(callee->nargs()));
           FAIL_IC();
         }
@@ -2232,10 +2235,12 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           POPNNATIVE(1);
           PUSHNATIVE(StackValNative(cstub));
 
-          // Push arg: value.
-          PUSH(StackVal(rhs));
+          if (isSetter) {
+            // Push arg: value.
+            PUSH(StackVal(rhs));
+          }
           // Push thisv: receiver.
-          PUSH(StackVal(ObjectValue(*receiver)));
+          PUSH(StackVal(receiver));
 
           TRACE_PRINTF("pushing callee: %p\n", callee);
           PUSHNATIVE(StackValNative(
@@ -3986,8 +3991,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
-
-      CACHEOP_CASE_UNIMPL(CallScriptedGetterResult) {}
 
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)

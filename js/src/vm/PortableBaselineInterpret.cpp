@@ -4615,6 +4615,56 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(ArrayBufferViewByteOffsetInt32Result) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ArrayBufferViewObject* abvo = reinterpret_cast<ArrayBufferViewObject*>(READ_REG(objId.id()));
+        size_t byteOffset = size_t(abvo->getFixedSlot(ArrayBufferViewObject::BYTEOFFSET_SLOT).toPrivate());
+        if (byteOffset > size_t(INT32_MAX)) {
+          FAIL_IC();
+        }
+        retValue = Int32Value(int32_t(byteOffset)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(ArrayBufferViewByteOffsetDoubleResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ArrayBufferViewObject* abvo = reinterpret_cast<ArrayBufferViewObject*>(READ_REG(objId.id()));
+        size_t byteOffset = size_t(abvo->getFixedSlot(ArrayBufferViewObject::BYTEOFFSET_SLOT).toPrivate());
+        retValue = DoubleValue(double(byteOffset)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(TypedArrayByteLengthInt32Result) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        TypedArrayObject* tao = reinterpret_cast<TypedArrayObject*>(READ_REG(objId.id()));
+        size_t length = *tao->length() * tao->bytesPerElement();
+        if (length > size_t(INT32_MAX)) {
+          FAIL_IC();
+        }
+        retValue = Int32Value(int32_t(length)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(TypedArrayByteLengthDoubleResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        TypedArrayObject* tao = reinterpret_cast<TypedArrayObject*>(READ_REG(objId.id()));
+        size_t length = *tao->length() * tao->bytesPerElement();
+        retValue = DoubleValue(double(length)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(TypedArrayElementSizeResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        TypedArrayObject* tao = reinterpret_cast<TypedArrayObject*>(READ_REG(objId.id()));
+        retValue = Int32Value(int32_t(tao->bytesPerElement())).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(MegamorphicStoreSlot) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         uint32_t nameOffset = cacheIRReader.stubOffset();
@@ -4671,11 +4721,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(ObjectKeysResult)
       CACHEOP_CASE_UNIMPL(ArgumentsSliceResult)
       CACHEOP_CASE_UNIMPL(StoreFixedSlotUndefinedResult)
-      CACHEOP_CASE_UNIMPL(ArrayBufferViewByteOffsetInt32Result)
-      CACHEOP_CASE_UNIMPL(ArrayBufferViewByteOffsetDoubleResult)
-      CACHEOP_CASE_UNIMPL(TypedArrayByteLengthInt32Result)
-      CACHEOP_CASE_UNIMPL(TypedArrayByteLengthDoubleResult)
-      CACHEOP_CASE_UNIMPL(TypedArrayElementSizeResult)
       CACHEOP_CASE_UNIMPL(GuardHasAttachedArrayBuffer)
       CACHEOP_CASE_UNIMPL(NewArrayIteratorResult)
       CACHEOP_CASE_UNIMPL(NewRegExpStringIteratorResult)

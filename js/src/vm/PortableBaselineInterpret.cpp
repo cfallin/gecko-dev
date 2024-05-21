@@ -690,9 +690,15 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       ctx.icregs.origVals[(reg)] = ctx.icregs.icVals[(reg)]; \
       savedOriginalValue |= (1UL << (reg));                  \
     } while (0)
-#  define READ_VALUE_REG(reg)                                           \
-    ((savedOriginalValue & (1UL << (reg))) ? ctx.icregs.origVals[(reg)] \
-                                           : ctx.icregs.icVals[(reg)])
+#  define READ_VALUE_REG(reg)                                                 \
+    ({                                                                        \
+      uint64_t read_value_reg =                                               \
+          ((savedOriginalValue & (1UL << (reg))) ? ctx.icregs.origVals[(reg)] \
+                                                 : ctx.icregs.icVals[(reg)]); \
+      TRACE_PRINTF("READ_VALUE_REG(%d): %" PRIx64 "\n", int((reg)),           \
+                   read_value_reg);                                           \
+      read_value_reg;                                                         \
+    })
 
 #  define WEVAL_UPDATE_IC_CTX() ;
 
@@ -2195,7 +2201,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(CallScriptedGetterResult)
       CACHEOP_CASE(CallScriptedSetter) {
         bool isSetter = cacheop == CacheOp::CallScriptedSetter;
-        ValOperandId receiverId = cacheIRReader.valOperandId();
+        ObjOperandId receiverId = cacheIRReader.objOperandId();
         uint32_t getterSetterOffset = cacheIRReader.stubOffset();
         ValOperandId rhsId =
             isSetter ? cacheIRReader.valOperandId() : ValOperandId();
@@ -2203,7 +2209,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         uint32_t nargsAndFlagsOffset = cacheIRReader.stubOffset();
         (void)nargsAndFlagsOffset;
 
-        Value receiver = Value::fromRawBits(READ_VALUE_REG(receiverId.id()));
+        Value receiver =
+            isSetter ? ObjectValue(*reinterpret_cast<JSObject*>(
+                           READ_REG(receiverId.id())))
+                     : Value::fromRawBits(READ_VALUE_REG(receiverId.id()));
         JSFunction* callee = reinterpret_cast<JSFunction*>(
             stubInfo->getStubRawWord(cstub, getterSetterOffset));
         Value rhs = isSetter ? Value::fromRawBits(READ_VALUE_REG(rhsId.id()))
@@ -2240,6 +2249,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             // Push arg: value.
             PUSH(StackVal(rhs));
           }
+          TRACE_PRINTF("pushing receiver: %" PRIx64 "\n", receiver.asRawBits());
           // Push thisv: receiver.
           PUSH(StackVal(receiver));
 
@@ -2248,7 +2258,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
               CalleeToToken(callee, /* isConstructing = */ false)));
 
           PUSHNATIVE(StackValNative(MakeFrameDescriptorForJitCall(
-              FrameType::BaselineStub, /* argc = */ 2)));
+              FrameType::BaselineStub, /* argc = */ isSetter ? 1 : 0)));
 
           JSScript* script = callee->nonLazyScript();
           jsbytecode* pc = script->code();
@@ -3993,6 +4003,53 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(IsArrayResult) {
+        ValOperandId valId = cacheIRReader.valOperandId();
+        Value val = Value::fromRawBits(READ_VALUE_REG(valId.id()));
+        if (!val.isObject()) {
+          retValue = BooleanValue(false).asRawBits();
+        } else {
+          JSObject* obj = &val.toObject();
+          if (obj->getClass()->isProxyObject()) {
+            FAIL_IC();
+          }
+          retValue = BooleanValue(obj->is<ArrayObject>()).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(IsCallableResult) {
+        ValOperandId valId = cacheIRReader.valOperandId();
+        Value val = Value::fromRawBits(READ_VALUE_REG(valId.id()));
+        if (!val.isObject()) {
+          retValue = BooleanValue(false).asRawBits();
+        } else {
+          JSObject* obj = &val.toObject();
+          if (obj->getClass()->isProxyObject()) {
+            FAIL_IC();
+          }
+          bool callable = obj->is<JSFunction>() || obj->getClass()->getCall() != nullptr;
+          retValue = BooleanValue(callable).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(IsConstructorResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        if (obj->getClass()->isProxyObject()) {
+          FAIL_IC();
+        }
+        bool ctor =
+            (obj->is<JSFunction>() && obj->as<JSFunction>().isConstructor()) ||
+            obj->getClass()->getConstruct() != nullptr;
+        retValue = BooleanValue(ctor).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -4023,10 +4080,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(ArrayJoinResult)
       CACHEOP_CASE_UNIMPL(ObjectKeysResult)
       CACHEOP_CASE_UNIMPL(ArgumentsSliceResult)
-      CACHEOP_CASE_UNIMPL(IsArrayResult)
       CACHEOP_CASE_UNIMPL(StoreFixedSlotUndefinedResult)
-      CACHEOP_CASE_UNIMPL(IsCallableResult)
-      CACHEOP_CASE_UNIMPL(IsConstructorResult)
       CACHEOP_CASE_UNIMPL(IsCrossRealmArrayConstructorResult)
       CACHEOP_CASE_UNIMPL(IsTypedArrayResult)
       CACHEOP_CASE_UNIMPL(IsTypedArrayConstructorResult)
@@ -4211,6 +4265,7 @@ next_ic:
 #ifdef ENABLE_JS_PBL_WEVAL
   weval::pop_context();
 #endif
+  TRACE_PRINTF("IC failed; next IC\n");
   return CallNextIC(arg0, arg1, stub, ctx);
 }
 

@@ -2439,6 +2439,48 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(LoadArrayBufferByteLengthInt32Result) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ArrayBufferObject* abo = reinterpret_cast<ArrayBufferObject*>(READ_REG(objId.id()));
+        size_t len = abo->byteLength();
+        if (len > size_t(INT32_MAX)) {
+          FAIL_IC();
+        }
+        retValue = Int32Value(int32_t(len)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(LoadArrayBufferByteLengthDoubleResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ArrayBufferObject* abo = reinterpret_cast<ArrayBufferObject*>(READ_REG(objId.id()));
+        size_t len = abo->byteLength();
+        retValue = DoubleValue(double(len)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(LoadArrayBufferViewLengthInt32Result) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ArrayBufferViewObject* abvo = reinterpret_cast<ArrayBufferViewObject*>(READ_REG(objId.id()));
+        size_t len = size_t(abvo->getFixedSlot(ArrayBufferViewObject::LENGTH_SLOT).toPrivate());
+        if (len > size_t(INT32_MAX)) {
+          FAIL_IC();
+        }
+        retValue = Int32Value(int32_t(len)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(LoadArrayBufferViewLengthDoubleResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ArrayBufferViewObject* abvo = reinterpret_cast<ArrayBufferViewObject*>(READ_REG(objId.id()));
+        size_t len = size_t(abvo->getFixedSlot(ArrayBufferViewObject::LENGTH_SLOT).toPrivate());
+        retValue = DoubleValue(double(len)).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(LoadArgumentsObjectArgResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         Int32OperandId indexId = cacheIRReader.int32OperandId();
@@ -4164,10 +4206,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(LoadBoundFunctionNumArgs)
       CACHEOP_CASE_UNIMPL(LoadBoundFunctionTarget)
       CACHEOP_CASE_UNIMPL(GuardBoundFunctionIsConstructor)
-      CACHEOP_CASE_UNIMPL(LoadArrayBufferByteLengthInt32Result)
-      CACHEOP_CASE_UNIMPL(LoadArrayBufferByteLengthDoubleResult)
-      CACHEOP_CASE_UNIMPL(LoadArrayBufferViewLengthInt32Result)
-      CACHEOP_CASE_UNIMPL(LoadArrayBufferViewLengthDoubleResult)
       CACHEOP_CASE_UNIMPL(FrameIsConstructingResult)
       CACHEOP_CASE_UNIMPL(CallInlinedGetterResult)
       CACHEOP_CASE_UNIMPL(CallDOMGetterResult)

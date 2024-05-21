@@ -4615,6 +4615,34 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(MegamorphicStoreSlot) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        uint32_t nameOffset = cacheIRReader.stubOffset();
+        ValOperandId valId = cacheIRReader.valOperandId();
+        bool strict = cacheIRReader.readBool();
+        
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        jsid id = jsid::fromRawBits(stubInfo->getStubRawWord(cstub, nameOffset));
+        Value val = READ_VALUE_REG(valId.id());
+
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSObject*> objRooted(&ctx.state.obj0, obj);
+          ReservedRooted<jsid> idRooted(&ctx.state.id0, id);
+          ReservedRooted<Value> valRooted(&ctx.state.value0, val);
+          if (!SetPropertyMegamorphic<false>(cx, objRooted, idRooted, valRooted,
+                                             strict)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+        }
+
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE_UNIMPL(MegamorphicHasPropResult)
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -4632,8 +4660,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(GuardXrayNoExpando)
       CACHEOP_CASE_UNIMPL(LoadScriptedProxyHandler)
       CACHEOP_CASE_UNIMPL(DoubleToUint8Clamped)
-      CACHEOP_CASE_UNIMPL(MegamorphicStoreSlot)
-      CACHEOP_CASE_UNIMPL(MegamorphicHasPropResult)
       CACHEOP_CASE_UNIMPL(SmallObjectVariableKeyHasOwnResult)
       CACHEOP_CASE_UNIMPL(ValueToIteratorResult)
       CACHEOP_CASE_UNIMPL(LoadDOMExpandoValue)

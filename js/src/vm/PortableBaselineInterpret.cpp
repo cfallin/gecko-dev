@@ -23,6 +23,7 @@
 #include "builtin/DataViewObject.h"
 #include "builtin/MapObject.h"
 #include "builtin/Object.h"
+#include "builtin/RegExp.h"
 #include "builtin/String.h"
 #include "debugger/DebugAPI.h"
 #include "jit/BaselineFrame.h"
@@ -4858,6 +4859,22 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(GetFirstDollarIndexResult) {
+        StringOperandId strId = cacheIRReader.stringOperandId();
+        JSString* str = reinterpret_cast<JSString*>(READ_REG(strId.id()));
+        int32_t result = 0;
+        {
+          PUSH_IC_FRAME();
+          if (!GetFirstDollarIndexRaw(cx, str, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = Int32Value(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -4869,7 +4886,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(RegExpFlagResult)
       CACHEOP_CASE_UNIMPL(RegExpPrototypeOptimizableResult)
       CACHEOP_CASE_UNIMPL(RegExpInstanceOptimizableResult)
-      CACHEOP_CASE_UNIMPL(GetFirstDollarIndexResult)
       CACHEOP_CASE_UNIMPL(GuardIndexIsValidUpdateOrAdd)
       CACHEOP_CASE_UNIMPL(GuardXrayExpandoShapeAndDefaultProto)
       CACHEOP_CASE_UNIMPL(GuardXrayNoExpando)

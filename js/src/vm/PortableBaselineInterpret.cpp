@@ -664,13 +664,13 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         Specialized ? (weval_read_reg((reg) + ICRegs::kMaxVals) | \
                        weval_read_reg((reg)))                     \
                     : (ctx.icregs.icTags[(reg)] | ctx.icregs.icVals[(reg)]))
-#  define WRITE_VALUE_REG(reg, value)                             \
-    if (Specialized) weval_write_reg((reg), (value).asRawBits()); \
-    weval_write_reg((reg) + ICRegs::kMaxVals, 0);                 \
-    }                                                             \
-    else {                                                        \
-      ctx.icregs.icVals[(reg)] = (value).asRawBits();             \
-      ctx.icregs.icTags[(reg)] = 0;                               \
+#  define WRITE_VALUE_REG(reg, value)                 \
+    if (Specialized) {                                \
+      weval_write_reg((reg), (value).asRawBits());    \
+      weval_write_reg((reg) + ICRegs::kMaxVals, 0);   \
+    } else {                                          \
+      ctx.icregs.icVals[(reg)] = (value).asRawBits(); \
+      ctx.icregs.icTags[(reg)] = 0;                   \
     }
 
 #  define WEVAL_UPDATE_IC_CTX()                                         \
@@ -687,17 +687,26 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
                    ctx.icregs.icVals[(reg)]);                 \
       ctx.icregs.icVals[(reg)];                               \
     })
-#  define WRITE_REG(reg, value, tagtype)                      \
-    do {                                                      \
-      ctx.icregs.icVals[(reg)] = (value);                     \
-      ctx.icregs.icTags[(reg)] = JSVAL_SHIFTED_TAG_##tagtype; \
+#  define WRITE_REG(reg, value, tagtype)                                \
+    do {                                                                \
+      uint64_t write_value = (value);                                   \
+      TRACE_PRINTF("WRITE_REG(%d, " #tagtype "): %" PRIx64 "\n", (reg), \
+                   write_value);                                        \
+      ctx.icregs.icVals[(reg)] = write_value;                           \
+      ctx.icregs.icTags[(reg)] = JSVAL_SHIFTED_TAG_##tagtype;           \
     } while (0)
-#  define READ_VALUE_REG(reg) \
-    Value::fromRawBits(ctx.icregs.icVals[(reg)] | ctx.icregs.icTags[(reg)])
-#  define WRITE_VALUE_REG(reg, value)                 \
-    do {                                              \
-      ctx.icregs.icVals[(reg)] = (value).asRawBits(); \
-      ctx.icregs.icTags[(reg)] = 0;                   \
+#  define READ_VALUE_REG(reg)                                              \
+    ({                                                                     \
+      uint64_t bits = ctx.icregs.icVals[(reg)] | ctx.icregs.icTags[(reg)]; \
+      TRACE_PRINTF("READ_VALUE_REG(%d): %" PRIx64 "\n", (reg), bits);      \
+      Value::fromRawBits(bits);                                            \
+    })
+#  define WRITE_VALUE_REG(reg, value)                                         \
+    do {                                                                      \
+      uint64_t write_value = (value).asRawBits();                             \
+      TRACE_PRINTF("WRITE_VALUE_REG(%d): %" PRIx64 "\n", (reg), write_value); \
+      ctx.icregs.icVals[(reg)] = write_value;                                 \
+      ctx.icregs.icTags[(reg)] = 0;                                           \
     } while (0)
 
 #  define WEVAL_UPDATE_IC_CTX() ;
@@ -3545,7 +3554,40 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE(Int32MinMaxArrayResult) {}
+      CACHEOP_CASE(Int32MinMaxArrayResult) {
+        ObjOperandId arrayId = cacheIRReader.objOperandId();
+        bool isMax = cacheIRReader.readBool();
+        // ICs that use this opcode depend on implicit unboxing due to
+        // type-overload on ObjOperandId when a value is loaded
+        // directly from an argument slot. We explicitly unbox here.
+        NativeObject* nobj = reinterpret_cast<NativeObject*>(
+            &READ_VALUE_REG(arrayId.id()).toObject());
+        uint32_t len = nobj->getDenseInitializedLength();
+        if (len == 0) {
+          FAIL_IC();
+        }
+        ObjectElements* elems = nobj->getElementsHeader();
+        int32_t accum = 0;
+        for (uint32_t i = 0; i < len; i++) {
+          HeapSlot* slot = &elems->elements()[i];
+          Value val = slot->get();
+          if (!val.isInt32()) {
+            FAIL_IC();
+          }
+          int32_t valInt = val.toInt32();
+          if (i > 0) {
+            accum = isMax ?
+              ((valInt > accum) ? valInt : accum) :
+              ((valInt < accum) ? valInt : accum);
+          } else {
+            accum = valInt;
+          }
+        }
+        retValue = Int32Value(accum).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
       CACHEOP_CASE(NumberMinMaxArrayResult) {}
       CACHEOP_CASE(MathFunctionNumberResult) {}
       CACHEOP_CASE(NumberParseIntResult) {}

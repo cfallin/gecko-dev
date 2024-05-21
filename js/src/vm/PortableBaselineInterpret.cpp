@@ -1202,8 +1202,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ObjOperandId objId = cacheIRReader.objOperandId();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
         const JSClass* clasp = obj->getClass();
-        if (clasp == &ArrayBufferObject::protoClass_ ||
-            clasp == &SharedArrayBufferObject::protoClass_) {
+        if (clasp == &FixedLengthArrayBufferObject::class_ ||
+            clasp == &FixedLengthSharedArrayBufferObject::class_ ||
+            clasp == &ResizableArrayBufferObject::class_ ||
+            clasp == &GrowableSharedArrayBufferObject::class_) {
           FAIL_IC();
         }
         DISPATCH_CACHEOP();
@@ -3980,6 +3982,79 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(NewTypedArrayFromLengthResult) {
+        uint32_t templateObjectOffset = cacheIRReader.stubOffset();
+        Int32OperandId lengthId = cacheIRReader.int32OperandId();
+        TypedArrayObject* templateObject = reinterpret_cast<TypedArrayObject*>(
+            stubInfo->getStubRawWord(cstub, templateObjectOffset));
+        int32_t length = int32_t(READ_REG(lengthId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSObject*> templateObjectRooted(&ctx.state.obj0, templateObject);
+          auto* result = NewTypedArrayWithTemplateAndLength(cx, templateObjectRooted, length);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = ObjectValue(*result).asRawBits();            
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(NewTypedArrayFromArrayBufferResult) {
+        uint32_t templateObjectOffset = cacheIRReader.stubOffset();
+        ObjOperandId bufferId = cacheIRReader.objOperandId();
+        ValOperandId byteOffsetId = cacheIRReader.valOperandId();
+        ValOperandId lengthId = cacheIRReader.valOperandId();
+        TypedArrayObject* templateObject = reinterpret_cast<TypedArrayObject*>(
+            stubInfo->getStubRawWord(cstub, templateObjectOffset));
+        JSObject* buffer = reinterpret_cast<JSObject*>(READ_REG(bufferId.id()));
+        Value byteOffset = READ_VALUE_REG(byteOffsetId.id());
+        Value length = READ_VALUE_REG(lengthId.id());
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSObject*> templateObjectRooted(&ctx.state.obj0,
+                                                         templateObject);
+          ReservedRooted<JSObject*> bufferRooted(&ctx.state.obj1, buffer);
+          ReservedRooted<Value> byteOffsetRooted(&ctx.state.value0, byteOffset);
+          ReservedRooted<Value> lengthRooted(&ctx.state.value1, length);
+          auto* result = NewTypedArrayWithTemplateAndBuffer(
+              cx, templateObjectRooted, bufferRooted, byteOffsetRooted,
+              lengthRooted);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+      
+      CACHEOP_CASE(NewTypedArrayFromArrayResult) {
+        uint32_t templateObjectOffset = cacheIRReader.stubOffset();
+        ObjOperandId arrayId = cacheIRReader.objOperandId();
+        TypedArrayObject* templateObject = reinterpret_cast<TypedArrayObject*>(
+            stubInfo->getStubRawWord(cstub, templateObjectOffset));
+        JSObject* array = reinterpret_cast<JSObject*>(READ_REG(arrayId.id()));
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSObject*> templateObjectRooted(&ctx.state.obj0,
+                                                         templateObject);
+          ReservedRooted<JSObject*> arrayRooted(&ctx.state.obj1, array);
+          auto* result = NewTypedArrayWithTemplateAndArray(
+              cx, templateObjectRooted, arrayRooted);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(ObjectToStringResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
@@ -4526,9 +4601,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(NewArrayIteratorResult)
       CACHEOP_CASE_UNIMPL(NewRegExpStringIteratorResult)
       CACHEOP_CASE_UNIMPL(ObjectCreateResult)
-      CACHEOP_CASE_UNIMPL(NewTypedArrayFromLengthResult)
-      CACHEOP_CASE_UNIMPL(NewTypedArrayFromArrayBufferResult)
-      CACHEOP_CASE_UNIMPL(NewTypedArrayFromArrayResult)
       CACHEOP_CASE_UNIMPL(NewStringObjectResult)
       CACHEOP_CASE_UNIMPL(ToRelativeStringIndex)
       CACHEOP_CASE_UNIMPL(ReflectGetPrototypeOfResult)

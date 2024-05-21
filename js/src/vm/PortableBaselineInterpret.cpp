@@ -4799,7 +4799,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
-      
+
       CACHEOP_CASE(Int32ToStringWithBaseResult) {
         Int32OperandId inputId = cacheIRReader.int32OperandId();
         Int32OperandId baseId = cacheIRReader.int32OperandId();

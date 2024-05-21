@@ -4719,9 +4719,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         Value val[2] = {READ_VALUE_REG(valId.id()), UndefinedValue()};
         {
           PUSH_IC_FRAME();
-          bool ok = hasOwn ?
-            HasNativeDataPropertyPure<true>(cx, obj, nullptr, &val[0]) :
-            HasNativeDataPropertyPure<false>(cx, obj, nullptr, &val[0]);
+          bool ok =
+              hasOwn
+                  ? HasNativeDataPropertyPure<true>(cx, obj, nullptr, &val[0])
+                  : HasNativeDataPropertyPure<false>(cx, obj, nullptr, &val[0]);
           if (!ok) {
             FAIL_IC();
           }
@@ -4875,6 +4876,27 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(LoadBoundFunctionNumArgs) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        Int32OperandId resultId = cacheIRReader.int32OperandId();
+        BOUNDSCHECK(resultId);
+        BoundFunctionObject* obj =
+            reinterpret_cast<BoundFunctionObject*>(READ_REG(objId.id()));
+        WRITE_REG(resultId.id(), obj->numBoundArgs(), INT32);
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(LoadBoundFunctionTarget) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ObjOperandId resultId = cacheIRReader.objOperandId();
+        BOUNDSCHECK(resultId);
+        BoundFunctionObject* obj =
+            reinterpret_cast<BoundFunctionObject*>(READ_REG(objId.id()));
+        WRITE_REG(resultId.id(), reinterpret_cast<uint64_t>(obj->getTarget()),
+                  OBJECT);
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -4940,8 +4962,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(LoadArgumentsObjectArgExistsResult)
       CACHEOP_CASE_UNIMPL(LoadFunctionLengthResult)
       CACHEOP_CASE_UNIMPL(LoadFunctionNameResult)
-      CACHEOP_CASE_UNIMPL(LoadBoundFunctionNumArgs)
-      CACHEOP_CASE_UNIMPL(LoadBoundFunctionTarget)
       CACHEOP_CASE_UNIMPL(GuardBoundFunctionIsConstructor)
       CACHEOP_CASE_UNIMPL(FrameIsConstructingResult)
       CACHEOP_CASE_UNIMPL(CallInlinedGetterResult)

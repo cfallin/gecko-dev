@@ -4829,6 +4829,14 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(IndirectTruncateInt32Result) {
+        Int32OperandId valId = cacheIRReader.int32OperandId();
+        int32_t value = int32_t(READ_REG(valId.id()));
+        retValue = Int32Value(value).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -4938,7 +4946,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(CompareBigIntStringResult)
       CACHEOP_CASE_UNIMPL(CompareDoubleSameValueResult)
       CACHEOP_CASE_UNIMPL(SameValueResult)
-      CACHEOP_CASE_UNIMPL(IndirectTruncateInt32Result)
       CACHEOP_CASE_UNIMPL(BigIntAsIntNResult)
       CACHEOP_CASE_UNIMPL(BigIntAsUintNResult)
       CACHEOP_CASE_UNIMPL(SetHasResult)

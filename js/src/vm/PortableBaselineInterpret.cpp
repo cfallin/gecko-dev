@@ -3652,7 +3652,18 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       }
       
       CACHEOP_CASE(DoubleParseIntResult) {
-        FAIL_IC();
+        NumberOperandId inputId = cacheIRReader.numberOperandId();
+        double input = READ_VALUE_REG(inputId.id()).toNumber();
+        if (std::isnan(input)) {
+          FAIL_IC();
+        }
+        int32_t result = int32_t(input);
+        if (double(result) != input) {
+          FAIL_IC();
+        }
+        retValue = Int32Value(result).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
       }
 
       CACHEOP_CASE(GuardTagNotEqual) {

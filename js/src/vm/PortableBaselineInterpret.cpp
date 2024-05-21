@@ -4707,7 +4707,28 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE_UNIMPL(MegamorphicHasPropResult) { FAIL_IC(); }
+      CACHEOP_CASE(MegamorphicHasPropResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        ValOperandId valId = cacheIRReader.valOperandId();
+        bool hasOwn = cacheIRReader.readBool();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        if (!obj->is<NativeObject>()) {
+          FAIL_IC();
+        }
+        Value val[2] = {READ_VALUE_REG(valId.id()), UndefinedValue()};
+        {
+          PUSH_IC_FRAME();
+          bool ok = hasOwn ?
+            HasNativeDataPropertyPure<true>(cx, obj, nullptr, &val[0]) :
+            HasNativeDataPropertyPure<false>(cx, obj, nullptr, &val[0]);
+          if (!ok) {
+            FAIL_IC();
+          }
+          retValue = val[1].asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
 
       CACHEOP_CASE(ArrayJoinResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();

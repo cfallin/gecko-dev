@@ -311,7 +311,7 @@ struct ICRegs {
   // to `useValueRegister` rather than `useRegister` in the native
   // bavseline compiler).
   uint64_t icVals[kMaxICVals];
-  uint64_t icTags[kMaxICVals]; // Shifted tags.
+  uint64_t icTags[kMaxICVals];  // Shifted tags.
   int extraArgs;
 
   ICRegs() {}
@@ -737,7 +737,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (!v.isObject()) {
           FAIL_IC();
         }
-        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(&v.toObject()), OBJECT);
+        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(&v.toObject()),
+                  OBJECT);
         PREDICT_NEXT(GuardShape);
         PREDICT_NEXT(GuardSpecificFunction);
         DISPATCH_CACHEOP();
@@ -795,7 +796,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (!v.isString()) {
           FAIL_IC();
         }
-        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toString()), STRING);
+        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toString()),
+                  STRING);
         PREDICT_NEXT(GuardToString);
         DISPATCH_CACHEOP();
       }
@@ -806,7 +808,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (!v.isSymbol()) {
           FAIL_IC();
         }
-        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toSymbol()), SYMBOL);
+        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toSymbol()),
+                  SYMBOL);
         PREDICT_NEXT(GuardSpecificSymbol);
         DISPATCH_CACHEOP();
       }
@@ -817,7 +820,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (!v.isBigInt()) {
           FAIL_IC();
         }
-        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toBigInt()), BIGINT);
+        WRITE_REG(inputId.id(), reinterpret_cast<uint64_t>(v.toBigInt()),
+                  BIGINT);
         DISPATCH_CACHEOP();
       }
 
@@ -2722,7 +2726,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         Value lhs = READ_VALUE_REG(lhsId.id());
         Value rhs = READ_VALUE_REG(rhsId.id());
         retValue =
-          DoubleValue(NumberDiv(lhs.toNumber(), rhs.toNumber())).asRawBits();
+            DoubleValue(NumberDiv(lhs.toNumber(), rhs.toNumber())).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2733,7 +2737,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         Value lhs = READ_VALUE_REG(lhsId.id());
         Value rhs = READ_VALUE_REG(rhsId.id());
         retValue =
-          DoubleValue(NumberMod(lhs.toNumber(), rhs.toNumber())).asRawBits();
+            DoubleValue(NumberMod(lhs.toNumber(), rhs.toNumber())).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -2744,7 +2748,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         Value lhs = READ_VALUE_REG(lhsId.id());
         Value rhs = READ_VALUE_REG(rhsId.id());
         retValue =
-          DoubleValue(ecmaPow(lhs.toNumber(), rhs.toNumber())).asRawBits();
+            DoubleValue(ecmaPow(lhs.toNumber(), rhs.toNumber())).asRawBits();
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
@@ -4021,7 +4025,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           if (obj->getClass()->isProxyObject()) {
             FAIL_IC();
           }
-          bool callable = obj->is<JSFunction>() || obj->getClass()->getCall() != nullptr;
+          bool callable =
+              obj->is<JSFunction>() || obj->getClass()->getCall() != nullptr;
           retValue = BooleanValue(callable).asRawBits();
         }
         PREDICT_RETURN();

@@ -4714,6 +4714,25 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
+
+      CACHEOP_CASE(CallSetArrayLength) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        bool strict = cacheIRReader.readBool();
+        ValOperandId rhsId = cacheIRReader.valOperandId();
+        JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
+        Value rhs = READ_VALUE_REG(rhsId.id());
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSObject*> obj0(&ctx.state.obj0, obj);
+          ReservedRooted<Value> value0(&ctx.state.value0, rhs);
+          if (!SetArrayLength(cx, obj0, value0, strict)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
       
       CACHEOP_CASE(ObjectKeysResult) {
         ObjOperandId objId = cacheIRReader.objOperandId();
@@ -4793,7 +4812,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(AtomicsIsLockFreeResult)
       CACHEOP_CASE_UNIMPL(CallInlinedSetter)
       CACHEOP_CASE_UNIMPL(CallDOMSetter)
-      CACHEOP_CASE_UNIMPL(CallSetArrayLength)
       CACHEOP_CASE_UNIMPL(ProxySet)
       CACHEOP_CASE_UNIMPL(ProxySetByValue)
       CACHEOP_CASE_UNIMPL(CallAddOrUpdateSparseElementHelper)

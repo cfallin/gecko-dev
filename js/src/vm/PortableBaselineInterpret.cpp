@@ -4997,6 +4997,43 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(BindFunctionResult)
+      CACHEOP_CASE_FALLTHROUGH(SpecializedBindFunctionResult) {
+        ObjOperandId targetId = cacheIRReader.objOperandId();
+        uint32_t argc = cacheIRReader.uint32Immediate();
+        uint32_t templateObjectOffset = cacheIRReader.stubOffset();
+
+        JSObject* target = reinterpret_cast<JSObject*>(READ_REG(targetId.id()));
+        BoundFunctionObject* templateObject =
+            (cacheop == CacheOp::SpecializedBindFunctionResult)
+                ? reinterpret_cast<BoundFunctionObject*>(
+                      stubInfo->getStubRawWord(cstub, templateObjectOffset))
+                : nullptr;
+
+        StackVal* origArgs = ctx.sp();
+        {
+          PUSH_IC_FRAME();
+
+          for (uint32_t i = 0; i < argc; i++) {
+            PUSH(origArgs[i]);
+          }
+          Value* args = reinterpret_cast<Value*>(sp);
+
+          ReservedRooted<JSObject*> targetRooted(&ctx.state.obj0, target);
+          Rooted<BoundFunctionObject*> templateObjectRooted(cx, templateObject);
+          auto* result = BoundFunctionObject::functionBindImpl(
+              cx, targetRooted, args, argc, templateObjectRooted);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
@@ -5052,8 +5089,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(CallScriptedProxyGetResult)
       CACHEOP_CASE_UNIMPL(CallScriptedProxyGetByValueResult)
 #endif
-      CACHEOP_CASE_UNIMPL(BindFunctionResult)
-      CACHEOP_CASE_UNIMPL(SpecializedBindFunctionResult)
       CACHEOP_CASE_UNIMPL(CallGetSparseElementResult)
       CACHEOP_CASE_UNIMPL(LoadDataViewValueResult)
       CACHEOP_CASE_UNIMPL(StoreDataViewValueResult)

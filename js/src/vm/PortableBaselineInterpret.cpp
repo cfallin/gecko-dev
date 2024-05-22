@@ -2130,11 +2130,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           }
         }
 
-        // For now, fail any constructing or different-realm cases.
-        if (flags.isConstructing()) {
-          TRACE_PRINTF("failing: constructing\n");
-          FAIL_IC();
-        }
+        // For now, fail any different-realm cases.
         if (!flags.isSameRealm()) {
           TRACE_PRINTF("failing: not same realm\n");
           FAIL_IC();
@@ -2164,6 +2160,21 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             return IC_ERROR_SENTINEL();
           }
 
+          // Create `this` if we are constructing and this is a
+          // scripted function.
+          Value thisVal;
+          if (flags.isConstructing() && !isNative) {
+            ReservedRooted<JSObject*> calleeRooted(&ctx.state.obj0, callee);
+            ReservedRooted<JSObject*> newTargetRooted(
+                &ctx.state.obj1, &origArgs[0].asValue().toObject());
+            ReservedRooted<Value> result(&ctx.state.value0);
+            if (!CreateThisFromIC(cx, calleeRooted, newTargetRooted, &result)) {
+              ctx.error = PBIResult::Error;
+              return IC_ERROR_SENTINEL();
+            }
+            thisVal = result;
+          }
+
           // This will not be an Exit frame but a BaselineStub frame, so
           // replace the ExitFrameType with the ICStub pointer.
           POPNNATIVE(1);
@@ -2172,6 +2183,9 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           // Push args.
           for (uint32_t i = 0; i < totalArgs; i++) {
             PUSH(origArgs[i]);
+          }
+          if (flags.isConstructing() && !isNative) {
+            sp[0] = StackVal(thisVal);
           }
           Value* args = reinterpret_cast<Value*>(sp);
 
@@ -2190,7 +2204,9 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             PUSHNATIVE(StackValNative(nullptr));  // fake return address.
             PUSHNATIVE(StackValNative(ctx.stack.fp));
             ctx.stack.fp = sp;
-            PUSHNATIVE(StackValNative(uint32_t(ExitFrameType::CallNative)));
+            PUSHNATIVE(StackValNative(
+                uint32_t(flags.isConstructing() ? ExitFrameType::ConstructNative
+                                                : ExitFrameType::CallNative)));
             cx.getCx()->activation()->asJit()->setJSExitFP(
                 reinterpret_cast<uint8_t*>(ctx.stack.fp));
             cx.getCx()->portableBaselineStack().top =

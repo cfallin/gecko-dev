@@ -2318,6 +2318,103 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(CallBoundScriptedFunction) {
+        ObjOperandId calleeId = cacheIRReader.objOperandId();
+        ObjOperandId targetId = cacheIRReader.objOperandId();
+        Int32OperandId argcId = cacheIRReader.int32OperandId();
+        CallFlags flags = cacheIRReader.callFlags();
+        uint32_t numBoundArgs = cacheIRReader.uint32Immediate();
+
+        BoundFunctionObject* boundFunc =
+            reinterpret_cast<BoundFunctionObject*>(READ_REG(calleeId.id()));
+        JSFunction* callee = &boundFunc->getTarget()->as<JSFunction>();
+        uint32_t argc = uint32_t(READ_REG(argcId.id()));
+        (void)targetId;
+
+        if (!callee->hasBaseScript() || !callee->baseScript()->hasBytecode() ||
+            !callee->baseScript()->hasJitScript()) {
+          FAIL_IC();
+        }
+
+        // For now, fail any constructing or different-realm cases.
+        if (flags.isConstructing()) {
+          TRACE_PRINTF("failing: constructing\n");
+          FAIL_IC();
+        }
+        if (!flags.isSameRealm()) {
+          TRACE_PRINTF("failing: not same realm\n");
+          FAIL_IC();
+        }
+        // And support only "standard" arg formats.
+        if (flags.getArgFormat() != CallFlags::Standard) {
+          TRACE_PRINTF("failing: not standard arg format\n");
+          FAIL_IC();
+        }
+
+        uint32_t totalArgs = numBoundArgs + argc;
+
+        // For now, fail any arg-underflow case.
+        if (totalArgs < callee->nargs()) {
+          TRACE_PRINTF("failing: too few args\n");
+          FAIL_IC();
+        }
+
+        StackVal* origArgs = ctx.sp();
+
+        {
+          PUSH_IC_FRAME();
+
+          if (!ctx.stack.check(sp, sizeof(StackVal) * (totalArgs + 6))) {
+            ReportOverRecursed(ctx.frameMgr.cxForLocalUseOnly());
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+
+          // This will not be an Exit frame but a BaselineStub frame, so
+          // replace the ExitFrameType with the ICStub pointer.
+          POPNNATIVE(1);
+          PUSHNATIVE(StackValNative(cstub));
+
+          // Push args.
+          for (uint32_t i = 0; i < argc; i++) {
+            PUSH(origArgs[i]);
+          }
+          // Push bound args.
+          for (uint32_t i = 0; i < numBoundArgs; i++) {
+            PUSH(StackVal(boundFunc->getBoundArg(numBoundArgs - 1 - i)));
+          }
+          // Push bound `this`.
+          PUSH(StackVal(boundFunc->getBoundThis()));
+
+          TRACE_PRINTF("pushing callee: %p\n", callee);
+          PUSHNATIVE(StackValNative(
+              CalleeToToken(callee, /* isConstructing = */ false)));
+
+          PUSHNATIVE(StackValNative(MakeFrameDescriptorForJitCall(
+              FrameType::BaselineStub, totalArgs)));
+
+          JSScript* script = callee->nonLazyScript();
+          jsbytecode* pc = script->code();
+          ImmutableScriptData* isd = script->immutableScriptData();
+          PBIResult result;
+          Value ret;
+          INVOKE_PBI(
+              result, script,
+              (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
+              ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
+              reinterpret_cast<Value*>(&ret), pc, isd, nullptr, nullptr,
+              nullptr, PBIResult::Ok);
+          if (result != PBIResult::Ok) {
+            ctx.error = result;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = ret.asRawBits();
+        }
+
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE(MetaScriptedThisShape) {
         uint32_t thisShapeOffset = cacheIRReader.stubOffset();
         // This op is only metadata for the Warp Transpiler and should be
@@ -4946,7 +5043,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(ProxySet)
       CACHEOP_CASE_UNIMPL(ProxySetByValue)
       CACHEOP_CASE_UNIMPL(CallAddOrUpdateSparseElementHelper)
-      CACHEOP_CASE_UNIMPL(CallBoundScriptedFunction)
       CACHEOP_CASE_UNIMPL(CallWasmFunction)
       CACHEOP_CASE_UNIMPL(GuardWasmArg)
       CACHEOP_CASE_UNIMPL(CallDOMFunction)

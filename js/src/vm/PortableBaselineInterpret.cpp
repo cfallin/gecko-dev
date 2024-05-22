@@ -5034,7 +5034,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE(CallRegExpMatcherResult) {
+      CACHEOP_CASE(CallRegExpMatcherResult)
+      CACHEOP_CASE_FALLTHROUGH(CallRegExpSearcherResult) {
         ObjOperandId regexpId = cacheIRReader.objOperandId();
         StringOperandId inputId = cacheIRReader.stringOperandId();
         Int32OperandId lastIndexId = cacheIRReader.int32OperandId();
@@ -5049,19 +5050,28 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           PUSH_IC_FRAME();
           ReservedRooted<JSObject*> regexpRooted(&ctx.state.obj0, regexp);
           ReservedRooted<JSString*> inputRooted(&ctx.state.str0, input);
-          ReservedRooted<Value> result(&ctx.state.value0, UndefinedValue());
-          if (!RegExpMatcherRaw(cx, regexpRooted, inputRooted, lastIndex,
-                                nullptr, &result)) {
-            ctx.error = PBIResult::Error;
-            return IC_ERROR_SENTINEL();
+
+          if (cacheop == CacheOp::CallRegExpMatcherResult) {
+            ReservedRooted<Value> result(&ctx.state.value0, UndefinedValue());
+            if (!RegExpMatcherRaw(cx, regexpRooted, inputRooted, lastIndex,
+                                  nullptr, &result)) {
+              ctx.error = PBIResult::Error;
+              return IC_ERROR_SENTINEL();
+            }
+            retValue = result.asRawBits();
+          } else {
+            int32_t result = 0;
+            if (!RegExpSearcherRaw(cx, regexpRooted, inputRooted, lastIndex, nullptr, &result)) {
+              ctx.error = PBIResult::Error;
+              return IC_ERROR_SENTINEL();
+            }
+            retValue = Int32Value(result).asRawBits();
           }
-          retValue = result.asRawBits();
         }
         PREDICT_RETURN();
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE_UNIMPL(CallRegExpSearcherResult)
       CACHEOP_CASE_UNIMPL(RegExpSearcherLastLimitResult)
       CACHEOP_CASE_UNIMPL(RegExpHasCaptureGroupsResult)
       CACHEOP_CASE_UNIMPL(RegExpBuiltinExecMatchResult)

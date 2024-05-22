@@ -3,6 +3,10 @@
   - IC collection and cache pre-filling script
   - weval efficiency and cleanup
     - incremental builds / caching
+- Optimizations
+  - comparison to wasm32 JIT
+  - look at register pressure a bit more and verify nothing to be done
+  - JS function prologues?
 - Rejected ideas:
   - known-bits / partial-constant
   - BBV

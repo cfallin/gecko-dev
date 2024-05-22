@@ -1,5 +1,3 @@
-- Finish all missing CacheIR ops seen in Octane
-
 - Productionize
   - General cleanup; reconstruction of patch stack
   - IC collection and cache pre-filling script

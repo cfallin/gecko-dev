@@ -5061,7 +5061,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             retValue = result.asRawBits();
           } else {
             int32_t result = 0;
-            if (!RegExpSearcherRaw(cx, regexpRooted, inputRooted, lastIndex, nullptr, &result)) {
+            if (!RegExpSearcherRaw(cx, regexpRooted, inputRooted, lastIndex,
+                                   nullptr, &result)) {
               ctx.error = PBIResult::Error;
               return IC_ERROR_SENTINEL();
             }
@@ -5072,14 +5073,141 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE_UNIMPL(RegExpSearcherLastLimitResult)
-      CACHEOP_CASE_UNIMPL(RegExpHasCaptureGroupsResult)
-      CACHEOP_CASE_UNIMPL(RegExpBuiltinExecMatchResult)
-      CACHEOP_CASE_UNIMPL(RegExpBuiltinExecTestResult)
-      CACHEOP_CASE_UNIMPL(RegExpFlagResult)
-      CACHEOP_CASE_UNIMPL(RegExpPrototypeOptimizableResult)
-      CACHEOP_CASE_UNIMPL(RegExpInstanceOptimizableResult)
-      CACHEOP_CASE_UNIMPL(NewRegExpStringIteratorResult)
+      CACHEOP_CASE(RegExpSearcherLastLimitResult) {
+        uint32_t lastLimit =
+            ctx.frameMgr.cxForLocalUseOnly()->regExpSearcherLastLimit;
+        retValue = Int32Value(lastLimit).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(RegExpHasCaptureGroupsResult) {
+        ObjOperandId regexpId = cacheIRReader.objOperandId();
+        StringOperandId inputId = cacheIRReader.stringOperandId();
+        RegExpObject* regexp =
+            reinterpret_cast<RegExpObject*>(READ_REG(regexpId.id()));
+        JSString* input = reinterpret_cast<JSString*>(READ_REG(inputId.id()));
+        {
+          PUSH_IC_FRAME();
+          Rooted<RegExpObject*> regexpRooted(cx, regexp);
+          ReservedRooted<JSString*> inputRooted(&ctx.state.str0, input);
+          bool result = false;
+          if (!RegExpHasCaptureGroups(cx, regexpRooted, inputRooted, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = BooleanValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(RegExpBuiltinExecMatchResult) {
+        ObjOperandId regexpId = cacheIRReader.objOperandId();
+        StringOperandId inputId = cacheIRReader.stringOperandId();
+        uint32_t stubOffset = cacheIRReader.stubOffset();
+
+        RegExpObject* regexp =
+            reinterpret_cast<RegExpObject*>(READ_REG(regexpId.id()));
+        JSString* input = reinterpret_cast<JSString*>(READ_REG(inputId.id()));
+        (void)stubOffset;
+
+        {
+          PUSH_IC_FRAME();
+          Rooted<RegExpObject*> regexpRooted(cx, regexp);
+          ReservedRooted<JSString*> inputRooted(&ctx.state.str0, input);
+          ReservedRooted<Value> output(&ctx.state.value0, UndefinedValue());
+          if (!RegExpBuiltinExecMatchFromJit(cx, regexpRooted, inputRooted,
+                                             nullptr, &output)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = output.asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(RegExpBuiltinExecTestResult) {
+        ObjOperandId regexpId = cacheIRReader.objOperandId();
+        StringOperandId inputId = cacheIRReader.stringOperandId();
+        uint32_t stubOffset = cacheIRReader.stubOffset();
+
+        RegExpObject* regexp =
+            reinterpret_cast<RegExpObject*>(READ_REG(regexpId.id()));
+        JSString* input = reinterpret_cast<JSString*>(READ_REG(inputId.id()));
+        (void)stubOffset;
+
+        {
+          PUSH_IC_FRAME();
+          Rooted<RegExpObject*> regexpRooted(cx, regexp);
+          ReservedRooted<JSString*> inputRooted(&ctx.state.str0, input);
+          bool result = false;
+          if (!RegExpBuiltinExecTestFromJit(cx, regexpRooted, inputRooted,
+                                            &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = BooleanValue(result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(RegExpFlagResult) {
+        ObjOperandId regexpId = cacheIRReader.objOperandId();
+        uint32_t flagsMask = cacheIRReader.uint32Immediate();
+        RegExpObject* regexp =
+            reinterpret_cast<RegExpObject*>(READ_REG(regexpId.id()));
+        union {
+          JS::RegExpFlags flags;
+          uint8_t rawFlags;
+        };
+        flags = regexp->getFlags();
+        retValue =
+            BooleanValue((uint32_t(rawFlags) & flagsMask) != 0).asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(RegExpPrototypeOptimizableResult) {
+        ObjOperandId protoId = cacheIRReader.objOperandId();
+        JSObject* proto = reinterpret_cast<JSObject*>(READ_REG(protoId.id()));
+        retValue = BooleanValue(RegExpPrototypeOptimizableRaw(
+                                    ctx.frameMgr.cxForLocalUseOnly(), proto))
+                       .asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(RegExpInstanceOptimizableResult) {
+        ObjOperandId regexpId = cacheIRReader.objOperandId();
+        ObjOperandId protoId = cacheIRReader.objOperandId();
+        JSObject* regexp = reinterpret_cast<JSObject*>(READ_REG(regexpId.id()));
+        JSObject* proto = reinterpret_cast<JSObject*>(READ_REG(protoId.id()));
+        retValue =
+            BooleanValue(RegExpInstanceOptimizableRaw(
+                             ctx.frameMgr.cxForLocalUseOnly(), regexp, proto))
+                .asRawBits();
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
+      CACHEOP_CASE(NewRegExpStringIteratorResult) {
+        uint32_t templateObjectOffset = cacheIRReader.stubOffset();
+        (void)templateObjectOffset;
+        {
+          PUSH_IC_FRAME();
+          auto* result = NewRegExpStringIterator(cx);
+          if (!result) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = ObjectValue(*result).asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
 
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)

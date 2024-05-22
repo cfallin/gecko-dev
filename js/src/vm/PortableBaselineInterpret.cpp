@@ -5209,6 +5209,26 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
+      CACHEOP_CASE(CallGetSparseElementResult) {
+        ObjOperandId objId = cacheIRReader.objOperandId();
+        Int32OperandId indexId = cacheIRReader.int32OperandId();
+        NativeObject* nobj =
+            reinterpret_cast<NativeObject*>(READ_REG(objId.id()));
+        int32_t index = int32_t(READ_REG(indexId.id()));
+        {
+          PUSH_IC_FRAME();
+          Rooted<NativeObject*> nobjRooted(cx, nobj);
+          ReservedRooted<Value> result(&ctx.state.value0, UndefinedValue());
+          if (!GetSparseElementHelper(cx, nobjRooted, index, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = result.asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
       CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(GuardIndexIsValidUpdateOrAdd)
@@ -5254,7 +5274,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(CallScriptedProxyGetResult)
       CACHEOP_CASE_UNIMPL(CallScriptedProxyGetByValueResult)
 #endif
-      CACHEOP_CASE_UNIMPL(CallGetSparseElementResult)
       CACHEOP_CASE_UNIMPL(LoadDataViewValueResult)
       CACHEOP_CASE_UNIMPL(StoreDataViewValueResult)
       CACHEOP_CASE_UNIMPL(LoadArgumentsObjectArgHoleResult)

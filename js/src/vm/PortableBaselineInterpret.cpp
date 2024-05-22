@@ -5034,9 +5034,33 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
-      CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
-      CACHEOP_CASE_UNIMPL(CallRegExpMatcherResult)
+      CACHEOP_CASE(CallRegExpMatcherResult) {
+        ObjOperandId regexpId = cacheIRReader.objOperandId();
+        StringOperandId inputId = cacheIRReader.stringOperandId();
+        Int32OperandId lastIndexId = cacheIRReader.int32OperandId();
+        uint32_t stubOffset = cacheIRReader.stubOffset();
+
+        JSObject* regexp = reinterpret_cast<JSObject*>(READ_REG(regexpId.id()));
+        JSString* input = reinterpret_cast<JSString*>(READ_REG(inputId.id()));
+        int32_t lastIndex = int32_t(READ_REG(lastIndexId.id()));
+        (void)stubOffset;
+
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSObject*> regexpRooted(&ctx.state.obj0, regexp);
+          ReservedRooted<JSString*> inputRooted(&ctx.state.str0, input);
+          ReservedRooted<Value> result(&ctx.state.value0, UndefinedValue());
+          if (!RegExpMatcherRaw(cx, regexpRooted, inputRooted, lastIndex,
+                                nullptr, &result)) {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
+          retValue = result.asRawBits();
+        }
+        PREDICT_RETURN();
+        DISPATCH_CACHEOP();
+      }
+
       CACHEOP_CASE_UNIMPL(CallRegExpSearcherResult)
       CACHEOP_CASE_UNIMPL(RegExpSearcherLastLimitResult)
       CACHEOP_CASE_UNIMPL(RegExpHasCaptureGroupsResult)
@@ -5045,6 +5069,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(RegExpFlagResult)
       CACHEOP_CASE_UNIMPL(RegExpPrototypeOptimizableResult)
       CACHEOP_CASE_UNIMPL(RegExpInstanceOptimizableResult)
+      CACHEOP_CASE_UNIMPL(NewRegExpStringIteratorResult)
+
+      CACHEOP_CASE_UNIMPL(GuardToUint8Clamped)
+      CACHEOP_CASE_UNIMPL(GuardMultipleShapes)
       CACHEOP_CASE_UNIMPL(GuardIndexIsValidUpdateOrAdd)
       CACHEOP_CASE_UNIMPL(GuardXrayExpandoShapeAndDefaultProto)
       CACHEOP_CASE_UNIMPL(GuardXrayNoExpando)
@@ -5061,7 +5089,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(StoreFixedSlotUndefinedResult)
       CACHEOP_CASE_UNIMPL(GuardHasAttachedArrayBuffer)
       CACHEOP_CASE_UNIMPL(NewArrayIteratorResult)
-      CACHEOP_CASE_UNIMPL(NewRegExpStringIteratorResult)
       CACHEOP_CASE_UNIMPL(NewStringObjectResult)
       CACHEOP_CASE_UNIMPL(ToRelativeStringIndex)
       CACHEOP_CASE_UNIMPL(ReflectGetPrototypeOfResult)

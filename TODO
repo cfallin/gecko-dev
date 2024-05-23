@@ -25,7 +25,7 @@
   - Value::setUnchecked (0.58%)
 
 - other perf ideas
-  - share some ICCtx? Rooted value registration? no RootedScript (use
+  - (x) share some ICCtx? Rooted value registration? no RootedScript (use
     BaselineFrame)
   - PC for restarts: take base and offset; load entryPC from ctx
   - inline nursery alloc?

@@ -6063,12 +6063,14 @@ PBIResult PortableBaselineInterpret(
   }
   ret->setUndefined();
 
+#ifndef __wasi__
   // Check if we are being debugged, and set a flag in the frame if so. This
   // flag must be set before calling InitFunctionEnvironmentObjects.
   if (frame->script()->isDebuggee()) {
     TRACE_PRINTF("Script is debuggee\n");
     frame->setIsDebuggee();
   }
+#endif
 
   if (CalleeTokenIsFunction(frame->calleeToken())) {
     JSFunction* func = CalleeTokenToFunction(frame->calleeToken());
@@ -6083,6 +6085,7 @@ PBIResult PortableBaselineInterpret(
     }
   }
 
+#ifndef __wasi__
   // The debug prologue can't run until the function environment is set up.
   if (frame->script()->isDebuggee()) {
     PUSH_EXIT_FRAME();
@@ -6101,7 +6104,6 @@ PBIResult PortableBaselineInterpret(
   }
   COUNT_COVERAGE_MAIN();
 
-#ifndef __wasi__
   if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
     PUSH_EXIT_FRAME();
     if (!InterruptCheck(cx)) {

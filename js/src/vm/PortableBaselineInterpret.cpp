@@ -2171,7 +2171,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             } else {
               ReservedRooted<JSObject*> calleeObj(&ctx.state.obj0, callee);
               ReservedRooted<JSObject*> newTargetRooted(
-                &ctx.state.obj1, &origArgs[0].asValue().toObject());
+                  &ctx.state.obj1, &origArgs[0].asValue().toObject());
               ReservedRooted<Value> result(&ctx.state.value0);
               if (!CreateThisFromIC(cx, calleeObj, newTargetRooted, &result)) {
                 ctx.error = PBIResult::Error;
@@ -2253,8 +2253,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             }
             retValue = args[0].asRawBits();
           } else {
-            PUSHNATIVE(StackValNative(MakeFrameDescriptorForJitCall(
-                FrameType::BaselineStub, argc)));
+            PUSHNATIVE(StackValNative(
+                MakeFrameDescriptorForJitCall(FrameType::BaselineStub, argc)));
 
             JSScript* script = callee->nonLazyScript();
             jsbytecode* pc = script->code();

@@ -529,7 +529,8 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
                              StackVal* sp, JSObject* envChain, Value* ret,
-                             jsbytecode* pc, ImmutableScriptData* isd,
+                             jsbytecode* pcbase, uint32_t pcoffset,
+                             ImmutableScriptData* isd,
                              jsbytecode* restartEntryPC,
                              BaselineFrame* restartFrame,
                              StackVal* restartEntryFrame,
@@ -2263,7 +2264,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
                 result, script,
                 (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
                 ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-                reinterpret_cast<Value*>(&ret), pc, isd, nullptr, nullptr,
+                reinterpret_cast<Value*>(&ret), pc, 0, isd, nullptr, nullptr,
                 nullptr, PBIResult::Ok);
             if (result != PBIResult::Ok) {
               ctx.error = result;
@@ -2349,7 +2350,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
               result, script,
               (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
               ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-              reinterpret_cast<Value*>(&ret), pc, isd, nullptr, nullptr,
+              reinterpret_cast<Value*>(&ret), pc, 0, isd, nullptr, nullptr,
               nullptr, PBIResult::Ok);
           if (result != PBIResult::Ok) {
             ctx.error = result;
@@ -2446,7 +2447,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
               result, script,
               (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
               ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
-              reinterpret_cast<Value*>(&ret), pc, isd, nullptr, nullptr,
+              reinterpret_cast<Value*>(&ret), pc, 0, isd, nullptr, nullptr,
               nullptr, PBIResult::Ok);
           if (result != PBIResult::Ok) {
             ctx.error = result;
@@ -5883,6 +5884,7 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
   CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret, ic_arg0, \
           ic_arg1, ic_arg2, hasarg2);                                        \
   if (ic_ret == IC_ERROR_SENTINEL()) {                                       \
+    pcoffset = pc - pcbase;                                                  \
     WEVAL_POP_CONTEXT();                                                     \
     ic_result = ctx.error;                                                   \
     goto ic_fail;                                                            \
@@ -5961,11 +5963,14 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
   })
 
 template <bool Specialized, bool IsRestart, bool HybridICs>
-PBIResult PortableBaselineInterpret(
-    JSContext* cx_, State& state, Stack& stack, StackVal* sp,
-    JSObject* envChain, Value* ret, jsbytecode* pc, ImmutableScriptData* isd,
-    jsbytecode* restartEntryPC, BaselineFrame* restartFrame,
-    StackVal* restartEntryFrame, PBIResult restartCode) {
+PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
+                                    StackVal* sp, JSObject* envChain,
+                                    Value* ret, jsbytecode* pcbase,
+                                    uint32_t pcoffset, ImmutableScriptData* isd,
+                                    jsbytecode* restartEntryPC,
+                                    BaselineFrame* restartFrame,
+                                    StackVal* restartEntryFrame,
+                                    PBIResult restartCode) {
 #define RESTART(code)                                                 \
   if (!IsRestart) {                                                   \
     TRACE_PRINTF("Restarting (code %d sp %p fp %p)\n", int(code), sp, \
@@ -5979,6 +5984,7 @@ PBIResult PortableBaselineInterpret(
   do {                         \
     SYNCSP();                  \
     UPDATE_SPOFF();            \
+    pcoffset = pc - pcbase;    \
     RESTART(PBIResult::Error); \
     goto error;                \
   } while (0)
@@ -5996,6 +6002,7 @@ PBIResult PortableBaselineInterpret(
   BaselineFrame* frame = restartFrame;
   StackVal* entryFrame = restartEntryFrame;
   jsbytecode* entryPC = restartEntryPC;
+  jsbytecode* pc = pcbase + pcoffset;
 
   if (!IsRestart) {
     PUSHNATIVE(StackValNative(nullptr));  // Fake return address.
@@ -7932,6 +7939,7 @@ PBIResult PortableBaselineInterpret(
             spbase = sp;
             ctx.spbase = spbase;
             pc = calleeScript->code();
+            pcbase = pc;
             entryPC = pc;
             ctx.entryPC = entryPC;
             isd = calleeScript->immutableScriptData();
@@ -8472,6 +8480,7 @@ PBIResult PortableBaselineInterpret(
           icEntries = frame->icScript()->icEntries();
           icEntry = frame->interpreterICEntry();
           pc = frame->interpreterPC();
+          pcbase = pc;
           argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
           entryPC = frame->script()->code();
           ctx.entryPC = entryPC;
@@ -9127,8 +9136,8 @@ restart:
   // before restarting, to match previous behavior.
   return PortableBaselineInterpret<false, true, HybridICs>(
       ctx.frameMgr.cxForLocalUseOnly(), ctx.state, ctx.stack, ctx.sp(),
-      ctx.envChain, ctx.ret, pc, ctx.isd, ctx.entryPC, frame, ctx.entryFrame,
-      restartCode);
+      ctx.envChain, ctx.ret, pcbase, pcoffset, ctx.isd, ctx.entryPC, frame,
+      ctx.entryFrame, restartCode);
 
 error:
   TRACE_PRINTF("HandleException: frame %p\n", frame);
@@ -9148,6 +9157,7 @@ error:
         goto unwind_error;
       case ExceptionResumeKind::Catch:
         pc = frame->interpreterPC();
+        pcbase = pc;
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> catch to pc %p (fp %p sp %p)\n", pc, rfe.framePointer,
@@ -9155,6 +9165,7 @@ error:
         goto unwind;
       case ExceptionResumeKind::Finally:
         pc = frame->interpreterPC();
+        pcbase = pc;
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         sp = reinterpret_cast<StackVal*>(rfe.stackPointer);
         spbase = sp;
@@ -9167,6 +9178,7 @@ error:
         goto unwind;
       case ExceptionResumeKind::ForcedReturnBaseline:
         pc = frame->interpreterPC();
+        pcbase = pc;
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> forced return\n");
@@ -9223,6 +9235,7 @@ unwind:
   icEntries = frame->icScript()->icEntries();
   icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
+  pcbase = pc;
   argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
   DISPATCH();
 unwind_error:
@@ -9248,6 +9261,7 @@ unwind_error:
   icEntries = frame->icScript()->icEntries();
   icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
+  pcbase = pc;
   argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
   goto error;
 unwind_ret:
@@ -9274,6 +9288,7 @@ unwind_ret:
   icEntries = frame->icScript()->icEntries();
   icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
+  pcbase = pc;
   argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
   from_unwind = true;
   goto do_return;
@@ -9287,6 +9302,7 @@ debug: {
     goto error;
   }
   pc = frame->interpreterPC();
+  pcbase = pc;
   TRACE_PRINTF("HandleDebugTrap done\n");
 }
   goto dispatch;
@@ -9358,7 +9374,7 @@ bool PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   PBIResult ret;
   INVOKE_PBI(ret, script,
              (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
-             state, stack, sp, envChain, result, pc, isd, nullptr, nullptr,
+             state, stack, sp, envChain, result, pc, 0, isd, nullptr, nullptr,
              nullptr, PBIResult::Ok);
   switch (ret) {
     case PBIResult::Ok:
@@ -9461,7 +9477,7 @@ void EnqueueScriptSpecialization(JSScript* script) {
         Specialize<uint64_t>(script->nfixed()), Runtime<JSContext*>(),
         Runtime<State&>(), Runtime<Stack&>(), Runtime<StackVal*>(),
         Runtime<JSObject*>(), Runtime<Value*>(),
-        SpecializeMemory<jsbytecode*>(pc, pc_len),
+        SpecializeMemory<jsbytecode*>(pc, pc_len), Specialize<uint32_t>(0),
         SpecializeMemory<ImmutableScriptData*>(isd, isd_len),
         Runtime<jsbytecode*>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),
         Runtime<PBIResult>());

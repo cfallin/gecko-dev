@@ -2141,9 +2141,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           FAIL_IC();
         }
 
-        // Handle arg-underflow.
-        uint32_t undefArgs = (argc < callee->nargs()) ? (callee->nargs() - argc) : 0;
-        
+        // Handle arg-underflow (but only for scripted targets).
+        uint32_t undefArgs = (!isNative && (argc < callee->nargs()))
+                                 ? (callee->nargs() - argc)
+                                 : 0;
         uint32_t extra = 1 + flags.isConstructing() + isNative;
         uint32_t totalArgs = argc + undefArgs + extra;
         StackVal* origArgs = ctx.sp();
@@ -2212,7 +2213,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
               StackValNative(CalleeToToken(callee, flags.isConstructing())));
 
           if (isNative) {
-            PUSHNATIVE(StackValNative(argc + undefArgs));
+            PUSHNATIVE(StackValNative(argc));
             PUSHNATIVE(StackValNative(
                 MakeFrameDescriptorForJitCall(FrameType::BaselineStub, 0)));
 

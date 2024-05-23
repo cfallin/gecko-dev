@@ -2117,6 +2117,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           ignoresRv = cacheIRReader.readBool();
         }
 
+        TRACE_PRINTF("isConstructing = %d needsUninitializedThis = %d\n",
+                     int(flags.isConstructing()),
+                     int(flags.needsUninitializedThis()));
+
         JSFunction* callee =
             reinterpret_cast<JSFunction*>(READ_REG(calleeId.id()));
         uint32_t argc = uint32_t(READ_REG(argcId.id()));
@@ -2162,17 +2166,21 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           // scripted function.
           Value thisVal;
           if (flags.isConstructing() && !isNative) {
-            ReservedRooted<JSObject*> calleeObj(&ctx.state.obj0, callee);
-            ReservedRooted<JSObject*> newTargetRooted(
+            if (flags.needsUninitializedThis()) {
+              thisVal = MagicValue(JS_UNINITIALIZED_LEXICAL);
+            } else {
+              ReservedRooted<JSObject*> calleeObj(&ctx.state.obj0, callee);
+              ReservedRooted<JSObject*> newTargetRooted(
                 &ctx.state.obj1, &origArgs[0].asValue().toObject());
-            ReservedRooted<Value> result(&ctx.state.value0);
-            if (!CreateThisFromIC(cx, calleeObj, newTargetRooted, &result)) {
-              ctx.error = PBIResult::Error;
-              return IC_ERROR_SENTINEL();
+              ReservedRooted<Value> result(&ctx.state.value0);
+              if (!CreateThisFromIC(cx, calleeObj, newTargetRooted, &result)) {
+                ctx.error = PBIResult::Error;
+                return IC_ERROR_SENTINEL();
+              }
+              thisVal = result;
+              // `callee` may have moved.
+              callee = &calleeObj->as<JSFunction>();
             }
-            thisVal = result;
-            // `callee` may have moved.
-            callee = &calleeObj->as<JSFunction>();
           }
 
           // This will not be an Exit frame but a BaselineStub frame, so
@@ -2264,7 +2272,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
               return IC_ERROR_SENTINEL();
             }
             if (flags.isConstructing() && !ret.isObject()) {
-              ret = origArgs[0].asValue();
+              ret = args[0];
             }
             retValue = ret.asRawBits();
           }

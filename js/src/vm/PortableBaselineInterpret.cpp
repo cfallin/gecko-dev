@@ -504,28 +504,26 @@ typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, ICStub* stub,
                                ICCtx& ctx);
 
 #ifdef ENABLE_JS_PBL_WEVAL
-#  define CALL_IC(jitcode, ctx, stubvalue, result, spoffvalue, arg0, arg1, \
-                  arg2value, hasarg2)                                      \
-    do {                                                                   \
-      ctx.spoffset = spoffvalue;                                           \
-      if (hasarg2) {                                                       \
-        ctx.arg2 = arg2value;                                              \
-      }                                                                    \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);             \
-      result = func(arg0, arg1, stubvalue, ctx);                           \
+#  define CALL_IC(jitcode, ctx, stubvalue, result, arg0, arg1, arg2value, \
+                  hasarg2)                                                \
+    do {                                                                  \
+      if (hasarg2) {                                                      \
+        ctx.arg2 = arg2value;                                             \
+      }                                                                   \
+      ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);            \
+      result = func(arg0, arg1, stubvalue, ctx);                          \
     } while (0)
 #else
-#  define CALL_IC(jitcode, ctx, stubvalue, result, spoffvalue, arg0, arg1, \
-                  arg2value, hasarg2)                                      \
-    do {                                                                   \
-      ctx.spoffset = spoffvalue;                                           \
-      ctx.arg2 = arg2value;                                                \
-      if (stubvalue->isFallback()) {                                       \
-        ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);           \
-        result = func(arg0, arg1, stubvalue, ctx);                         \
-      } else {                                                             \
-        result = ICInterpretOps<false>(arg0, arg1, stubvalue, ctx);        \
-      }                                                                    \
+#  define CALL_IC(jitcode, ctx, stubvalue, result, arg0, arg1, arg2value, \
+                  hasarg2)                                                \
+    do {                                                                  \
+      ctx.arg2 = arg2value;                                               \
+      if (stubvalue->isFallback()) {                                      \
+        ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);          \
+        result = func(arg0, arg1, stubvalue, ctx);                        \
+      } else {                                                            \
+        result = ICInterpretOps<false>(arg0, arg1, stubvalue, ctx);       \
+      }                                                                   \
     } while (0)
 #endif
 
@@ -5429,7 +5427,7 @@ static MOZ_NEVER_INLINE uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
   stub = stub->maybeNext();
   MOZ_ASSERT(stub);
   uint64_t result;
-  CALL_IC(stub->rawJitCode(), ctx, stub, result, ctx.spoffset, arg0, arg1,
+  CALL_IC(stub->rawJitCode(), ctx, stub, result, arg0, arg1,
           ctx.arg2, true);
   return result;
 }
@@ -5872,15 +5870,18 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
 
 #define NEXT_IC() icEntry++
 
+#define UPDATE_SPOFF() \
+  ctx.spoffset =       \
+      reinterpret_cast<uintptr_t>(spbase) - reinterpret_cast<uintptr_t>(sp);
+
 #define INVOKE_IC(kind, hasarg2)                                             \
   if (!Specialized) {                                                        \
     frame->interpreterPC() = pc;                                             \
   }                                                                          \
   SYNCSP();                                                                  \
-  CALL_IC(                                                                   \
-      icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret,              \
-      reinterpret_cast<uintptr_t>(spbase) - reinterpret_cast<uintptr_t>(sp), \
-      ic_arg0, ic_arg1, ic_arg2, hasarg2);                                   \
+  UPDATE_SPOFF();                                                            \
+  CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret, ic_arg0, \
+          ic_arg1, ic_arg2, hasarg2);                                        \
   if (ic_ret == IC_ERROR_SENTINEL()) {                                       \
     WEVAL_POP_CONTEXT();                                                     \
     ic_result = ctx.error;                                                   \
@@ -5977,6 +5978,7 @@ PBIResult PortableBaselineInterpret(
 #define GOTO_ERROR()           \
   do {                         \
     SYNCSP();                  \
+    UPDATE_SPOFF();            \
     RESTART(PBIResult::Error); \
     goto error;                \
   } while (0)
@@ -9124,8 +9126,9 @@ restart:
   // This is a `goto` target so that we exit any on-stack exit frames
   // before restarting, to match previous behavior.
   return PortableBaselineInterpret<false, true, HybridICs>(
-      ctx.frameMgr.cxForLocalUseOnly(), ctx.state, ctx.stack, sp, ctx.envChain,
-      ctx.ret, pc, ctx.isd, ctx.entryPC, frame, ctx.entryFrame, restartCode);
+      ctx.frameMgr.cxForLocalUseOnly(), ctx.state, ctx.stack, ctx.sp(),
+      ctx.envChain, ctx.ret, pc, ctx.isd, ctx.entryPC, frame, ctx.entryFrame,
+      restartCode);
 
 error:
   TRACE_PRINTF("HandleException: frame %p\n", frame);

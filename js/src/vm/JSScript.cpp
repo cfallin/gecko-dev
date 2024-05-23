@@ -3727,10 +3727,7 @@ const char* JS::ubi::Concrete<BaseScript>::scriptFilename() const {
 }
 
 #ifdef ENABLE_JS_PBL_WEVAL
-Weval& BaseScript::weval() {
-  if (!weval_) {
-    weval_ = MakeUnique<Weval>();
-  }
-  return *weval_;
+void BaseScript::allocWeval() {
+  weval_ = MakeUnique<Weval>();
 }
 #endif

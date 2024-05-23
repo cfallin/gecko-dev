@@ -21,7 +21,7 @@
   - TypedArrayObjectTemplate<short>::setElement (1.0%)
   - irregexp::RawMatch (0.91%)
   - ArrayBufferObject::flags (0.66%)
-  - BaseScript::weval (0.81%) (out-of-line the slowpath?)
+  - (x) BaseScript::weval (0.81%) (out-of-line the slowpath?)
   - Value::setUnchecked (0.58%)
 
 - other perf ideas

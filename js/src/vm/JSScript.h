@@ -1681,7 +1681,13 @@ class BaseScript : public gc::TenuredCellWithNonGCPointer<uint8_t> {
 
 #ifdef ENABLE_JS_PBL_WEVAL
   bool hasWeval() const { return weval_.get() != nullptr; }
-  Weval& weval();
+  Weval& weval() {
+    if (!weval_) {
+      allocWeval();
+    }
+    return *weval_;
+  }
+  void allocWeval();
 #endif
 };
 

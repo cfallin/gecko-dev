@@ -11,3 +11,15 @@
   - known-bits / partial-constant
   - BBV
   - IC ABI: SIMD packing, all memory, ...
+
+- hotspots
+  - interpreterICEntryFromPCOffset (~5% in Octane)
+  - TypedArrayObject::length (~5%)
+  - LengthGetterImpl (2.8%)
+  - TypedArrayObject::getElementPure
+  - NativeObject::create (0.58%)
+  - TypedArrayObjectTemplate<short>::setElement (1.0%)
+  - irregexp::RawMatch (0.91%)
+  - ArrayBufferObject::flags (0.66%)
+  - BaseScript::weval (0.81%) (out-of-line the slowpath?)
+  - Value::setUnchecked (0.58%)

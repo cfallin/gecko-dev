@@ -478,6 +478,7 @@ struct ICCtx {
   // `spoffset` and compile down to a single store of a constant to
   // `spoffset` (while `spbase` never changes).
   uintptr_t spoffset;  // negative offset from spbase
+  jsbytecode* pcbase;
   PBIResult error;
   uint64_t arg2;
 
@@ -6029,6 +6030,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
   ctx.ret = ret;
   ctx.entryFrame = entryFrame;
   ctx.entryPC = entryPC;
+  ctx.pcbase = pcbase;
 
 #ifndef ENABLE_JS_PBL_WEVAL
   bool argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
@@ -7940,6 +7942,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
             ctx.spbase = spbase;
             pc = calleeScript->code();
             pcbase = pc;
+            ctx.pcbase = pc;
             entryPC = pc;
             ctx.entryPC = entryPC;
             isd = calleeScript->immutableScriptData();
@@ -8481,6 +8484,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
           icEntry = frame->interpreterICEntry();
           pc = frame->interpreterPC();
           pcbase = pc;
+          ctx.pcbase = pc;
           argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
           entryPC = frame->script()->code();
           ctx.entryPC = entryPC;
@@ -9134,10 +9138,15 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 restart:
   // This is a `goto` target so that we exit any on-stack exit frames
   // before restarting, to match previous behavior.
+  //
+  // Note carefully that every arg here is loaded from `ctx` except
+  // for `pcoffset`, which can be computed as a constant when this
+  // code is specialized by weval. This is intentional: it reduces
+  // register pressure across the main function body.
   return PortableBaselineInterpret<false, true, HybridICs>(
       ctx.frameMgr.cxForLocalUseOnly(), ctx.state, ctx.stack, ctx.sp(),
-      ctx.envChain, ctx.ret, pcbase, pcoffset, ctx.isd, ctx.entryPC, frame,
-      ctx.entryFrame, restartCode);
+      ctx.envChain, ctx.ret, ctx.pcbase, pcoffset, ctx.isd, ctx.entryPC,
+      ctx.frame, ctx.entryFrame, restartCode);
 
 error:
   TRACE_PRINTF("HandleException: frame %p\n", frame);
@@ -9158,6 +9167,7 @@ error:
       case ExceptionResumeKind::Catch:
         pc = frame->interpreterPC();
         pcbase = pc;
+        ctx.pcbase = pc;
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> catch to pc %p (fp %p sp %p)\n", pc, rfe.framePointer,
@@ -9166,6 +9176,7 @@ error:
       case ExceptionResumeKind::Finally:
         pc = frame->interpreterPC();
         pcbase = pc;
+        ctx.pcbase = pc;
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         sp = reinterpret_cast<StackVal*>(rfe.stackPointer);
         spbase = sp;
@@ -9179,6 +9190,7 @@ error:
       case ExceptionResumeKind::ForcedReturnBaseline:
         pc = frame->interpreterPC();
         pcbase = pc;
+        ctx.pcbase = pc;
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> forced return\n");
@@ -9236,6 +9248,7 @@ unwind:
   icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
   pcbase = pc;
+  ctx.pcbase = pc;
   argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
   DISPATCH();
 unwind_error:
@@ -9262,6 +9275,7 @@ unwind_error:
   icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
   pcbase = pc;
+  ctx.pcbase = pc;
   argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
   goto error;
 unwind_ret:
@@ -9289,6 +9303,7 @@ unwind_ret:
   icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
   pcbase = pc;
+  ctx.pcbase = pc;
   argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
   from_unwind = true;
   goto do_return;
@@ -9303,6 +9318,7 @@ debug: {
   }
   pc = frame->interpreterPC();
   pcbase = pc;
+  ctx.pcbase = pc;
   TRACE_PRINTF("HandleDebugTrap done\n");
 }
   goto dispatch;

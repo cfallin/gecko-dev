@@ -27,7 +27,7 @@
 - other perf ideas
   - (x) share some ICCtx? Rooted value registration? no RootedScript (use
     BaselineFrame)
-  - PC for restarts: take base and offset; load entryPC from ctx
+  - (x) PC for restarts: take base and offset; load entryPC from ctx
   - inline nursery alloc?
   - intrinsic to "bless" the ICCtx location ptr as a root so we don't
     keep rematerializing it

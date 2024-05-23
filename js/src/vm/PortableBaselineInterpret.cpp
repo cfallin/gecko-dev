@@ -2141,14 +2141,11 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           FAIL_IC();
         }
 
-        // For now, fail any arg-underflow case.
-        if (argc < callee->nargs()) {
-          TRACE_PRINTF("failing: too few args\n");
-          FAIL_IC();
-        }
-
+        // Handle arg-underflow.
+        uint32_t undefArgs = (argc < callee->nargs()) ? (callee->nargs() - argc) : 0;
+        
         uint32_t extra = 1 + flags.isConstructing() + isNative;
-        uint32_t totalArgs = argc + extra;
+        uint32_t totalArgs = argc + undefArgs + extra;
         StackVal* origArgs = ctx.sp();
 
         {
@@ -2164,15 +2161,17 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           // scripted function.
           Value thisVal;
           if (flags.isConstructing() && !isNative) {
-            ReservedRooted<JSObject*> calleeRooted(&ctx.state.obj0, callee);
+            ReservedRooted<JSObject*> calleeObj(&ctx.state.obj0, callee);
             ReservedRooted<JSObject*> newTargetRooted(
                 &ctx.state.obj1, &origArgs[0].asValue().toObject());
             ReservedRooted<Value> result(&ctx.state.value0);
-            if (!CreateThisFromIC(cx, calleeRooted, newTargetRooted, &result)) {
+            if (!CreateThisFromIC(cx, calleeObj, newTargetRooted, &result)) {
               ctx.error = PBIResult::Error;
               return IC_ERROR_SENTINEL();
             }
             thisVal = result;
+            // `callee` may have moved.
+            callee = &calleeObj->as<JSFunction>();
           }
 
           // This will not be an Exit frame but a BaselineStub frame, so
@@ -2180,21 +2179,40 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           POPNNATIVE(1);
           PUSHNATIVE(StackValNative(cstub));
 
-          // Push args.
-          for (uint32_t i = 0; i < totalArgs; i++) {
+          // `origArgs` is (in index order, i.e. increasing address order)
+          // - normal, scripted: arg[argc-1] ... arg[0] thisv
+          // - ctor, scripted: newTarget arg[argc-1] ... arg[0] thisv
+          // - normal, native: arg[argc-1] ... arg[0] thisv callee
+          // - ctor, native: newTarget arg[argc-1] ... arg[0] thisv callee
+          //
+          // and we need to push them in reverse order -- from sp
+          // upward (in increasing address order) -- with args filled
+          // in with `undefined` if fewer than the number of formals.
+
+          // Push args: newTarget if constructing, extra undef's added
+          // if underflow, then original args, and `callee` if
+          // native. Replace `this` if constructing.
+          if (flags.isConstructing()) {
+            PUSH(origArgs[0]);
+            origArgs++;
+          }
+          for (uint32_t i = 0; i < undefArgs; i++) {
+            PUSH(StackVal(UndefinedValue()));
+          }
+          for (uint32_t i = 0; i < argc + 1 + isNative; i++) {
             PUSH(origArgs[i]);
           }
           if (flags.isConstructing() && !isNative) {
-            sp[0] = StackVal(thisVal);
+            sp[0 + isNative] = StackVal(thisVal);
           }
           Value* args = reinterpret_cast<Value*>(sp);
 
           TRACE_PRINTF("pushing callee: %p\n", callee);
-          PUSHNATIVE(StackValNative(
-              CalleeToToken(callee, /* isConstructing = */ false)));
+          PUSHNATIVE(
+              StackValNative(CalleeToToken(callee, flags.isConstructing())));
 
           if (isNative) {
-            PUSHNATIVE(StackValNative(argc));
+            PUSHNATIVE(StackValNative(argc + undefArgs));
             PUSHNATIVE(StackValNative(
                 MakeFrameDescriptorForJitCall(FrameType::BaselineStub, 0)));
 
@@ -2226,8 +2244,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             }
             retValue = args[0].asRawBits();
           } else {
-            PUSHNATIVE(StackValNative(
-                MakeFrameDescriptorForJitCall(FrameType::BaselineStub, argc)));
+            PUSHNATIVE(StackValNative(MakeFrameDescriptorForJitCall(
+                FrameType::BaselineStub, argc)));
 
             JSScript* script = callee->nonLazyScript();
             jsbytecode* pc = script->code();
@@ -2243,6 +2261,9 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             if (result != PBIResult::Ok) {
               ctx.error = result;
               return IC_ERROR_SENTINEL();
+            }
+            if (flags.isConstructing() && !ret.isObject()) {
+              ret = origArgs[0].asValue();
             }
             retValue = ret.asRawBits();
           }

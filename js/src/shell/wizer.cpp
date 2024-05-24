@@ -51,6 +51,8 @@ int main(int argc, char** argv) {
       fprintf(stderr, "Failed to call main() in Wizened JS source!\n");
       abort();
     }
+  } else {
+    return ShellMain(argc, argv, /* returnContext = */ false).as<int>();
   }
 }
 

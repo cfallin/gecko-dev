@@ -534,3 +534,14 @@ def generate_cacheirops_header(c_out, yaml_path):
     contents += "\n\n"
 
     generate_header(c_out, "jit_CacheIROpsGenerated_h", contents)
+
+def generate_aot_ics_header(c_out, yaml_path):
+    """Generate CacheIROpsGenerated.h from CacheIROps.yaml. The generated file
+    contains a list of all CacheIR ops and generated source code for
+    CacheIRWriter and CacheIRCompiler."""
+
+    data = load_yaml(yaml_path)
+
+    contents = ""
+
+    generate_header(c_out, "jit_CacheIRAOTGenerated_h", contents)

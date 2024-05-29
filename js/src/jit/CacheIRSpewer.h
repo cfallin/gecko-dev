@@ -106,6 +106,8 @@ class CacheIRSpewer {
 };
 
 extern void SpewCacheIROps(GenericPrinter& out, const char* prefix,
+                           CacheIRReader& reader);
+extern void SpewCacheIROps(GenericPrinter& out, const char* prefix,
                            const CacheIRStubInfo* info);
 
 }  // namespace jit

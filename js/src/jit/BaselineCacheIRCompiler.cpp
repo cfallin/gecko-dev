@@ -9,6 +9,7 @@
 #include "gc/GC.h"
 #include "jit/CacheIR.h"
 #include "jit/CacheIRCloner.h"
+#include "jit/CacheIRSpewer.h"
 #include "jit/CacheIRWriter.h"
 #include "jit/JitFrames.h"
 #include "jit/JitRuntime.h"
@@ -2541,6 +2542,20 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
                                 writer.codeStart(), writer.codeLength());
 
   JitCode* code = jitZone->getBaselineCacheIRStubCode(lookup, &stubInfo);
+
+#ifdef ENABLE_JS_AOT_ICS
+  if (JitOptions.enableAOTICEnforce && !stubInfo) {
+    Fprinter printer(stderr);
+    fprintf(stderr, "UNEXPECTED NEW IC BODY\n");
+    fprintf(stderr,
+            "Please add this to the ahead-of-time known IC bodies in "
+            "js/src/ics/:\n---- CUT HERE ----\n");
+    CacheIRReader reader(writer.codeStart(), writer.codeEnd());
+    SpewCacheIROps(printer, "", reader);
+    fprintf(stderr, "---- CUT HERE ----\n");
+    abort();
+  }
+#endif
 
   if (!code && !IsPortableBaselineInterpreterEnabled()) {
     // We have to generate stub code.

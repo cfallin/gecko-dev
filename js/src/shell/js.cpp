@@ -12037,6 +12037,10 @@ bool InitOptionParser(OptionParser& op) {
       !op.addBoolOption('\0', "no-portable-baseline",
                         "Disable Portable Baseline Interpreter") ||
 #endif
+#ifdef ENABLE_JS_AOT_ICS
+      !op.addBoolOption('\0', "enforce-aot-ics",
+                        "Enable enforcing only use of ahead-of-time-known ICs") ||
+#endif
       !op.addIntOption(
           '\0', "baseline-warmup-threshold", "COUNT",
           "Wait for COUNT calls or iterations before baseline-compiling "
@@ -12914,6 +12918,12 @@ bool SetContextJITOptions(JSContext* cx, const OptionParser& op) {
   }
   if (op.getBoolOption("no-portable-baseline")) {
     jit::JitOptions.portableBaselineInterpreter = false;
+  }
+#endif
+
+#ifdef ENABLE_JS_AOT_ICS
+  if (op.getBoolOption("enforce-aot-ics")) {
+    jit::JitOptions.enableAOTICEnforce = true;
   }
 #endif
 

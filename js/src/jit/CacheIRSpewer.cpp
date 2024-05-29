@@ -142,10 +142,15 @@ class MOZ_RAII CacheIROpsJitSpewer {
 };
 
 void js::jit::SpewCacheIROps(GenericPrinter& out, const char* prefix,
-                             const CacheIRStubInfo* info) {
-  CacheIRReader reader(info);
+                             CacheIRReader& reader) {
   CacheIROpsJitSpewer spewer(out, prefix);
   spewer.spew(reader);
+}
+
+void js::jit::SpewCacheIROps(GenericPrinter& out, const char* prefix,
+                             const CacheIRStubInfo* info) {
+  CacheIRReader reader(info);
+  SpewCacheIROps(out, prefix, reader);
 }
 
 // JSON spewer for CacheIR ops. Output looks like this:

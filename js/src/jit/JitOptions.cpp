@@ -196,6 +196,10 @@ DefaultJitOptions::DefaultJitOptions() {
   SET_DEFAULT(portableBaselineInterpreterAttachThreshold, 0);
 #endif
 
+#ifdef ENABLE_JS_AOT_ICS
+  SET_DEFAULT(enableAOTICEnforce, false);
+#endif
+
   // How many invocations or loop iterations are needed before functions
   // are compiled with the baseline compiler.
   // Duplicated in all.js - ensure both match.

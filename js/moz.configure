@@ -255,6 +255,22 @@ def js_pbl_weval(pbl, weval):
 set_define("ENABLE_JS_PBL_WEVAL", js_pbl_weval)
 set_config("ENABLE_JS_PBL_WEVAL", js_pbl_weval)
 
+# Enable ahead-of-time-known preloaded IC bodies.
+option(
+    "--enable-aot-ics",
+    default=False,
+    help="{Enable|Disable} including ahead-of-time corpus of CacheIR IC bodies",
+)
+
+set_define(
+    "ENABLE_JS_AOT_ICS",
+    depends_if("--enable-aot-ics")(lambda _: True),
+)
+set_config(
+    "ENABLE_JS_AOT_ICS",
+    depends_if("--enable-aot-ics")(lambda _: True),
+)
+
 # JIT support
 # =======================================================
 @depends(target, "--enable-record-tuple", "--enable-portable-baseline-interp")

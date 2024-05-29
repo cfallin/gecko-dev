@@ -6,6 +6,8 @@
 
 #include "jit/BaselineCacheIRCompiler.h"
 
+#include "mozilla/RandomNum.h"
+
 #include "gc/GC.h"
 #include "jit/CacheIR.h"
 #include "jit/CacheIRCloner.h"
@@ -2507,6 +2509,35 @@ static bool AddToFoldedStub(JSContext* cx, const CacheIRWriter& writer,
   return true;
 }
 
+#ifdef ENABLE_JS_AOT_ICS
+void DumpNonAOTICStubAndQuit(const CacheIRWriter& writer) {
+  // Generate a filename based on the current time and PID.
+  char filename[64];
+  snprintf(filename, sizeof(filename), "IC-%" PRIu64,
+           mozilla::RandomUint64OrDie());
+  FILE* f = fopen(filename, "w");
+  MOZ_RELEASE_ASSERT(f);
+
+  // Generate the CacheIR text to dump to a file.
+  {
+    Fprinter printer(f);
+    CacheIRReader reader(writer.codeStart(), writer.codeEnd());
+    SpewCacheIROps(printer, "", reader);
+  }
+  fflush(f);
+  fclose(f);
+
+  fprintf(stderr, "UNEXPECTED NEW IC BODY\n");
+
+  fprintf(stderr,
+          "Please add the file '%s' to the ahead-of-time known IC bodies in "
+          "js/src/ics/.\n",
+          filename);
+
+  abort();
+}
+#endif
+
 ICAttachResult js::jit::AttachBaselineCacheIRStub(
     JSContext* cx, const CacheIRWriter& writer, CacheKind kind,
     JSScript* outerScript, ICScript* icScript, ICFallbackStub* stub,
@@ -2545,15 +2576,7 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
 
 #ifdef ENABLE_JS_AOT_ICS
   if (JitOptions.enableAOTICEnforce && !stubInfo) {
-    Fprinter printer(stderr);
-    fprintf(stderr, "UNEXPECTED NEW IC BODY\n");
-    fprintf(stderr,
-            "Please add this to the ahead-of-time known IC bodies in "
-            "js/src/ics/:\n---- CUT HERE ----\n");
-    CacheIRReader reader(writer.codeStart(), writer.codeEnd());
-    SpewCacheIROps(printer, "", reader);
-    fprintf(stderr, "---- CUT HERE ----\n");
-    abort();
+    DumpNonAOTICStubAndQuit(writer);
   }
 #endif
 

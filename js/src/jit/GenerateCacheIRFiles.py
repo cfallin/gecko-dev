@@ -5,6 +5,8 @@
 # This script generates jit/CacheIROpsGenerated.h from CacheIROps.yaml
 
 import buildconfig
+import os
+import re
 import six
 import yaml
 from mozbuild.preprocessor import Preprocessor
@@ -535,13 +537,195 @@ def generate_cacheirops_header(c_out, yaml_path):
 
     generate_header(c_out, "jit_CacheIROpsGenerated_h", contents)
 
-def generate_aot_ics_header(c_out, yaml_path):
+def split_aot_ic_line(line):
+    parts = []
+    part = ''
+    in_parens = False
+    for c in line:
+        if c == ',': continue
+        if in_parens:
+            part += c
+            if c == ')':
+                in_parens = False
+        else:
+            if c == ' ':
+                if part != '':
+                    parts.append(part)
+                part = ''
+            elif c == '(':
+                part += c
+                in_parens = True
+            else:
+                part += c
+    if part != '':
+        parts.append(part)
+    return parts
+
+def read_aot_ic(ic_file):
+    ops = []
+    with open(ic_file) as f:
+        lines = f.readlines()
+        for line in lines:
+            parts = split_aot_ic_line(line.strip())
+            opcode = parts[0]
+            i = 1
+            args = {}
+            while i < len(parts) - 1:
+                name = parts[i]
+                value = parts[i + 1]
+                i += 2
+                args[name] = value
+            ops.append((opcode, args))
+    return ops
+
+def read_aot_ics(ic_path):
+    ics = []
+    for entry in os.scandir(ic_path):
+        if entry.is_file():
+            ics.append(read_aot_ic(entry.path))
+    return ics
+
+def generate_aot_ic_data(data, ops):
+    ret = ""
+    length = 0
+
+    for (op, args) in ops:
+        ret += "uint8_t(uint16_t(CacheOp::%s)), " % op
+        ret += "uint8_t(uint16_t(CacheOp::%s) >> 8), \\\n" % op
+        length += 2
+
+        if isinstance(data[op]["args"], dict):
+            for arg_name, arg_type in six.iteritems(data[op]["args"]):
+                arg_name = arg_name + arg_reader_info[arg_type][1]
+                arg_value = args[arg_name]
+
+                if arg_type.endswith('Id'):
+                    ret += "%d, \\\n" % int(arg_value)
+                    length += 1
+                elif arg_type.endswith('Field'):
+                    value = int(arg_value)
+                    ret += "%d / sizeof(uintptr_t), \\\n" % value
+                    length += 1
+                elif arg_type == 'Int32Imm' or arg_type == 'UInt32Imm':
+                    value = int(arg_value)
+                    ret += "%d, " % (value & 0xff)
+                    ret += "%d, " % ((value >> 8) & 0xff)
+                    ret += "%d, " % ((value >> 16) & 0xff)
+                    ret += "%d, \\\n" % ((value >> 24) & 0xff)
+                    length += 4
+                elif arg_type == 'ByteImm':
+                    value = int(arg_value)
+                    ret += "%d, \\\n" % value
+                    length += 1
+                elif arg_type == 'BoolImm':
+                    value = 1 if arg_value == 'true' else 0
+                    ret += "%d, \\\n" % value
+                    length += 1
+                elif arg_type == 'CallFlagsImm':
+                    # (format 1, isConstructing, isSameRealm, needsUninitializedThis)
+                    format = int(arg_value.split()[1].replace(')', ''))
+                    ret += "%d" % format
+                    if arg_value.find('isConstructing') != -1:
+                        ret += " | CallFlags::IsConstructing"
+                    if arg_value.find('isSameRealm') != -1:
+                        ret += " | CallFlags::IsSameRealm"
+                    if arg_value.find('needsUninitializeThis') != -1:
+                        ret += " | CallFlags::NeedsUninitializedThis"
+                    ret += ", \\\n"
+                    length += 1
+                elif arg_type == 'ScalarTypeImm':
+                    arg_value = arg_value.replace('Scalar::Type(', '').replace(')', '')
+                    value = int(arg_value)
+                    ret += "%d, \\\n" % value
+                    length += 1
+                elif arg_type == 'UnaryMathFunctionImm':
+                    if arg_value == "Sin (native)":
+                        name = "SinNative"
+                    elif arg_value == "Sin (fdlibm)":
+                        name = "SinFdlibm"
+                    elif arg_value == "Cos (native)":
+                        name = "CosNative"
+                    elif arg_value == "Cos (fdlibm)":
+                        name = "CosFdlibm"
+                    elif arg_value == "Tan (native)":
+                        name = "TanNative"
+                    elif arg_value == "Tan (fdlibm)":
+                        name = "TanFdlibm"
+                    else:
+                        name = arg_value
+                    ret += "uint8_t(UnaryMathFunction::%s), \\\n" % name
+                    length += 1
+                elif arg_type == 'JSOpImm':
+                    ret += "uint8_t(JSOp::%s), \\\n" % arg_value
+                    length += 1
+                elif arg_type == 'ValueTypeImm':
+                    arg_value = arg_value.replace('ValueType(', '').replace(')', '')
+                    value = int(arg_value)
+                    ret += "%d, \\\n" % value
+                    length += 1
+                elif arg_type == 'GuardClassKindImm':
+                    arg_value = arg_value.replace('GuardClassKind(', '').replace(')', '')
+                    value = int(arg_value)
+                    ret += "%d, \\\n" % value
+                    length += 1
+                elif arg_type == 'JSWhyMagicImm':
+                    arg_value = arg_value.replace('JSWhyMagic(', '').replace(')', '')
+                    value = int(arg_value)
+                    ret += "%d, \\\n" % value
+                    length += 1
+                elif arg_type == 'WasmValTypeImm':
+                    arg_value = arg_value.replace('WasmValTypeKind(', '').replace(')', '')
+                    value = int(arg_value)
+                    ret += "%d, \\\n" % value
+                    length += 1
+                elif arg_type == 'JSNativeImm':
+                    raise Exception("Cannot embed JSNativeImm in an AOT IC")
+                elif arg_type == 'StaticStringImm':
+                    raise Exception("Cannot embed StaticStringImm in an AOT IC")
+                elif arg_type == 'AllocKindImm':
+                    arg_value = arg_value.replace('AllocKind(', '').replace(')', '')
+                    value = int(arg_value)
+                    ret += "%d, \\\n" % value
+                    length += 1
+                elif arg_type == 'CompletionKindImm':
+                    arg_value = arg_value.replace('CompletionKind(', '').replace(')', '')
+                    value = int(arg_value)
+                    ret += "%d, \\\n" % value
+                    length += 1
+                elif arg_type == 'RealmFuseIndexImm':
+                    arg_value = arg_value.replace('RealmFuseIndex(', '')
+                    arg_value = arg_value[:arg_value.find('=')]
+                    value = int(arg_value)
+                    ret += "%d, \\\n" % value
+                    length += 1
+                else:
+                    raise Exception("Unknown argument type: %s" % arg_type)
+    return ret, length
+                    
+def generate_aot_ics_header(c_out, yaml_path, ic_path):
     """Generate CacheIROpsGenerated.h from CacheIROps.yaml. The generated file
     contains a list of all CacheIR ops and generated source code for
     CacheIRWriter and CacheIRCompiler."""
 
     data = load_yaml(yaml_path)
+    data_by_op = {}
+    for opdata in data:
+        data_by_op[opdata["name"]] = opdata
 
-    contents = ""
+    # Read in all ICs from js/src/ics/IC-*.
+    ics = read_aot_ics(ic_path)
+
+    contents = "#define JS_AOT_IC_DATA() \\\n"
+    lengths = []
+    for ic in ics:
+        ic_content, length = generate_aot_ic_data(data_by_op, ic)
+        contents += ic_content
+        lengths.append(length)
+    lengths.append(0)
+    contents += "\n"
+
+    contents += "#define JS_AOT_IC_LENGTHS() \\\n"
+    contents += "    " + ", ".join(map(str, lengths))
+    contents += "\n"
 
     generate_header(c_out, "jit_CacheIRAOTGenerated_h", contents)

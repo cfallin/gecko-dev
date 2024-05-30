@@ -305,7 +305,7 @@ if CONFIG["ENABLE_JS_AOT_ICS"]:
         "CacheIRAOTGenerated.h",
         script="GenerateCacheIRFiles.py",
         entry_point="generate_aot_ics_header",
-        inputs=["CacheIROps.yaml"],
+        inputs=["CacheIROps.yaml", "../ics/"],
         force=True,  # depends on list of files in js/src/ics/; always rebuild
     )
 

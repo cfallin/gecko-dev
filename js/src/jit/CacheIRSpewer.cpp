@@ -477,7 +477,7 @@ class MOZ_RAII CacheIROpsAotSpewer {
     const char* opName = CacheIROpNames[size_t(op)];
     out_.printf("OP(%s) ", opName);
   }
-  void spewOpEnd() { out_.printf("\n"); }
+  void spewOpEnd() { out_.printf(" "); }
 
   void spewArgSeparator() { out_.printf(" "); }
 
@@ -587,6 +587,7 @@ class MOZ_RAII CacheIROpsAotSpewer {
 void js::jit::SpewCacheIROpsAsAOT(GenericPrinter& out, CacheIRReader& reader) {
   CacheIROpsAotSpewer spewer(out);
   spewer.spew(reader);
+  out.printf("\n");
 }
 
 #endif /* ENABLE_JS_AOT_ICS */

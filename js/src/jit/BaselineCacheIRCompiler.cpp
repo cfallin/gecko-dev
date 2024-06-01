@@ -2522,7 +2522,7 @@ void DumpNonAOTICStubAndQuit(const CacheIRWriter& writer) {
   {
     Fprinter printer(f);
     CacheIRReader reader(writer.codeStart(), writer.codeEnd());
-    SpewCacheIROps(printer, "", reader);
+    SpewCacheIROpsAsAOT(printer, reader);
   }
   fflush(f);
   fclose(f);

@@ -4,31 +4,32 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifdef JS_CACHEIR_SPEW
+#include "jit/CacheIRSpewer.h"
 
-#  include "jit/CacheIRSpewer.h"
+#include "mozilla/Sprintf.h"
 
-#  include "mozilla/Sprintf.h"
+#include <algorithm>
+#include <stdarg.h>
 
-#  include <algorithm>
-#  include <stdarg.h>
+#include "jsapi.h"
+#include "jsmath.h"
 
-#  include "jsapi.h"
-#  include "jsmath.h"
+#include "jit/JitSpewer.h"    // js::jit::ValTypeToString
+#include "js/ColumnNumber.h"  // JS::LimitedColumnNumberOneOrigin
+#include "js/ScalarType.h"    // js::Scalar::Type
+#include "util/GetPidProvider.h"
+#include "util/Text.h"
+#include "vm/JSFunction.h"
+#include "vm/JSObject.h"
+#include "vm/JSScript.h"
 
-#  include "js/ColumnNumber.h"  // JS::LimitedColumnNumberOneOrigin
-#  include "js/ScalarType.h"    // js::Scalar::Type
-#  include "util/GetPidProvider.h"
-#  include "util/Text.h"
-#  include "vm/JSFunction.h"
-#  include "vm/JSObject.h"
-#  include "vm/JSScript.h"
-
-#  include "vm/JSObject-inl.h"
-#  include "vm/Realm-inl.h"
+#include "vm/JSObject-inl.h"
+#include "vm/Realm-inl.h"
 
 using namespace js;
 using namespace js::jit;
+
+#ifdef JS_CACHEIR_SPEW
 
 // Text spewer for CacheIR ops that can be used with JitSpew.
 // Output looks like this:
@@ -452,3 +453,140 @@ void CacheIRSpewer::endCache() {
 }
 
 #endif /* JS_CACHEIR_SPEW */
+
+#ifdef ENABLE_JS_AOT_ICS
+
+// Text spewer for CacheIR ops that produces output that can be included
+// in the AOT IC corpus.
+//
+// Output looks like this:
+//
+//   OP(GuardToInt32) ID(0) ID(2)
+//   OP(GuardToInt32) ID(1) ID(3)
+//   OP(CompareInt32Result) JSOP(Lt) ID(2) ID(3)
+//   OP(ReturnFromIC)
+//
+// The output is meant to be interpreted in the context of defined
+// preprocessor macros to reproduce the CacheIR bytecode.
+class MOZ_RAII CacheIROpsAotSpewer {
+  GenericPrinter& out_;
+
+  CACHE_IR_SPEWER_GENERATED
+
+  void spewOp(CacheOp op) {
+    const char* opName = CacheIROpNames[size_t(op)];
+    out_.printf("OP(%s) ", opName);
+  }
+  void spewOpEnd() { out_.printf("\n"); }
+
+  void spewArgSeparator() { out_.printf(" "); }
+
+  void spewOperandId(const char* name, OperandId id) {
+    spewRawOperandId(name, id.id());
+  }
+  void spewRawOperandId(const char* name, uint32_t id) {
+    (void)name;
+    out_.printf("ID(%u)", id);
+  }
+  void spewField(const char* name, uint32_t offset) {
+    (void)name;
+    out_.printf("OFFSET(%d)", int(offset / sizeof(uintptr_t)));
+  }
+  void spewBoolImm(const char* name, bool b) {
+    (void)name;
+    out_.printf("BOOL(%d)", b ? 1 : 0);
+  }
+  void spewByteImm(const char* name, uint8_t val) {
+    (void)name;
+    out_.printf("BYTE(%u)", val);
+  }
+  void spewJSOpImm(const char* name, JSOp op) {
+    (void)name;
+    out_.printf("JSOP(%s)", CodeName(op));
+  }
+  void spewStaticStringImm(const char* name, const char* str) {
+    (void)name;
+    out_.printf("STATIC_STRING(\"%s\")", str);
+  }
+  void spewInt32Imm(const char* name, int32_t val) {
+    (void)name;
+    out_.printf("INT32(%d)", val);
+  }
+  void spewUInt32Imm(const char* name, uint32_t val) {
+    (void)name;
+    out_.printf("UINT32(%u)", val);
+  }
+  void spewCallFlagsImm(const char* name, CallFlags flags) {
+    (void)name;
+    out_.printf("CALLFLAGS(%u)", flags.toByte());
+  }
+  void spewJSWhyMagicImm(const char* name, JSWhyMagic magic) {
+    (void)name;
+    out_.printf("WHYMAGIC(%u)", unsigned(magic));
+  }
+  void spewScalarTypeImm(const char* name, Scalar::Type type) {
+    (void)name;
+    out_.printf("SCALARTYPE(Scalar::Type::%s)", Scalar::name(type));
+  }
+  void spewUnaryMathFunctionImm(const char* name, UnaryMathFunction fun) {
+    (void)name;
+    const char* funName = GetUnaryMathFunctionName(fun, true);
+    out_.printf("UNARYMATHFUNC(UnaryMathFunction::%s)", funName);
+  }
+  void spewValueTypeImm(const char* name, ValueType type) {
+    (void)name;
+    out_.printf("VALUETYPE(ValueType::%s)",
+                js::jit::ValTypeToString(static_cast<JSValueType>(type)));
+  }
+  void spewJSNativeImm(const char* name, JSNative native) {
+    (void)name;
+    out_.printf("NATIVEIMM(%p)", native);
+  }
+  void spewGuardClassKindImm(const char* name, GuardClassKind kind) {
+    (void)name;
+    out_.printf("GUARDCLASSKIND(GuardClassKind::%s)", GuardClassKindEnumName(kind));
+  }
+  void spewWasmValTypeImm(const char* name, wasm::ValType::Kind kind) {
+    (void)name;
+    out_.printf("WASMVALTYPE(wasm::ValType::Kind::%s)", wasm::ValTypeTraits::KindEnumName(kind));
+  }
+  void spewAllocKindImm(const char* name, gc::AllocKind kind) {
+    (void)name;
+    out_.printf("ALLOCKIND(gc::AllocKind::%s)", js::gc::AllocKindName(kind));
+  }
+  void spewCompletionKindImm(const char* name, CompletionKind kind) {
+    (void)name;
+    out_.printf("COMPLETIONKIND(CompletionKind::%s)", CompletionKindName(kind));
+  }
+  void spewRealmFuseIndexImm(const char* name, RealmFuses::FuseIndex index) {
+    (void)name;
+    out_.printf("REALMFUSE(%u)", unsigned(index));
+  }
+
+ public:
+  CacheIROpsAotSpewer(GenericPrinter& out)
+  : out_(out) {}
+
+  void spew(CacheIRReader& reader) {
+    do {
+      switch (reader.readOp()) {
+#  define SPEW_OP(op, ...) \
+    case CacheOp::op:      \
+      spew##op(reader);    \
+      break;
+        CACHE_IR_OPS(SPEW_OP)
+#  undef SPEW_OP
+
+        default:
+          MOZ_CRASH("Invalid op");
+      }
+    } while (reader.more());
+  }
+};
+
+void js::jit::SpewCacheIROpsAsAOT(GenericPrinter& out, CacheIRReader& reader) {
+  CacheIROpsAotSpewer spewer(out);
+  spewer.spew(reader);
+}
+
+#endif /* ENABLE_JS_AOT_ICS */

@@ -526,6 +526,37 @@ enum class GuardClassKind : uint8_t {
   Map,
 };
 
+inline const char* GuardClassKindEnumName(GuardClassKind kind) {
+  switch (kind) {
+    case GuardClassKind::Array:
+      return "Array";
+    case GuardClassKind::PlainObject:
+      return "PlainObject";
+    case GuardClassKind::FixedLengthArrayBuffer:
+      return "FixedLengthArrayBuffer";
+    case GuardClassKind::FixedLengthSharedArrayBuffer:
+      return "FixedLengthSharedArrayBuffer";
+    case GuardClassKind::FixedLengthDataView:
+      return "FixedLengthDataView";
+    case GuardClassKind::MappedArguments:
+      return "MappedArguments";
+    case GuardClassKind::UnmappedArguments:
+      return "UnmappedArguments";
+    case GuardClassKind::WindowProxy:
+      return "WindowProxy";
+    case GuardClassKind::JSFunction:
+      return "JSFunction";
+    case GuardClassKind::BoundFunction:
+      return "BoundFunction";
+    case GuardClassKind::Set:
+      return "Set";
+    case GuardClassKind::Map:
+      return "Map";
+    default:
+      MOZ_CRASH("Unknown GuardClassKind");
+  }
+}
+
 }  // namespace jit
 }  // namespace js
 

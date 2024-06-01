@@ -1,3 +1,0 @@
-LoadEnclosingEnvironment      objId 0, resultId 1
-LoadObjectResult              objId 1
-ReturnFromIC                  

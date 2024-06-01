@@ -526,16 +526,16 @@ class MOZ_RAII CacheIROpsAotSpewer {
   }
   void spewScalarTypeImm(const char* name, Scalar::Type type) {
     (void)name;
-    out_.printf("SCALARTYPE(Scalar::Type::%s)", Scalar::name(type));
+    out_.printf("SCALARTYPE(%s)", Scalar::name(type));
   }
   void spewUnaryMathFunctionImm(const char* name, UnaryMathFunction fun) {
     (void)name;
     const char* funName = GetUnaryMathFunctionName(fun, true);
-    out_.printf("UNARYMATHFUNC(UnaryMathFunction::%s)", funName);
+    out_.printf("UNARYMATHFUNC(%s)", funName);
   }
   void spewValueTypeImm(const char* name, ValueType type) {
     (void)name;
-    out_.printf("VALUETYPE(ValueType::%s)",
+    out_.printf("VALUETYPE(%s)",
                 js::jit::ValTypeToString(static_cast<JSValueType>(type)));
   }
   void spewJSNativeImm(const char* name, JSNative native) {

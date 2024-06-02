@@ -9,15 +9,23 @@
 
 #include "mozilla/Span.h"
 
+#include "jit/CacheIR.h"
+
+struct JSContext;
+
 namespace js {
 namespace jit {
 
+class JitZone;
+
 struct CacheIRAOTStub {
+  CacheKind kind;
   const uint8_t* data;
   size_t length;
 };
 
 mozilla::Span<const CacheIRAOTStub> GetAOTStubs();
+void FillAOTICs(JSContext* cx, JitZone* zone);
 
 }  // namespace jit
 }  // namespace js

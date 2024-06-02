@@ -544,7 +544,8 @@ def read_aot_ics(ic_path):
         if entry.is_file():
             with open(entry.path) as f:
                 content = f.read().strip()
-                ics += "  IC(%d, %s) \\\n" % (idx, content)
+                parts = content.split('|', 1)
+                ics += "  IC(%d, %s, %s) \\\n" % (idx, parts[0], parts[1])
                 idx += 1
     return ics
                     

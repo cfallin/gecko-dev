@@ -13,6 +13,7 @@
 
 #include "gc/AllocKind.h"
 #include "jit/CacheIR.h"
+#include "jit/JitZone.h"
 #include "js/ScalarType.h"
 #include "js/Value.h"
 #include "vm/CompletionKind.h"
@@ -61,17 +62,16 @@
 
 // First, generate individual IC bodies.
 
-#define IC(idx, ops) \
-  static const uint8_t IC ## idx = { ops };
+#define IC(idx, _kind, ops) static const uint8_t IC##idx = {ops};
 
-#  include "jit/CacheIRAOTGenerated.h"
+#include "jit/CacheIRAOTGenerated.h"
 
 #undef IC
 
 // Now, generate the list-of-pointers.
 
-#define IC(idx, _ops) \
-  CacheIRAOTStub { &IC ## idx, sizeof(IC ## idx) },
+#define IC(idx, kind, _ops)                              \
+  CacheIRAOTStub { CacheKind::kind, &IC ## idx, sizeof(IC ## idx) },
 
 static const CacheIRAOTStub stubs[] = {
 #  include "jit/CacheIRAOTGenerated.h"

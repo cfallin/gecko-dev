@@ -584,7 +584,9 @@ class MOZ_RAII CacheIROpsAotSpewer {
   }
 };
 
-void js::jit::SpewCacheIROpsAsAOT(GenericPrinter& out, CacheIRReader& reader) {
+void js::jit::SpewCacheIROpsAsAOT(GenericPrinter& out, CacheKind kind,
+                                  CacheIRReader& reader) {
+  out.printf("KIND(%s) | ", CacheKindNames[size_t(kind)]);
   CacheIROpsAotSpewer spewer(out);
   spewer.spew(reader);
   out.printf("\n");

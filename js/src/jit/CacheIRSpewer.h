@@ -111,7 +111,8 @@ extern void SpewCacheIROps(GenericPrinter& out, const char* prefix,
                            const CacheIRStubInfo* info);
 
 #  ifdef ENABLE_JS_AOT_ICS
-extern void SpewCacheIROpsAsAOT(GenericPrinter& out, CacheIRReader& reader);
+extern void SpewCacheIROpsAsAOT(GenericPrinter& out, CacheKind kind,
+                                const CacheIRWriter& writer);
 #  endif
 
 }  // namespace jit

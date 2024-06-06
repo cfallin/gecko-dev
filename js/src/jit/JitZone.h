@@ -164,10 +164,10 @@ class JitZone {
   }
 
  public:
-  explicit JitZone(bool zoneHasNurseryStrings) {
+  explicit JitZone(JSContext* cx, bool zoneHasNurseryStrings) {
     setStringsCanBeInNursery(zoneHasNurseryStrings);
 #ifdef ENABLE_JS_AOT_ICS
-    FillAOTICs(this);
+    js::jit::FillAOTICs(cx, this);
 #endif
   }
   ~JitZone() {

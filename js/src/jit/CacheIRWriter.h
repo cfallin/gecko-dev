@@ -348,6 +348,9 @@ class MOZ_RAII CacheIRWriter : public JS::CustomAutoRooter {
   uint32_t numInstructions() const { return nextInstructionId_; }
 
   size_t numStubFields() const { return stubFields_.length(); }
+  const StubField& stubField(uint32_t i) const {
+    return stubFields_[i];
+  }
   StubField::Type stubFieldType(uint32_t i) const {
     return stubFields_[i].type();
   }
@@ -378,6 +381,9 @@ class MOZ_RAII CacheIRWriter : public JS::CustomAutoRooter {
       return false;
     }
     return currentInstruction > operandLastUsed_[operandId];
+  }
+  uint32_t operandLastUsed(uint32_t operandId) const {
+    return operandLastUsed_[operandId];
   }
 
   const uint8_t* codeStart() const {

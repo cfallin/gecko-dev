@@ -586,8 +586,36 @@ class MOZ_RAII CacheIROpsAotSpewer {
 
 void js::jit::SpewCacheIROpsAsAOT(GenericPrinter& out, CacheKind kind,
                                   const CacheIRWriter& writer) {
+  // Fields, comma-separated:
+  // - kind
+  // - numOperandIds (u32)
+  // - numInputOperands (u32)
+  // - numInstructions (u32)
+  // - typeData (TypeData aka JSValueType)
+  // - stubDataSize (u32)
+  // - stubFields (list of (StubField::Type, u64))
+  // - operandLastUsed (list of u32)
+  out.printf("%s, %u, %u, %u, %s, %u, ", CacheKindNames[size_t(kind)],
+             writer.numInputOperands(), writer.numOperandIds(),
+             writer.numInstructions(),
+             js::jit::ValTypeToString(writer.typeData().type()),
+             uint32_t(writer.stubDataSize()));
+
+  out.printf("{ ");
+  for (uint32_t i = 0; i < writer.numStubFields(); i++) {
+    auto field = writer.stubField(i);
+    out.printf("STUBFIELD(%" PRIu64 ", %s), ",
+               field.rawData(), StubFieldTypeName(field.type()));
+  }
+  out.printf("}, ");
+
+  out.printf("{ ");
+  for (uint32_t i = 0; i < writer.numOperandIds(); i++) {
+    out.printf("LASTUSED(%u), ", writer.operandLastUsed(i));
+  }
+  out.printf("}, ");
+
   CacheIRReader reader(writer.codeStart(), writer.codeEnd());
-  out.printf("KIND(%s) | ", CacheKindNames[size_t(kind)]);
   CacheIROpsAotSpewer spewer(out);
   spewer.spew(reader);
   out.printf("\n");

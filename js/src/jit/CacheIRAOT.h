@@ -10,6 +10,7 @@
 #include "mozilla/Span.h"
 
 #include "jit/CacheIR.h"
+#include "jit/CacheIRWriter.h"
 
 struct JSContext;
 
@@ -18,13 +19,27 @@ namespace jit {
 
 class JitZone;
 
+struct AOTStubFieldData {
+  StubField::Type type;
+  uint64_t data;
+};
+
 struct CacheIRAOTStub {
   CacheKind kind;
+  uint32_t numOperandIds;
+  uint32_t numInputOperands;
+  uint32_t numInstructions;
+  TypeData typeData;
+  uint32_t stubDataSize;
+  const AOTStubFieldData* stubfields;
+  size_t stubfieldCount;
+  const uint32_t* operandLastUsed; // length: numOperandIds
   const uint8_t* data;
-  size_t length;
+  size_t dataLength;
 };
 
 mozilla::Span<const CacheIRAOTStub> GetAOTStubs();
+CacheIRWriter CacheIRWriterFromAOT(const CacheIRAOTStub& stub);
 void FillAOTICs(JSContext* cx, JitZone* zone);
 
 }  // namespace jit

@@ -1,0 +1,1 @@
+GetName, 1, 2, 4, None, 32, { STUBFIELD(0, RawInt32), STUBFIELD(140375238285120, RawPointer), STUBFIELD(47097752825904, JSObject), STUBFIELD(1000, RawInt32), }, { LASTUSED(0), LASTUSED(2), }, OP(GuardGlobalGeneration) OFFSET(0) OFFSET(1) OP(LoadObject) ID(1) OFFSET(2) OP(LoadDynamicSlotResult) ID(1) OFFSET(3) OP(ReturnFromIC)  

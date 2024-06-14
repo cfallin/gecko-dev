@@ -37,7 +37,7 @@
 // These correspond to the CacheIRWriter definitions of the serialized
 // CacheIR format.
 
-#  define OP(op) uint8_t(CacheOp::op),
+#  define OP(op) uint8_t(uint16_t(CacheOp::op) & 0xff), uint8_t(uint16_t(CacheOp::op) >> 8),
 #  define ID(id) id,
 #  define OFFSET(off) off,
 #  define BOOL(x) x,

@@ -575,19 +575,19 @@ class MOZ_RAII CacheIROpsAotSpewer {
   }
   void spewGuardClassKindImm(const char* name, GuardClassKind kind) {
     (void)name;
-    out_.printf("GUARDCLASSKIND(GuardClassKind::%s)", GuardClassKindEnumName(kind));
+    out_.printf("GUARDCLASSKIND(%s)", GuardClassKindEnumName(kind));
   }
   void spewWasmValTypeImm(const char* name, wasm::ValType::Kind kind) {
     (void)name;
-    out_.printf("WASMVALTYPE(wasm::ValType::Kind::%s)", wasm::ValTypeTraits::KindEnumName(kind));
+    out_.printf("WASMVALTYPE(%s)", wasm::ValTypeTraits::KindEnumName(kind));
   }
   void spewAllocKindImm(const char* name, gc::AllocKind kind) {
     (void)name;
-    out_.printf("ALLOCKIND(gc::AllocKind::%s)", js::gc::AllocKindName(kind));
+    out_.printf("ALLOCKIND(%s)", js::gc::AllocKindName(kind));
   }
   void spewCompletionKindImm(const char* name, CompletionKind kind) {
     (void)name;
-    out_.printf("COMPLETIONKIND(CompletionKind::%s)", CompletionKindName(kind));
+    out_.printf("COMPLETIONKIND(%s)", CompletionKindName(kind));
   }
   void spewRealmFuseIndexImm(const char* name, RealmFuses::FuseIndex index) {
     (void)name;
@@ -634,8 +634,8 @@ void js::jit::SpewCacheIROpsAsAOT(GenericPrinter& out, CacheKind kind,
 
   for (uint32_t i = 0; i < writer.numStubFields(); i++) {
     auto field = writer.stubField(i);
-    out.printf("STUBFIELD(%" PRIu64 ", %s) ",
-               field.rawData(), StubFieldTypeName(field.type()));
+    out.printf("STUBFIELD(%s) ",
+               StubFieldTypeName(field.type()));
   }
   out.printf(", ");
 

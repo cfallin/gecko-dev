@@ -2534,7 +2534,7 @@ void DumpNonAOTICStubAndQuit(CacheKind kind, const CacheIRWriter& writer) {
           "js/src/ics/.\n",
           filename);
 
-  abort();
+  //abort();
 }
 #endif
 

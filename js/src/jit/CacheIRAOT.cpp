@@ -46,14 +46,14 @@
 #  define STATIC_STRING(p) NATIVE_NULLPTR,
 #  define INT32(i)                                                             \
     uint32_t(i) & 0xff, (uint32_t(i) >> 8) & 0xff, (uint32_t(i) >> 16) & 0xff, \
-        (uint32_t(i) >> 24) & 0xff
+      (uint32_t(i) >> 24) & 0xff,
 #  define UINT32(i) \
-    (i) & 0xff, ((i) >> 8) & 0xff, ((i) >> 16) & 0xff, ((i) >> 24) & 0xff
+  (i) & 0xff, ((i) >> 8) & 0xff, ((i) >> 16) & 0xff, ((i) >> 24) & 0xff,
 #  define CALLFLAGS(f) f,
 #  define WHYMAGIC(m) m,
 #  define SCALARTYPE(name) uint8_t(Scalar::Type::name),
 #  define UNARYMATHFUNC(name) uint8_t(UnaryMathFunction::name),
-#  define VALUETYPE(name) uint8_t(ValueType::name),
+#  define VALUETYPE(name) uint8_t(name),
 #  define NATIVEIMM(p) NATIVE_NULLPTR,
 #  define GUARDCLASSKIND(name) uint8_t(GuardClassKind::name),
 #  define WASMVALTYPE(name) uint8_t(wasm::ValType::Kind::name),
@@ -62,8 +62,7 @@
 #  define REALMFUSE(i) i,
 
 // Other macros used to serialize parts of the CacheIRWriter.
-#  define STUBFIELD(data, ty) \
-    AOTStubFieldData { StubField::Type::ty, data },
+#  define STUBFIELD(ty) AOTStubFieldData{StubField::Type::ty, 0},
 #  define LASTUSED(n) n,
 
 // First, generate individual IC bodies.

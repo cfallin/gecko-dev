@@ -6,6 +6,7 @@
 
 import buildconfig
 import os
+import os.path
 import re
 import six
 import yaml
@@ -541,7 +542,7 @@ def read_aot_ics(ic_path):
     ics = ''
     idx = 0
     for entry in os.scandir(ic_path):
-        if entry.is_file():
+        if entry.is_file() and os.path.basename(entry.path).startswith('IC-'):
             with open(entry.path) as f:
                 content = f.read().strip()
                 ics += "  _(%d, %s) \\\n" % (idx, content)

@@ -1,1 +1,0 @@
-NewObject, 0, 0, 3, None, 24, { STUBFIELD(140375238139296, RawPointer), STUBFIELD(47097752972288, Shape), STUBFIELD(140375267951320, AllocSite), }, { }, OP(GuardNoAllocationMetadataBuilder) OFFSET(0) OP(NewPlainObjectResult) UINT32(2) UINT32(0) ALLOCKIND(gc::AllocKind::OBJECT2_BACKGROUND) OFFSET(1) OFFSET(2) OP(ReturnFromIC)  

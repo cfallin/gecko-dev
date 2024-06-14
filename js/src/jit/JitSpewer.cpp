@@ -631,6 +631,7 @@ void jit::DisableChannel(JitSpewChannel channel) {
 
 #endif /* JS_JITSPEW */
 
+
 const char* js::jit::ValTypeToString(JSValueType type) {
   switch (type) {
     case JSVAL_TYPE_DOUBLE:

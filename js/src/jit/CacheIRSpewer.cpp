@@ -456,6 +456,37 @@ void CacheIRSpewer::endCache() {
 
 #ifdef ENABLE_JS_AOT_ICS
 
+static const char* JSValueTypeToString(JSValueType type) {
+  switch (type) {
+    case JSVAL_TYPE_DOUBLE:
+      return "JSVAL_TYPE_DOUBLE";
+    case JSVAL_TYPE_INT32:
+      return "JSVAL_TYPE_INT32";
+    case JSVAL_TYPE_BOOLEAN:
+      return "JSVAL_TYPE_BOOLEAN";
+    case JSVAL_TYPE_UNDEFINED:
+      return "JSVAL_TYPE_UNDEFINED";
+    case JSVAL_TYPE_NULL:
+      return "JSVAL_TYPE_NULL";
+    case JSVAL_TYPE_MAGIC:
+      return "JSVAL_TYPE_MAGIC";
+    case JSVAL_TYPE_STRING:
+      return "JSVAL_TYPE_STRING";
+    case JSVAL_TYPE_SYMBOL:
+      return "JSVAL_TYPE_SYMBOL";
+    case JSVAL_TYPE_PRIVATE_GCTHING:
+      return "JSVAL_TYPE_PRIVATE_GCTHING";
+    case JSVAL_TYPE_BIGINT:
+      return "JSVAL_TYPE_BIGINT";
+    case JSVAL_TYPE_OBJECT:
+      return "JSVAL_TYPE_OBJECT";
+    case JSVAL_TYPE_UNKNOWN:
+      return "JSVAL_TYPE_UNKNOWN";
+    default:
+      MOZ_CRASH("Unknown JSValueType");
+  }
+}
+
 // Text spewer for CacheIR ops that produces output that can be included
 // in the AOT IC corpus.
 //
@@ -536,7 +567,7 @@ class MOZ_RAII CacheIROpsAotSpewer {
   void spewValueTypeImm(const char* name, ValueType type) {
     (void)name;
     out_.printf("VALUETYPE(%s)",
-                js::jit::ValTypeToString(static_cast<JSValueType>(type)));
+                JSValueTypeToString(static_cast<JSValueType>(type)));
   }
   void spewJSNativeImm(const char* name, JSNative native) {
     (void)name;
@@ -598,22 +629,20 @@ void js::jit::SpewCacheIROpsAsAOT(GenericPrinter& out, CacheKind kind,
   out.printf("%s, %u, %u, %u, %s, %u, ", CacheKindNames[size_t(kind)],
              writer.numInputOperands(), writer.numOperandIds(),
              writer.numInstructions(),
-             js::jit::ValTypeToString(writer.typeData().type()),
+             JSValueTypeToString(writer.typeData().type()),
              uint32_t(writer.stubDataSize()));
 
-  out.printf("{ ");
   for (uint32_t i = 0; i < writer.numStubFields(); i++) {
     auto field = writer.stubField(i);
-    out.printf("STUBFIELD(%" PRIu64 ", %s), ",
+    out.printf("STUBFIELD(%" PRIu64 ", %s) ",
                field.rawData(), StubFieldTypeName(field.type()));
   }
-  out.printf("}, ");
+  out.printf(", ");
 
-  out.printf("{ ");
   for (uint32_t i = 0; i < writer.numOperandIds(); i++) {
-    out.printf("LASTUSED(%u), ", writer.operandLastUsed(i));
+    out.printf("LASTUSED(%u) ", writer.operandLastUsed(i));
   }
-  out.printf("}, ");
+  out.printf(", ");
 
   CacheIRReader reader(writer.codeStart(), writer.codeEnd());
   CacheIROpsAotSpewer spewer(out);

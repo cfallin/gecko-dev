@@ -2546,9 +2546,7 @@ static_assert(stubDataOffset % sizeof(uint64_t) == 0,
 static bool LookupOrCompileStub(JSContext* cx, CacheKind kind,
                                 const CacheIRWriter& writer,
                                 CacheIRStubInfo*& stubInfo, JitCode*& code,
-                                const char* name, bool isAOTFill) {
-  JitZone* jitZone = cx->zone()->jitZone();
-
+                                const char* name, bool isAOTFill, JitZone* jitZone) {
   CacheIRStubKey::Lookup lookup(kind, ICStubEngine::Baseline, writer.codeStart(),
                                 writer.codeLength());
 
@@ -2650,7 +2648,7 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
   JitCode* code;
 
   if (!LookupOrCompileStub(cx, kind, writer, stubInfo, code, name,
-                           /* isAOTFill = */ false)) {
+                           /* isAOTFill = */ false, cx->zone()->jitZone())) {
     return ICAttachResult::OOM;
   }
 
@@ -2769,8 +2767,13 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
 #ifdef ENABLE_JS_AOT_ICS
 void js::jit::FillAOTICs(JSContext* cx, JitZone* zone) {
   for (auto& stub : GetAOTStubs()) {
-    (void)stub;
-    // TODO: dump all of CacheIRWriter and read it back in.
+    CacheIRWriter writer(cx, stub);
+    CacheIRStubInfo* stubInfo;
+    JitCode* code;
+    (void)LookupOrCompileStub(cx, stub.kind, writer, stubInfo, code, "aot stub",
+                              /* isAOTFill = */ true, zone);
+    (void)stubInfo;
+    (void)code;
   }
 }
 #endif

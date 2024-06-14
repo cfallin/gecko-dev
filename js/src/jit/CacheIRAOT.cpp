@@ -13,6 +13,7 @@
 
 #  include "gc/AllocKind.h"
 #  include "jit/CacheIR.h"
+#  include "jit/CacheIRAOTGenerated.h"
 #  include "jit/JitZone.h"
 #  include "js/ScalarType.h"
 #  include "js/Value.h"
@@ -36,7 +37,7 @@
 // These correspond to the CacheIRWriter definitions of the serialized
 // CacheIR format.
 
-#  define OP(op) uint8_t(JSOp::op),
+#  define OP(op) uint8_t(CacheOp::op),
 #  define ID(id) id,
 #  define OFFSET(off) off,
 #  define BOOL(x) x,
@@ -62,66 +63,82 @@
 
 // Other macros used to serialize parts of the CacheIRWriter.
 #  define STUBFIELD(data, ty) \
-    internal::StubField { StubField::Type::ty, data }
-#  define LASTUSED(n) n
+    AOTStubFieldData { StubField::Type::ty, data },
+#  define LASTUSED(n) n,
 
 // First, generate individual IC bodies.
 
-#  define IC(idx, _kind, _num_operand_ids, _num_input_operands,        \
-             _num_instructions, _typedata, _stubdatasize, _stubfields, \
-             _lastused, ops)                                           \
-    static const uint8_t IC##idx = {ops};
+#  define IC_BODY(idx, _kind, _num_input_operands, _num_operand_ids,        \
+                  _num_instructions, _typedata, _stubdatasize, _stubfields, \
+                  _lastused, ops)                                           \
+    static const uint8_t IC##idx[] = {ops};
 
-#  include "jit/CacheIRAOTGenerated.h"
-
-#  undef IC
+JS_AOT_IC_DATA(IC_BODY)
 
 // Generate the stubfield lists.
 
-#  define IC(idx, _kind, _num_operand_ids, _num_input_operands,       \
-             _num_instructions, _typedata, _stubdatasize, stubfields, \
-             _lastused, _ops)                                         \
-    static const internal::StubField IC##idx##StubFields = {stubfields};
+#  define IC_STUBFIELD(idx, _kind, _num_input_operands, _num_operand_ids, \
+                       _num_instructions, _typedata, _stubdatasize,       \
+                       stubfields, _lastused, _ops)                       \
+    static const AOTStubFieldData IC##idx##StubFields[] = {stubfields};
 
-#  include "jit/CacheIRAOTGenerated.h"
-
-#  undef IC
+JS_AOT_IC_DATA(IC_STUBFIELD)
 
 // Generate the operand-last-used lists.
 
-#  define IC(idx, _kind, _num_operand_ids, _num_input_operands,        \
-             _num_instructions, _typedata, _stubdatasize, _stubfields, \
-             lastused, _ops)                                           \
-    static const AOTStubFieldData IC##idx##LastUsed = {lastused};
+#  define IC_LASTUSED(idx, _kind, _num_input_operands, _num_operand_ids, \
+                      _num_instructions, _typedata, _stubdatasize,       \
+                      _stubfields, lastused, _ops)                       \
+    static const uint32_t IC##idx##LastUsed[] = {lastused};
 
-#  include "jit/CacheIRAOTGenerated.h"
-
-#  undef IC
+JS_AOT_IC_DATA(IC_LASTUSED)
 
 // Now, generate the toplevel list of AOT structs from which we can
 // reconstitute a CacheIRWriter.
 
-#  define IC(idx, kind, num_operand_ids, num_input_operands, num_instructions, \
-             typedata, stubdatasize, _stubfields, _lastused, _ops)             \
-    CacheIRAOTStub{                                                            \
-        CacheKind::kind,                                                       \
-        num_operand_ids,                                                       \
-        num_input_operands,                                                    \
-        num_instructions,                                                      \
-        typedata,                                                              \
-        stubdatasize,                                                          \
-        &IC##idx##StubFields[0],                                               \
-        sizeof(IC##idx##StubFields) / sizeof(IC##idx##StubFields[0]),          \
-        &IC##idx##LastUsed[0],                                                 \
-        &IC##idx[0],                                                           \
+#  define IC_TOP(idx, kind, num_input_operands, num_operand_ids,        \
+                 num_instructions, typedata, stubdatasize, _stubfields, \
+                 _lastused, _ops)                                       \
+    CacheIRAOTStub{                                                     \
+        CacheKind::kind,                                                \
+        num_operand_ids,                                                \
+        num_input_operands,                                             \
+        num_instructions,                                               \
+        TypeData(typedata),                                             \
+        stubdatasize,                                                   \
+        IC##idx##StubFields,                                            \
+        sizeof(IC##idx##StubFields) / sizeof(IC##idx##StubFields[0]),   \
+        IC##idx##LastUsed,                                              \
+        IC##idx,                                                        \
         sizeof(IC##idx)},
 
-static const CacheIRAOTStub stubs[] = {
-#  include "jit/CacheIRAOTGenerated.h"
-};
+static const CacheIRAOTStub stubs[] = {JS_AOT_IC_DATA(IC_TOP)};
 
 mozilla::Span<const CacheIRAOTStub> js::jit::GetAOTStubs() {
   return mozilla::Span(stubs, sizeof(stubs) / sizeof(stubs[0]));
+}
+
+CacheIRWriter::CacheIRWriter(JSContext* cx, const CacheIRAOTStub& stub)
+    : CustomAutoRooter(cx),
+#  ifdef DEBUG
+      cx_(cx),
+#  endif
+      tooLarge_(false),
+      lastOffset_(0),
+      lastIndex_(0) {
+  nextOperandId_ = stub.numOperandIds;
+  nextInstructionId_ = stub.numInstructions;
+  numInputOperands_ = stub.numInputOperands;
+  typeData_ = stub.typeData;
+  stubDataSize_ = stub.stubDataSize;
+  for (size_t i = 0; i < stub.stubfieldCount; i++) {
+    buffer_.propagateOOM(stubFields_.append(
+        StubField(stub.stubfields[i].data, stub.stubfields[i].type)));
+  }
+  for (uint32_t i = 0; i < stub.numOperandIds; i++) {
+    buffer_.propagateOOM(operandLastUsed_.append(stub.operandLastUsed[i]));
+  }
+  buffer_.writeBytes(stub.data, stub.dataLength);
 }
 
 #endif /* ENABLE_JS_AOT_ICS */

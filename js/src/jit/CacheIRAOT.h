@@ -39,7 +39,6 @@ struct CacheIRAOTStub {
 };
 
 mozilla::Span<const CacheIRAOTStub> GetAOTStubs();
-CacheIRWriter CacheIRWriterFromAOT(const CacheIRAOTStub& stub);
 void FillAOTICs(JSContext* cx, JitZone* zone);
 
 }  // namespace jit

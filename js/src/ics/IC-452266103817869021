@@ -1,1 +1,0 @@
-GetIntrinsic, 0, 0, 2, None, 8, { STUBFIELD(18446228221509104432, Value), }, { }, OP(LoadValueResult) OFFSET(0) OP(ReturnFromIC)  

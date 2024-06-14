@@ -544,7 +544,7 @@ def read_aot_ics(ic_path):
         if entry.is_file():
             with open(entry.path) as f:
                 content = f.read().strip()
-                ics += "  IC(%d, %s) \\\n" % (idx, content)
+                ics += "  _(%d, %s) \\\n" % (idx, content)
                 idx += 1
     return ics
                     
@@ -554,7 +554,7 @@ def generate_aot_ics_header(c_out, ic_path):
     # Read in all ICs from js/src/ics/IC-*.
     ics = read_aot_ics(ic_path)
 
-    contents = "#define JS_AOT_IC_DATA() \\\n"
+    contents = "#define JS_AOT_IC_DATA(_) \\\n"
     contents += ics
     contents += "\n"
 

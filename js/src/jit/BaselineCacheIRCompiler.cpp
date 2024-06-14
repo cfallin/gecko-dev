@@ -2534,7 +2534,9 @@ void DumpNonAOTICStubAndQuit(CacheKind kind, const CacheIRWriter& writer) {
           "js/src/ics/.\n",
           filename);
 
-  //abort();
+  if (!getenv("AOT_ICS_KEEP_GOING")) {
+    abort();
+  }
 }
 #endif
 

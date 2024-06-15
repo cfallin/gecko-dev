@@ -4026,7 +4026,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           ReservedRooted<JSObject*> rootedObj(&ctx.state.obj0, obj);
           auto* iter = GetIterator(cx, rootedObj);
           if (!iter) {
-            FAIL_IC();
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
           }
           retValue = ObjectValue(*iter).asRawBits();
         }

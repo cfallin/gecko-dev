@@ -1418,7 +1418,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         BOUNDSCHECK(resultId);
         uint64_t boolean = READ_REG(booleanId.id());
         MOZ_ASSERT((boolean & ~1) == 0);
-        WRITE_VALUE_REG(resultId.id(), BooleanValue(boolean));
+        WRITE_VALUE_REG(resultId.id(), Int32Value(boolean));
         DISPATCH_CACHEOP();
       }
 

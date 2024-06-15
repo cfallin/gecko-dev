@@ -5066,9 +5066,16 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           Value* args = reinterpret_cast<Value*>(sp);
 
           ReservedRooted<JSObject*> targetRooted(&ctx.state.obj0, target);
-          Rooted<BoundFunctionObject*> templateObjectRooted(cx, templateObject);
-          auto* result = BoundFunctionObject::functionBindImpl(
-              cx, targetRooted, args, argc, templateObjectRooted);
+          BoundFunctionObject* result;
+          if (cacheop == CacheOp::BindFunctionResult) {
+            result = BoundFunctionObject::functionBindImpl(cx, targetRooted,
+                                                           args, argc, nullptr);
+          } else {
+            Rooted<BoundFunctionObject*> templateObjectRooted(cx,
+                                                              templateObject);
+            result = BoundFunctionObject::functionBindSpecializedBaseline(
+                cx, targetRooted, args, argc, templateObjectRooted);
+          }
           if (!result) {
             ctx.error = PBIResult::Error;
             return IC_ERROR_SENTINEL();

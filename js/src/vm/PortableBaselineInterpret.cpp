@@ -6025,6 +6025,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
   auto* icEntry = icEntries;
   auto* spbase = sp;
   ctx.spbase = spbase;
+  ctx.spoffset = 0;
   ctx.envChain = envChain;
   ctx.isd = isd;
   ctx.ret = ret;
@@ -6124,7 +6125,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 #endif
 
   TRACE_PRINTF("Entering: sp = %p fp = %p frame = %p, script = %p, pc = %p\n",
-               sp, ctx.stack.fp, frame, script.get(), pc);
+               sp, ctx.stack.fp, frame, frame->script(), pc);
   TRACE_PRINTF("nslots = %d nfixed = %d\n", int(frame->script()->nslots()),
                int(frame->script()->nfixed()));
 
@@ -6143,7 +6144,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
     printf("sp[0] = %" PRIx64 " sp[1] = %" PRIx64 " sp[2] = %" PRIx64 "\n",
            sp[0].asUInt64(), sp[1].asUInt64(), sp[2].asUInt64());
     printf(
-        "script = %p pc = %p: %s (ic %d) pending = %d\n", script.get(), pc,
+        "script = %p pc = %p: %s (ic %d) pending = %d\n", frame->script(), pc,
         CodeName(op),
         (int)(icEntry - frame->script()->jitScript()->icScript()->icEntries()),
         ctx.frameMgr.cxForLocalUseOnly()->isExceptionPending());
@@ -8483,8 +8484,9 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
           icEntries = frame->icScript()->icEntries();
           icEntry = frame->interpreterICEntry();
           pc = frame->interpreterPC();
-          pcbase = pc;
-          ctx.pcbase = pc;
+          pcbase = frame->script()->code();
+          ctx.pcbase = pcbase;
+          pcoffset = pc - pcbase;
           argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
           entryPC = frame->script()->code();
           ctx.entryPC = entryPC;
@@ -9166,8 +9168,6 @@ error:
         goto unwind_error;
       case ExceptionResumeKind::Catch:
         pc = frame->interpreterPC();
-        pcbase = pc;
-        ctx.pcbase = pc;
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> catch to pc %p (fp %p sp %p)\n", pc, rfe.framePointer,
@@ -9175,8 +9175,6 @@ error:
         goto unwind;
       case ExceptionResumeKind::Finally:
         pc = frame->interpreterPC();
-        pcbase = pc;
-        ctx.pcbase = pc;
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         sp = reinterpret_cast<StackVal*>(rfe.stackPointer);
         spbase = sp;
@@ -9189,8 +9187,6 @@ error:
         goto unwind;
       case ExceptionResumeKind::ForcedReturnBaseline:
         pc = frame->interpreterPC();
-        pcbase = pc;
-        ctx.pcbase = pc;
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> forced return\n");
@@ -9238,6 +9234,7 @@ unwind:
   sp = ctx.stack.unwindingSP;
   spbase = sp;
   ctx.spbase = spbase;
+  ctx.spoffset = 0;
   ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
@@ -9247,8 +9244,8 @@ unwind:
   icEntries = frame->icScript()->icEntries();
   icEntry = frame->interpreterICEntry();
   pc = frame->interpreterPC();
-  pcbase = pc;
-  ctx.pcbase = pc;
+  pcbase = frame->script()->code();
+  ctx.pcbase = pcbase;
   argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
   DISPATCH();
 unwind_error:
@@ -9265,6 +9262,7 @@ unwind_error:
   sp = ctx.stack.unwindingSP;
   spbase = sp;
   ctx.spbase = spbase;
+  ctx.spoffset = 0;
   ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
@@ -9293,6 +9291,7 @@ unwind_ret:
   sp = ctx.stack.unwindingSP;
   spbase = sp;
   ctx.spbase = spbase;
+  ctx.spoffset = 0;
   ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());

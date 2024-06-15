@@ -1681,7 +1681,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         ValueTagOperandId resultId = cacheIRReader.valueTagOperandId();
         BOUNDSCHECK(resultId);
         Value val = READ_VALUE_REG(valId.id());
-        WRITE_REG(resultId.id(), val.extractNonDoubleType(), INT32);
+        WRITE_REG(resultId.id(), val.asRawBits() >> JSVAL_TAG_SHIFT, INT32);
         DISPATCH_CACHEOP();
       }
 

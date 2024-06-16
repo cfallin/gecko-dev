@@ -3045,12 +3045,12 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         Int32OperandId lhsId = cacheIRReader.int32OperandId();
         Int32OperandId rhsId = cacheIRReader.int32OperandId();
         int64_t lhs = int64_t(int32_t(READ_REG(lhsId.id())));
-        int64_t rhs = int64_t(int32_t(READ_REG(rhsId.id())));
+        uint64_t rhs = uint64_t(int32_t(READ_REG(rhsId.id())));
         int64_t result;
 
         if (lhs == 1) {
           result = 1;
-        } else if (rhs < 0) {
+        } else if (rhs >= uint64_t(INT64_MIN)) {
           FAIL_IC();
         } else {
           result = 1;

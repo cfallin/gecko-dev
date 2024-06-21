@@ -3115,6 +3115,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(Int32URightShiftResult) {
         Int32OperandId lhsId = cacheIRReader.int32OperandId();
         Int32OperandId rhsId = cacheIRReader.int32OperandId();
+        bool forceDouble = cacheIRReader.readBool();
+        (void)forceDouble;
         uint32_t lhs = uint32_t(READ_REG(lhsId.id()));
         int32_t rhs = int32_t(READ_REG(rhsId.id()));
         uint32_t result = lhs >> (rhs & 0x1F);

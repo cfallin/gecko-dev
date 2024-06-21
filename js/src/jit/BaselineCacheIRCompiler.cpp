@@ -2768,14 +2768,16 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
 
 #ifdef ENABLE_JS_AOT_ICS
 void js::jit::FillAOTICs(JSContext* cx, JitZone* zone) {
-  for (auto& stub : GetAOTStubs()) {
-    CacheIRWriter writer(cx, stub);
-    CacheIRStubInfo* stubInfo;
-    JitCode* code;
-    (void)LookupOrCompileStub(cx, stub.kind, writer, stubInfo, code, "aot stub",
-                              /* isAOTFill = */ true, zone);
-    (void)stubInfo;
-    (void)code;
+  if (JitOptions.enableAOTICs) {
+    for (auto& stub : GetAOTStubs()) {
+      CacheIRWriter writer(cx, stub);
+      CacheIRStubInfo* stubInfo;
+      JitCode* code;
+      (void)LookupOrCompileStub(cx, stub.kind, writer, stubInfo, code, "aot stub",
+                                /* isAOTFill = */ true, zone);
+      (void)stubInfo;
+      (void)code;
+    }
   }
 }
 #endif

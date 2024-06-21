@@ -12038,6 +12038,8 @@ bool InitOptionParser(OptionParser& op) {
                         "Disable Portable Baseline Interpreter") ||
 #endif
 #ifdef ENABLE_JS_AOT_ICS
+      !op.addBoolOption('\0', "aot-ics",
+                        "Enable ahead-of-time-known ICs") ||
       !op.addBoolOption('\0', "enforce-aot-ics",
                         "Enable enforcing only use of ahead-of-time-known ICs") ||
 #endif
@@ -12922,6 +12924,9 @@ bool SetContextJITOptions(JSContext* cx, const OptionParser& op) {
 #endif
 
 #ifdef ENABLE_JS_AOT_ICS
+  if (op.getBoolOption("aot-ics")) {
+    jit::JitOptions.enableAOTICs = true;
+  }
   if (op.getBoolOption("enforce-aot-ics")) {
     jit::JitOptions.enableAOTICEnforce = true;
   }

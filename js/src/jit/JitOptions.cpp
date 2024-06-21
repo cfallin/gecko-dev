@@ -197,6 +197,7 @@ DefaultJitOptions::DefaultJitOptions() {
 #endif
 
 #ifdef ENABLE_JS_AOT_ICS
+  SET_DEFAULT(enableAOTICs, false);
   SET_DEFAULT(enableAOTICEnforce, false);
 #endif
 

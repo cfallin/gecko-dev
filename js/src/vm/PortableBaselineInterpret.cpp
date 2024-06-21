@@ -2211,17 +2211,15 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           for (uint32_t i = 0; i < argc + 1 + isNative; i++) {
             PUSH(origArgs[i]);
           }
-          if (flags.isConstructing() && !isNative) {
+          if (flags.isConstructing()) {
             sp[0 + isNative] = StackVal(thisVal);
           }
           Value* args = reinterpret_cast<Value*>(sp);
 
-          TRACE_PRINTF("pushing callee: %p\n", callee);
-          PUSHNATIVE(
-              StackValNative(CalleeToToken(callee, flags.isConstructing())));
-
           if (isNative) {
             PUSHNATIVE(StackValNative(argc));
+            // Note argc == 0 here: args are traced due to native-call
+            // exit frame details set up below.
             PUSHNATIVE(StackValNative(
                 MakeFrameDescriptorForJitCall(FrameType::BaselineStub, 0)));
 
@@ -2253,6 +2251,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             }
             retValue = args[0].asRawBits();
           } else {
+            TRACE_PRINTF("pushing callee: %p\n", callee);
+            PUSHNATIVE(
+                StackValNative(CalleeToToken(callee, flags.isConstructing())));
+
             PUSHNATIVE(StackValNative(
                 MakeFrameDescriptorForJitCall(FrameType::BaselineStub, argc)));
 
@@ -3188,18 +3190,20 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(CallStringConcatResult) {
         StringOperandId lhsId = cacheIRReader.stringOperandId();
         StringOperandId rhsId = cacheIRReader.stringOperandId();
-        // We don't push a frame and do a CanGC invocation here; we do a
-        // pure (NoGC) invocation only, because it's cheaper.
-        FakeRooted<JSString*> lhs(
-            nullptr, reinterpret_cast<JSString*>(READ_REG(lhsId.id())));
-        FakeRooted<JSString*> rhs(
-            nullptr, reinterpret_cast<JSString*>(READ_REG(rhsId.id())));
-        JSString* result =
-            ConcatStrings<NoGC>(ctx.frameMgr.cxForLocalUseOnly(), lhs, rhs);
-        if (result) {
-          retValue = StringValue(result).asRawBits();
-        } else {
-          FAIL_IC();
+        {
+          PUSH_IC_FRAME();
+          ReservedRooted<JSString*> lhs(&ctx.state.str0,
+                                        reinterpret_cast<JSString*>(READ_REG(lhsId.id())));
+          ReservedRooted<JSString*> rhs(&ctx.state.str1,
+                                        reinterpret_cast<JSString*>(READ_REG(rhsId.id())));
+          JSString* result =
+            ConcatStrings<CanGC>(ctx.frameMgr.cxForLocalUseOnly(), lhs, rhs);
+          if (result) {
+            retValue = StringValue(result).asRawBits();
+          } else {
+            ctx.error = PBIResult::Error;
+            return IC_ERROR_SENTINEL();
+          }
         }
         PREDICT_RETURN();
         DISPATCH_CACHEOP();

@@ -2211,10 +2211,14 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           for (uint32_t i = 0; i < argc + 1 + isNative; i++) {
             PUSH(origArgs[i]);
           }
-          if (flags.isConstructing()) {
-            sp[0 + isNative] = StackVal(thisVal);
+          if (flags.isConstructing() && !isNative) {
+            sp[0] = StackVal(thisVal);
           }
           Value* args = reinterpret_cast<Value*>(sp);
+
+          TRACE_PRINTF("pushing callee: %p\n", callee);
+          PUSHNATIVE(
+              StackValNative(CalleeToToken(callee, flags.isConstructing())));
 
           if (isNative) {
             PUSHNATIVE(StackValNative(argc));
@@ -2251,10 +2255,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             }
             retValue = args[0].asRawBits();
           } else {
-            TRACE_PRINTF("pushing callee: %p\n", callee);
-            PUSHNATIVE(
-                StackValNative(CalleeToToken(callee, flags.isConstructing())));
-
             PUSHNATIVE(StackValNative(
                 MakeFrameDescriptorForJitCall(FrameType::BaselineStub, argc)));
 

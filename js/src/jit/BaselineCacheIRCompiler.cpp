@@ -2614,6 +2614,11 @@ static bool LookupOrCompileStub(JSContext* cx, CacheKind kind,
                                              /* stubCode = */ nullptr)) {
       return false;
     }
+
+#ifdef ENABLE_JS_PBL_WEVAL
+  // Register for weval specialization, if enabled.
+  js::pbl::EnqueueICStubSpecialization(stubInfo);
+#endif
   }
   MOZ_ASSERT_IF(IsBaselineInterpreterEnabled(), code);
   MOZ_ASSERT(stubInfo);
@@ -2706,11 +2711,6 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
     }
     return ICAttachResult::Attached;
   }
-
-#ifdef ENABLE_JS_PBL_WEVAL
-  // Register for weval specialization, if enabled.
-  js::pbl::EnqueueICStubSpecialization(stubInfo);
-#endif
 
   // Time to allocate and attach a new stub.
 

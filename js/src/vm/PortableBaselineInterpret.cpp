@@ -2216,16 +2216,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           }
           Value* args = reinterpret_cast<Value*>(sp);
 
-          TRACE_PRINTF("pushing callee: %p\n", callee);
-          PUSHNATIVE(
-              StackValNative(CalleeToToken(callee, flags.isConstructing())));
-
           if (isNative) {
             PUSHNATIVE(StackValNative(argc));
-            // Note argc == 0 here: args are traced due to native-call
-            // exit frame details set up below.
-            PUSHNATIVE(StackValNative(
-                MakeFrameDescriptorForJitCall(FrameType::BaselineStub, 0)));
+            PUSHNATIVE(
+                StackValNative(MakeFrameDescriptor(FrameType::BaselineStub)));
 
             // We *also* need an exit frame (the native baseline
             // execution would invoke a trampoline here).
@@ -2255,6 +2249,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             }
             retValue = args[0].asRawBits();
           } else {
+            TRACE_PRINTF("pushing callee: %p\n", callee);
+            PUSHNATIVE(
+              StackValNative(CalleeToToken(callee, flags.isConstructing())));
+            
             PUSHNATIVE(StackValNative(
                 MakeFrameDescriptorForJitCall(FrameType::BaselineStub, argc)));
 

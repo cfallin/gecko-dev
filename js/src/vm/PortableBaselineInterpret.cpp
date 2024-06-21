@@ -5326,10 +5326,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_UNIMPL(CallDOMFunction)
       CACHEOP_CASE_UNIMPL(CallClassHook)
       CACHEOP_CASE_UNIMPL(CallInlinedFunction)
-#ifdef JS_PUNBOX64
       CACHEOP_CASE_UNIMPL(CallScriptedProxyGetResult)
       CACHEOP_CASE_UNIMPL(CallScriptedProxyGetByValueResult)
-#endif
       CACHEOP_CASE_UNIMPL(LoadDataViewValueResult)
       CACHEOP_CASE_UNIMPL(StoreDataViewValueResult)
       CACHEOP_CASE_UNIMPL(LoadArgumentsObjectArgHoleResult)

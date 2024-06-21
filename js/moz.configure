@@ -271,6 +271,22 @@ set_config(
     depends_if("--enable-aot-ics")(lambda _: True),
 )
 
+# Force-on the option for AOT ICs.
+option(
+    "--enable-aot-ics-force",
+    default=False,
+    help="{Enable|Disable} forcing the AOT ICs option on without additional configuration",
+)
+
+set_define(
+    "ENABLE_JS_AOT_ICS_FORCE",
+    depends_if("--enable-aot-ics-force")(lambda _: True),
+)
+set_config(
+    "ENABLE_JS_AOT_ICS_FORCE",
+    depends_if("--enable-aot-ics-force")(lambda _: True),
+)
+
 # JIT support
 # =======================================================
 @depends(target, "--enable-record-tuple", "--enable-portable-baseline-interp")

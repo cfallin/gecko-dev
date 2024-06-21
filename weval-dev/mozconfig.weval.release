@@ -13,6 +13,8 @@ ac_add_options --enable-jitspew
 ac_add_options --enable-optimize=-O3
 ac_add_options --enable-portable-baseline-interp
 ac_add_options --enable-portable-baseline-interp-force
+ac_add_options --enable-aot-ics
+ac_add_options --enable-aot-ics-force
 ac_add_options --enable-pbl-weval
 ac_add_options --enable-js-shell-wizer
 ac_add_options --prefix=obj-weval-release/dist

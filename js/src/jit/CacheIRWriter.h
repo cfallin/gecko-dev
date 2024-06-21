@@ -645,7 +645,6 @@ class MOZ_RAII CacheIRWriter : public JS::CustomAutoRooter {
     callNativeSetter_(receiver, setter, rhs, sameRealm, nargsAndFlags);
   }
 
-#ifdef JS_PUNBOX64
   void callScriptedProxyGetResult(ValOperandId target, ObjOperandId receiver,
                                   ObjOperandId handler, JSFunction* trap,
                                   HandleId property) {
@@ -665,7 +664,6 @@ class MOZ_RAII CacheIRWriter : public JS::CustomAutoRooter {
     callScriptedProxyGetByValueResult_(target, receiver, handler, property,
                                        trap, nargsAndFlags);
   }
-#endif
 
   void metaScriptedThisShape(Shape* thisShape) {
     metaScriptedThisShape_(thisShape);

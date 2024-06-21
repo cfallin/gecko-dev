@@ -1,5 +1,0 @@
-#!/bin/sh
-
-set -x
-
-$WEVAL collect -i $WEVAL_SHELL -p $WEVAL_PRECOMPILED -d $ROOT -o $IC_PATH/$$ -s 2 -- "$@"

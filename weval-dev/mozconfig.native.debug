@@ -1,0 +1,10 @@
+# Build only the SpiderMonkey JS test shell
+ac_add_options --enable-project=js
+ac_add_options --enable-application=js
+ac_add_options --enable-optimize=-O0
+ac_add_options --enable-debug
+ac_add_options --enable-portable-baseline-interp
+ac_add_options --enable-portable-baseline-interp-force
+ac_add_options --enable-aot-ics
+ac_add_options --prefix=obj-debug/dist
+mk_add_options MOZ_OBJDIR=obj-debug

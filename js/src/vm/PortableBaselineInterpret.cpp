@@ -64,9 +64,9 @@
 
 #ifdef ENABLE_JS_PBL_WEVAL
 WEVAL_DEFINE_GLOBALS()
-#  include "PortableBaselineInterpret-weval-defs.h"
+#  include "vm/PortableBaselineInterpret-weval-defs.h"
 #else
-#  include "PortableBaselineInterpret-defs.h"
+#  include "vm/PortableBaselineInterpret-defs.h"
 #endif
 
 namespace js {

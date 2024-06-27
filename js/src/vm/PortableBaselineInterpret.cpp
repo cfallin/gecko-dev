@@ -64,6 +64,9 @@
 
 #ifdef ENABLE_JS_PBL_WEVAL
 WEVAL_DEFINE_GLOBALS()
+#  include "PortableBaselineInterpret-weval-defs.h"
+#else
+#  include "PortableBaselineInterpret-defs.h"
 #endif
 
 namespace js {
@@ -93,9 +96,24 @@ using namespace js::jit;
 // Whether we are using the "hybrid" strategy for ICs (see the [SMDOC]
 // in PortableBaselineInterpret.h for more). This is currently a
 // constant, but may become configurable in the future.
-static const bool kHybridICsInterp = false;
-#ifdef ENABLE_JS_PBL_WEVAL
-static const bool kHybridICsCompiled = false;
+static const bool kHybridICsInterp = PBL_HYBRID_ICS_DEFAULT;
+
+// Whether to compile interpreter dispatch loops using computed gotos
+// or direct switches.
+#if !defined(__wasi__) && !defined(TRACE_INTERP)
+#define ENABLE_COMPUTED_GOTO_DISPATCH
+#endif
+
+// Whether to compile in interrupt checks in the main interpreter loop.
+#ifndef __wasi__
+// On WASI, with a single thread, there is no possibility for an
+// interrupt to come asynchronously.
+#  define ENABLE_INTERRUPT_CHECKS
+#endif
+
+// Whether to compile in coverage counting in the main interpreter loop.
+#ifndef __wasi__
+#  define ENABLE_COVERAGE
 #endif
 
 /*
@@ -504,30 +522,6 @@ struct ICCtx {
 typedef uint64_t (*ICStubFunc)(uint64_t arg0, uint64_t arg1, ICStub* stub,
                                ICCtx& ctx);
 
-#ifdef ENABLE_JS_PBL_WEVAL
-#  define CALL_IC(jitcode, ctx, stubvalue, result, arg0, arg1, arg2value, \
-                  hasarg2)                                                \
-    do {                                                                  \
-      if (hasarg2) {                                                      \
-        ctx.arg2 = arg2value;                                             \
-      }                                                                   \
-      ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);            \
-      result = func(arg0, arg1, stubvalue, ctx);                          \
-    } while (0)
-#else
-#  define CALL_IC(jitcode, ctx, stubvalue, result, arg0, arg1, arg2value, \
-                  hasarg2)                                                \
-    do {                                                                  \
-      ctx.arg2 = arg2value;                                               \
-      if (stubvalue->isFallback()) {                                      \
-        ICStubFunc func = reinterpret_cast<ICStubFunc>(jitcode);          \
-        result = func(arg0, arg1, stubvalue, ctx);                        \
-      } else {                                                            \
-        result = ICInterpretOps<false>(arg0, arg1, stubvalue, ctx);       \
-      }                                                                   \
-    } while (0)
-#endif
-
 typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
                              StackVal* sp, JSObject* envChain, Value* ret,
                              jsbytecode* pcbase, uint32_t pcoffset,
@@ -536,17 +530,6 @@ typedef PBIResult (*PBIFunc)(JSContext* cx_, State& state, Stack& stack,
                              BaselineFrame* restartFrame,
                              StackVal* restartEntryFrame,
                              PBIResult restartCode);
-
-#ifdef ENABLE_JS_PBL_WEVAL
-#  define INVOKE_PBI(result, script, interp, ...)                              \
-    if (script->hasWeval() && script->weval().func) {                          \
-      result = (reinterpret_cast<PBIFunc>(script->weval().func))(__VA_ARGS__); \
-    } else {                                                                   \
-      result = interp(__VA_ARGS__);                                            \
-    }
-#else
-#  define INVOKE_PBI(result, script, interp, ...) result = interp(__VA_ARGS__);
-#endif
 
 static uint64_t CallNextIC(uint64_t arg0, uint64_t arg1, ICStub* stub,
                            ICCtx& ctx);
@@ -575,21 +558,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
   const CacheIRStubInfo* stubInfo;
   const uint8_t* code;
-  if (!Specialized) {
-    // Set `stubInfo` and `code`, which will have been `nullptr` in
-    // the initial call.
-    stubInfo = cstub->stubInfo();
-    code = stubInfo->code();
-  } else {
-#ifdef ENABLE_JS_PBL_WEVAL
-    stubInfo = reinterpret_cast<const CacheIRStubInfo*>(
-        weval_read_specialization_global(0));
-    code = reinterpret_cast<uint8_t*>(weval_read_specialization_global(1));
-#else
-    stubInfo = cstub->stubInfo();
-    code = stubInfo->code();
-#endif
-  }
+  PBL_ESTABLISH_STUBINFO_CODE(Specialized, stubInfo, code);
 
   CacheIRReader cacheIRReader(code, nullptr);
 
@@ -597,7 +566,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
   // version uses a conventional switch (because Wasm lowers to
   // this anyway, and it makes following transforms easier).
 
-#ifndef __wasi__
+#ifdef ENABLE_COMPUTED_GOTO_DISPATCH
 
 #  define CACHEOP_CASE(name) cacheop_##name : CACHEOP_TRACE(name)
 #  define CACHEOP_CASE_FALLTHROUGH(name) CACHEOP_CASE(name)
@@ -607,7 +576,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
     cacheop = cacheIRReader.readOp(); \
     goto* addresses[long(cacheop)];
 
-#else  // !__wasi__
+#else  // ENABLE_COMPUTED_GOTO_DISPATCH
 
 #  define CACHEOP_CASE(name) \
     case CacheOp::name:      \
@@ -621,10 +590,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #  define DISPATCH_CACHEOP()          \
     cacheop = cacheIRReader.readOp(); \
-    WEVAL_UPDATE_IC_CTX();            \
+    PBL_UPDATE_IC_CTX();              \
     goto dispatch;
 
-#endif  // __wasi__
+#endif  // !ENABLE_COMPUTED_GOTO_DISPATCH
 
   // Define the computed-goto table regardless of dispatch strategy so
   // we don't get unused-label errors. (We need some of the labels
@@ -664,83 +633,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
     return retValue;                                                     \
   }
 
-#ifdef ENABLE_JS_PBL_WEVAL
-
-#  define READ_REG(reg) \
-    (Specialized ? weval_read_reg((reg)) : ctx.icregs.icVals[(reg)])
-#  define WRITE_REG(reg, value, tagtype)                                 \
-    if (Specialized) {                                                   \
-      weval_write_reg((reg), (value));                                   \
-      weval_write_reg((reg) + ICRegs::kMaxICVals,                        \
-                      uint64_t(JSVAL_TAG_##tagtype) << JSVAL_TAG_SHIFT); \
-    } else {                                                             \
-      ctx.icregs.icVals[(reg)] = (value);                                \
-      ctx.icregs.icTags[(reg)] = uint64_t(JSVAL_TAG_##tagtype)           \
-                                 << JSVAL_TAG_SHIFT;                     \
-    }
-
-#  define READ_VALUE_REG(reg)                                       \
-    Value::fromRawBits(                                             \
-        Specialized ? (weval_read_reg((reg) + ICRegs::kMaxICVals) | \
-                       weval_read_reg((reg)))                       \
-                    : (ctx.icregs.icTags[(reg)] | ctx.icregs.icVals[(reg)]))
-#  define WRITE_VALUE_REG(reg, value)                 \
-    if (Specialized) {                                \
-      weval_write_reg((reg), (value).asRawBits());    \
-      weval_write_reg((reg) + ICRegs::kMaxICVals, 0); \
-    } else {                                          \
-      ctx.icregs.icVals[(reg)] = (value).asRawBits(); \
-      ctx.icregs.icTags[(reg)] = 0;                   \
-    }
-
-#  define WEVAL_UPDATE_IC_CTX()                                         \
-    if (Specialized) {                                                  \
-      weval::update_context(                                            \
-          reinterpret_cast<uint32_t>(cacheIRReader.currentPosition())); \
-    }
-
-#else  // ENABLE_JS_PBL_WEVAL
-
-#  define READ_REG(reg)                                       \
-    ({                                                        \
-      TRACE_PRINTF("READ_REG(%d): %" PRIx64 "\n", int((reg)), \
-                   ctx.icregs.icVals[(reg)]);                 \
-      ctx.icregs.icVals[(reg)];                               \
-    })
-#  define WRITE_REG(reg, value, tagtype)                                \
-    do {                                                                \
-      uint64_t write_value = (value);                                   \
-      TRACE_PRINTF("WRITE_REG(%d, " #tagtype "): %" PRIx64 "\n", (reg), \
-                   write_value);                                        \
-      ctx.icregs.icVals[(reg)] = write_value;                           \
-      ctx.icregs.icTags[(reg)] = uint64_t(JSVAL_TAG_##tagtype)          \
-                                 << JSVAL_TAG_SHIFT;                    \
-    } while (0)
-#  define READ_VALUE_REG(reg)                                              \
-    ({                                                                     \
-      uint64_t bits = ctx.icregs.icVals[(reg)] | ctx.icregs.icTags[(reg)]; \
-      TRACE_PRINTF("READ_VALUE_REG(%d): %" PRIx64 "\n", (reg), bits);      \
-      Value::fromRawBits(bits);                                            \
-    })
-#  define WRITE_VALUE_REG(reg, value)                                         \
-    do {                                                                      \
-      uint64_t write_value = (value).asRawBits();                             \
-      TRACE_PRINTF("WRITE_VALUE_REG(%d): %" PRIx64 "\n", (reg), write_value); \
-      ctx.icregs.icVals[(reg)] = write_value;                                 \
-      ctx.icregs.icTags[(reg)] = 0;                                           \
-    } while (0)
-
-#  define WEVAL_UPDATE_IC_CTX() ;
-
-#endif  // !ENABLE_JS_PBL_WEVAL
-
   uint64_t retValue = 0;
   CacheOp cacheop;
 
-#ifdef ENABLE_JS_PBL_WEVAL
-  weval::push_context(
-      reinterpret_cast<uint32_t>(cacheIRReader.currentPosition()));
-#endif
+  PBL_PUSH_IC_CTX();
 
   WRITE_VALUE_REG(0, Value::fromRawBits(arg0));
   WRITE_VALUE_REG(1, Value::fromRawBits(arg1));
@@ -749,7 +645,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
   DISPATCH_CACHEOP();
 
   while (true) {
-#ifdef __wasi__
+#ifndef ENABLE_COMPUTED_GOTO_DISPATCH
   dispatch:
     switch (cacheop)
 #endif
@@ -2251,8 +2147,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           } else {
             TRACE_PRINTF("pushing callee: %p\n", callee);
             PUSHNATIVE(
-              StackValNative(CalleeToToken(callee, flags.isConstructing())));
-            
+                StackValNative(CalleeToToken(callee, flags.isConstructing())));
+
             PUSHNATIVE(StackValNative(
                 MakeFrameDescriptorForJitCall(FrameType::BaselineStub, argc)));
 
@@ -2261,7 +2157,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             ImmutableScriptData* isd = script->immutableScriptData();
             PBIResult result;
             Value ret;
-            INVOKE_PBI(
+            PBL_CALL_INTERP(
                 result, script,
                 (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
                 ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
@@ -2347,7 +2243,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           ImmutableScriptData* isd = script->immutableScriptData();
           PBIResult result;
           Value ret;
-          INVOKE_PBI(
+          PBL_CALL_INTERP(
               result, script,
               (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
               ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
@@ -2444,7 +2340,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
           ImmutableScriptData* isd = script->immutableScriptData();
           PBIResult result;
           Value ret;
-          INVOKE_PBI(
+          PBL_CALL_INTERP(
               result, script,
               (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
               ctx.state, ctx.stack, sp, /* envChain = */ nullptr,
@@ -3192,12 +3088,14 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         StringOperandId rhsId = cacheIRReader.stringOperandId();
         {
           PUSH_IC_FRAME();
-          ReservedRooted<JSString*> lhs(&ctx.state.str0,
-                                        reinterpret_cast<JSString*>(READ_REG(lhsId.id())));
-          ReservedRooted<JSString*> rhs(&ctx.state.str1,
-                                        reinterpret_cast<JSString*>(READ_REG(rhsId.id())));
+          ReservedRooted<JSString*> lhs(
+              &ctx.state.str0,
+              reinterpret_cast<JSString*>(READ_REG(lhsId.id())));
+          ReservedRooted<JSString*> rhs(
+              &ctx.state.str1,
+              reinterpret_cast<JSString*>(READ_REG(rhsId.id())));
           JSString* result =
-            ConcatStrings<CanGC>(ctx.frameMgr.cxForLocalUseOnly(), lhs, rhs);
+              ConcatStrings<CanGC>(ctx.frameMgr.cxForLocalUseOnly(), lhs, rhs);
           if (result) {
             retValue = StringValue(result).asRawBits();
           } else {
@@ -5419,7 +5317,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 #undef PREDICT_NEXT
 #undef PREDICT_RETURN
 
-#ifdef __wasi__
+#ifndef ENABLE_COMPUTED_GOTO_DISPATCH
       case CacheOp::NumOpcodes:
         MOZ_CRASH("Invalid CacheOp::NumOpcodes opcode");
 #endif
@@ -5427,9 +5325,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
   }
 
 next_ic:
-#ifdef ENABLE_JS_PBL_WEVAL
-  weval::pop_context();
-#endif
+  PBL_POP_IC_CTX();
   TRACE_PRINTF("IC failed; next IC\n");
   return CallNextIC(arg0, arg1, stub, ctx);
 }
@@ -5439,8 +5335,8 @@ static MOZ_NEVER_INLINE uint64_t CallNextIC(uint64_t arg0, uint64_t arg1,
   stub = stub->maybeNext();
   MOZ_ASSERT(stub);
   uint64_t result;
-  CALL_IC(stub->rawJitCode(), ctx, stub, result, arg0, arg1,
-          ctx.arg2, true);
+  PBL_CALL_IC(stub->rawJitCode(), ctx, stub, result, arg0, arg1, ctx.arg2,
+              true);
   return result;
 }
 
@@ -5801,18 +5697,14 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
 }
 #endif
 
-#ifndef __wasi__
-#  define DEBUG_CHECK()                                                   \
-    if (frame->isDebuggee()) {                                            \
-      TRACE_PRINTF(                                                       \
-          "Debug check: frame is debuggee, checking for debug script\n"); \
-      if (frame->script()->hasDebugScript()) {                            \
-        goto debug;                                                       \
-      }                                                                   \
-    }
-#else
-#  define DEBUG_CHECK()
-#endif
+#define DEBUG_CHECK()                                                   \
+  if (!Specialized && frame->isDebuggee()) {                            \
+    TRACE_PRINTF(                                                       \
+        "Debug check: frame is debuggee, checking for debug script\n"); \
+    if (frame->script()->hasDebugScript()) {                            \
+      goto debug;                                                       \
+    }                                                                   \
+  }
 
 #ifdef ENABLE_JS_PBL_WEVAL
 #  define WEVAL_UPDATE_CONTEXT() \
@@ -5824,7 +5716,7 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
 #endif
 
 #define LABEL(op) (&&label_##op)
-#if !defined(TRACE_INTERP) && !defined(__wasi__)
+#ifdef ENABLE_COMPUTED_GOTO_DISPATCH
 #  define CASE(op) label_##op:
 #  define DISPATCH() \
     DEBUG_CHECK();   \
@@ -5863,7 +5755,7 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
 #  define PREDICT_NEXT(op)
 #endif
 
-#ifndef __wasi__
+#ifdef ENABLE_COVERAGE
 #  define COUNT_COVERAGE_PC(PC)                                 \
     if (frame->script()->hasScriptCounts()) {                   \
       PCCounts* counts = frame->script()->maybeGetPCCounts(PC); \
@@ -5886,20 +5778,20 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
   ctx.spoffset =       \
       reinterpret_cast<uintptr_t>(spbase) - reinterpret_cast<uintptr_t>(sp);
 
-#define INVOKE_IC(kind, hasarg2)                                             \
-  if (!Specialized) {                                                        \
-    frame->interpreterPC() = pc;                                             \
-  }                                                                          \
-  SYNCSP();                                                                  \
-  UPDATE_SPOFF();                                                            \
-  CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret, ic_arg0, \
-          ic_arg1, ic_arg2, hasarg2);                                        \
-  if (ic_ret == IC_ERROR_SENTINEL()) {                                       \
-    pcoffset = pc - pcbase;                                                  \
-    WEVAL_POP_CONTEXT();                                                     \
-    ic_result = ctx.error;                                                   \
-    goto ic_fail;                                                            \
-  }                                                                          \
+#define INVOKE_IC(kind, hasarg2)                                        \
+  if (!Specialized) {                                                   \
+    frame->interpreterPC() = pc;                                        \
+  }                                                                     \
+  SYNCSP();                                                             \
+  UPDATE_SPOFF();                                                       \
+  PBL_CALL_IC(icEntry->rawJitCode(), ctx, icEntry->firstStub(), ic_ret, \
+              ic_arg0, ic_arg1, ic_arg2, hasarg2);                      \
+  if (ic_ret == IC_ERROR_SENTINEL()) {                                  \
+    pcoffset = pc - pcbase;                                             \
+    WEVAL_POP_CONTEXT();                                                \
+    ic_result = ctx.error;                                              \
+    goto ic_fail;                                                       \
+  }                                                                     \
   NEXT_IC();
 
 #define INVOKE_IC_AND_PUSH(kind, hasarg2) \
@@ -6085,14 +5977,14 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
   }
   ret->setUndefined();
 
-#ifndef __wasi__
-  // Check if we are being debugged, and set a flag in the frame if so. This
-  // flag must be set before calling InitFunctionEnvironmentObjects.
-  if (frame->script()->isDebuggee()) {
-    TRACE_PRINTF("Script is debuggee\n");
-    frame->setIsDebuggee();
+  if (!Specialized) {
+    // Check if we are being debugged, and set a flag in the frame if so. This
+    // flag must be set before calling InitFunctionEnvironmentObjects.
+    if (frame->script()->isDebuggee()) {
+      TRACE_PRINTF("Script is debuggee\n");
+      frame->setIsDebuggee();
+    }
   }
-#endif
 
   if (CalleeTokenIsFunction(frame->calleeToken())) {
     JSFunction* func = CalleeTokenToFunction(frame->calleeToken());
@@ -6107,32 +5999,32 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
     }
   }
 
-#ifndef __wasi__
-  // The debug prologue can't run until the function environment is set up.
-  if (frame->script()->isDebuggee()) {
-    PUSH_EXIT_FRAME();
-    if (!DebugPrologue(cx, frame)) {
-      GOTO_ERROR();
-    }
-  }
-
-  if (!frame->script()->hasScriptCounts()) {
-    if (ctx.frameMgr.cxForLocalUseOnly()->realm()->collectCoverageForDebug()) {
+  if (!Specialized) {
+    // The debug prologue can't run until the function environment is set up.
+    if (frame->script()->isDebuggee()) {
       PUSH_EXIT_FRAME();
-      if (!frame->script()->initScriptCounts(cx)) {
+      if (!DebugPrologue(cx, frame)) {
+        GOTO_ERROR();
+      }
+    }
+
+    if (!frame->script()->hasScriptCounts()) {
+      if (ctx.frameMgr.cxForLocalUseOnly()->realm()->collectCoverageForDebug()) {
+        PUSH_EXIT_FRAME();
+        if (!frame->script()->initScriptCounts(cx)) {
+          GOTO_ERROR();
+        }
+      }
+    }
+    COUNT_COVERAGE_MAIN();
+
+    if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
+      PUSH_EXIT_FRAME();
+      if (!InterruptCheck(cx)) {
         GOTO_ERROR();
       }
     }
   }
-  COUNT_COVERAGE_MAIN();
-
-  if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
-    PUSH_EXIT_FRAME();
-    if (!InterruptCheck(cx)) {
-      GOTO_ERROR();
-    }
-  }
-#endif
 
   TRACE_PRINTF("Entering: sp = %p fp = %p frame = %p, script = %p, pc = %p\n",
                sp, ctx.stack.fp, frame, frame->script(), pc);
@@ -6146,7 +6038,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
   while (true) {
     DEBUG_CHECK();
 
-  dispatch:
+  dispatch :
 #ifdef TRACE_INTERP
   {
     MOZ_RELEASE_ASSERT(sp <= ctx.stack.fp);
@@ -6164,7 +6056,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
   }
 #endif
 
-#if !defined(__wasi__) && !defined(TRACE_INTERP)
+#ifdef ENABLE_COMPUTED_GOTO_DISPATCH
     goto* addresses[*pc];
 #else
     (void)addresses;  // Avoid unused-local error. We keep the table
@@ -6347,18 +6239,19 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         END_OP(ToNumeric);
       }
 
-    generic_unary: {
-      static_assert(JSOpLength_Pos == JSOpLength_Neg);
-      static_assert(JSOpLength_Pos == JSOpLength_BitNot);
-      static_assert(JSOpLength_Pos == JSOpLength_Inc);
-      static_assert(JSOpLength_Pos == JSOpLength_Dec);
-      static_assert(JSOpLength_Pos == JSOpLength_ToNumeric);
-      IC_POP_ARG(0);
-      IC_ZERO_ARG(1);
-      IC_ZERO_ARG(2);
-      INVOKE_IC_AND_PUSH(UnaryArith, false);
-      END_OP(Pos);
-    }
+    generic_unary:;
+      {
+        static_assert(JSOpLength_Pos == JSOpLength_Neg);
+        static_assert(JSOpLength_Pos == JSOpLength_BitNot);
+        static_assert(JSOpLength_Pos == JSOpLength_Inc);
+        static_assert(JSOpLength_Pos == JSOpLength_Dec);
+        static_assert(JSOpLength_Pos == JSOpLength_ToNumeric);
+        IC_POP_ARG(0);
+        IC_ZERO_ARG(1);
+        IC_ZERO_ARG(2);
+        INVOKE_IC_AND_PUSH(UnaryArith, false);
+        END_OP(Pos);
+      }
 
       CASE(Not) {
         Value v = VIRTSP(0).asValue();
@@ -6809,24 +6702,25 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         goto generic_binary;
       }
 
-    generic_binary: {
-      static_assert(JSOpLength_BitOr == JSOpLength_BitXor);
-      static_assert(JSOpLength_BitOr == JSOpLength_BitAnd);
-      static_assert(JSOpLength_BitOr == JSOpLength_Lsh);
-      static_assert(JSOpLength_BitOr == JSOpLength_Rsh);
-      static_assert(JSOpLength_BitOr == JSOpLength_Ursh);
-      static_assert(JSOpLength_BitOr == JSOpLength_Add);
-      static_assert(JSOpLength_BitOr == JSOpLength_Sub);
-      static_assert(JSOpLength_BitOr == JSOpLength_Mul);
-      static_assert(JSOpLength_BitOr == JSOpLength_Div);
-      static_assert(JSOpLength_BitOr == JSOpLength_Mod);
-      static_assert(JSOpLength_BitOr == JSOpLength_Pow);
-      IC_POP_ARG(1);
-      IC_POP_ARG(0);
-      IC_ZERO_ARG(2);
-      INVOKE_IC_AND_PUSH(BinaryArith, false);
-      END_OP(Div);
-    }
+    generic_binary:;
+      {
+        static_assert(JSOpLength_BitOr == JSOpLength_BitXor);
+        static_assert(JSOpLength_BitOr == JSOpLength_BitAnd);
+        static_assert(JSOpLength_BitOr == JSOpLength_Lsh);
+        static_assert(JSOpLength_BitOr == JSOpLength_Rsh);
+        static_assert(JSOpLength_BitOr == JSOpLength_Ursh);
+        static_assert(JSOpLength_BitOr == JSOpLength_Add);
+        static_assert(JSOpLength_BitOr == JSOpLength_Sub);
+        static_assert(JSOpLength_BitOr == JSOpLength_Mul);
+        static_assert(JSOpLength_BitOr == JSOpLength_Div);
+        static_assert(JSOpLength_BitOr == JSOpLength_Mod);
+        static_assert(JSOpLength_BitOr == JSOpLength_Pow);
+        IC_POP_ARG(1);
+        IC_POP_ARG(0);
+        IC_ZERO_ARG(2);
+        INVOKE_IC_AND_PUSH(BinaryArith, false);
+        END_OP(Div);
+      }
 
       CASE(Eq) {
         if (HybridICs) {
@@ -7024,20 +6918,21 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         }
       }
 
-    generic_cmp: {
-      static_assert(JSOpLength_Eq == JSOpLength_Ne);
-      static_assert(JSOpLength_Eq == JSOpLength_StrictEq);
-      static_assert(JSOpLength_Eq == JSOpLength_StrictNe);
-      static_assert(JSOpLength_Eq == JSOpLength_Lt);
-      static_assert(JSOpLength_Eq == JSOpLength_Gt);
-      static_assert(JSOpLength_Eq == JSOpLength_Le);
-      static_assert(JSOpLength_Eq == JSOpLength_Ge);
-      IC_POP_ARG(1);
-      IC_POP_ARG(0);
-      IC_ZERO_ARG(2);
-      INVOKE_IC_AND_PUSH(Compare, false);
-      END_OP(Eq);
-    }
+    generic_cmp:;
+      {
+        static_assert(JSOpLength_Eq == JSOpLength_Ne);
+        static_assert(JSOpLength_Eq == JSOpLength_StrictEq);
+        static_assert(JSOpLength_Eq == JSOpLength_StrictNe);
+        static_assert(JSOpLength_Eq == JSOpLength_Lt);
+        static_assert(JSOpLength_Eq == JSOpLength_Gt);
+        static_assert(JSOpLength_Eq == JSOpLength_Le);
+        static_assert(JSOpLength_Eq == JSOpLength_Ge);
+        IC_POP_ARG(1);
+        IC_POP_ARG(0);
+        IC_ZERO_ARG(2);
+        INVOKE_IC_AND_PUSH(Compare, false);
+        END_OP(Eq);
+      }
 
       CASE(Instanceof) {
         IC_POP_ARG(1);
@@ -7990,7 +7885,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
               }
             }
             // 11. Check for interrupts.
-#ifndef __wasi__
+#ifdef ENABLE_INTERRUPT_CHECKS
             if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
               PUSH_EXIT_FRAME();
               if (!InterruptCheck(cx)) {
@@ -8339,7 +8234,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       CASE(LoopHead) {
         int32_t icIndex = GET_INT32(pc);
         icEntry = icEntries + icIndex;
-#ifndef __wasi__
+#ifdef ENABLE_INTERRUPT_CHECKS
         if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
           PUSH_EXIT_FRAME();
           if (!InterruptCheck(cx)) {
@@ -8636,7 +8531,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
 
       CASE(Finally) {
-#ifndef __wasi__
+#ifndef ENABLE_INTERRUPT_CHECKS
         if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
           PUSH_EXIT_FRAME();
           if (!InterruptCheck(cx)) {
@@ -9140,7 +9035,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
       }
 
     label_default:
-#ifdef __wasi__
+#ifndef ENABLE_COMPUTED_GOTO_DISPATCH
     default:
 #endif
       MOZ_CRASH("Bad opcode");
@@ -9317,21 +9212,20 @@ unwind_ret:
   from_unwind = true;
   goto do_return;
 
-#ifndef __wasi__
-debug: {
-  TRACE_PRINTF("hit debug point\n");
-  PUSH_EXIT_FRAME();
-  if (!HandleDebugTrap(cx, frame, pc)) {
-    TRACE_PRINTF("HandleDebugTrap returned error\n");
-    goto error;
+debug:;
+  {
+    TRACE_PRINTF("hit debug point\n");
+    PUSH_EXIT_FRAME();
+    if (!HandleDebugTrap(cx, frame, pc)) {
+      TRACE_PRINTF("HandleDebugTrap returned error\n");
+      goto error;
+    }
+    pc = frame->interpreterPC();
+    pcbase = pc;
+    ctx.pcbase = pc;
+    TRACE_PRINTF("HandleDebugTrap done\n");
   }
-  pc = frame->interpreterPC();
-  pcbase = pc;
-  ctx.pcbase = pc;
-  TRACE_PRINTF("HandleDebugTrap done\n");
-}
   goto dispatch;
-#endif
 }
 
 /*
@@ -9397,10 +9291,10 @@ bool PortableBaselineTrampoline(JSContext* cx, size_t argc, Value* argv,
   jsbytecode* pc = script->code();
   ImmutableScriptData* isd = script->immutableScriptData();
   PBIResult ret;
-  INVOKE_PBI(ret, script,
-             (PortableBaselineInterpret<false, false, kHybridICsInterp>), cx,
-             state, stack, sp, envChain, result, pc, 0, isd, nullptr, nullptr,
-             nullptr, PBIResult::Ok);
+  PBL_CALL_INTERP(ret, script,
+                  (PortableBaselineInterpret<false, false, kHybridICsInterp>),
+                  cx, state, stack, sp, envChain, result, pc, 0, isd, nullptr,
+                  nullptr, nullptr, PBIResult::Ok);
   switch (ret) {
     case PBIResult::Ok:
     case PBIResult::UnwindRet:
@@ -9495,8 +9389,7 @@ void EnqueueScriptSpecialization(JSScript* script) {
 
     weval.req = weval::weval(
         reinterpret_cast<PBIFunc*>(&weval.func),
-        &PortableBaselineInterpret<true, false, kHybridICsCompiled>,
-        WEVAL_JSOP_ID,
+        &PortableBaselineInterpret<true, false, false>, WEVAL_JSOP_ID,
         /* num_globals = */ 2,
         Specialize<uint64_t>(script->argsObjAliasesFormals() ? 1 : 0),
         Specialize<uint64_t>(script->nfixed()), Runtime<JSContext*>(),

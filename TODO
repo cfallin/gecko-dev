@@ -1,24 +1,7 @@
 - Productionize
   - General cleanup; reconstruction of patch stack
-  - IC collection and cache pre-filling script
-    - weval collect mode that just runs a WASI program and looks at requests;
-      no Wizer snapshotting (hence no need to upstream that patch)
-    - weval merge mode to merge collected requests
-    - script in SM tree that runs JS jit-tests with wrapper that collects
-      ICs on the side, then merges them
-  - weval efficiency and cleanup
-    - incremental builds / caching
-      - clean up StaticMemory first: const-prop but don't allow loads from
-        memory image
-      - use SQLite to cache sha256(func bytecode, weval request params, arg
-        string) -> resulting bytecode in ~/.cache/weval/cache.sqlite
-      - add `weval clear-cache` command (by timestamp or all)
-      - support read-only cache shipped with build?
-        - then build artifacts are: libspidermonkey.a; spidermonkey.wevals;
-          spidermonkey-weval-cache.sqlite
 - Optimizations
   - comparison to wasm32 JIT
-  - look at register pressure a bit more and verify nothing to be done
   - JS function prologues?
 - Rejected ideas:
   - known-bits / partial-constant
@@ -38,11 +21,6 @@
   - Value::setUnchecked (0.58%)
 
 - other perf ideas
-  - (x) share some ICCtx? Rooted value registration? no RootedScript (use
-    BaselineFrame)
-  - (x) PC for restarts: take base and offset; load entryPC from ctx
-  - make sure const flag parameters from script get const-propagated and
-    branch-folded (including prologue env setup and arg fetches)
   - inline nursery alloc?
   - intrinsic to "bless" the ICCtx location ptr as a root so we don't
     keep rematerializing it

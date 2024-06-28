@@ -1,0 +1,18 @@
+- Clean up redundant state updates in main interp (macros to update locals plus
+  stored values)
+
+- Do a final test of Octane scores in Weval and Wizer (interp-only PBL) builds
+
+- Split out easily separable pieces onto new stack:
+  - shell wizer base
+  - AOT ICs
+  - new PBL header (non-weval version) and refactors to use it
+  - CacheIR ops (PBL interpreter body updates)
+  - weval header and integration
+  - PR this
+
+- weval release to npm
+
+- PR to spidermonkey-wasi-embedding to build weval variant, build weval pre-cache
+
+- PR to starlingmonkey to run weval during build instead of wizer

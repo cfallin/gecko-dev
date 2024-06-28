@@ -101,7 +101,7 @@ static const bool kHybridICsInterp = PBL_HYBRID_ICS_DEFAULT;
 // Whether to compile interpreter dispatch loops using computed gotos
 // or direct switches.
 #if !defined(__wasi__) && !defined(TRACE_INTERP)
-#define ENABLE_COMPUTED_GOTO_DISPATCH
+#  define ENABLE_COMPUTED_GOTO_DISPATCH
 #endif
 
 // Whether to compile in interrupt checks in the main interpreter loop.
@@ -588,8 +588,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
     case CacheOp::name:             \
       cacheop_##name:
 
-#  define DISPATCH_CACHEOP()          \
-    cacheop = cacheIRReader.readOp(); \
+#  define DISPATCH_CACHEOP()                         \
+    cacheop = cacheIRReader.readOp();                \
     PBL_UPDATE_CTX(cacheIRReader.currentPosition()); \
     goto dispatch;
 
@@ -5821,6 +5821,23 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
     goto error;                \
   } while (0)
 
+#define RESET_SP(new_sp) \
+  sp = new_sp;           \
+  spbase = sp;           \
+  ctx.spbase = spbase;   \
+  ctx.spoffset = 0;
+
+#define RESET_PC(new_pc, new_script)                           \
+  pc = new_pc;                                                 \
+  pcbase = new_script->code();                                 \
+  ctx.pcbase = pcbase;                                         \
+  pcoffset = pc - pcbase;                                      \
+  entryPC = pcbase;                                            \
+  ctx.entryPC = entryPC;                                       \
+  argsObjAliasesFormals = new_script->argsObjAliasesFormals(); \
+  isd = new_script->immutableScriptData();                     \
+  ctx.isd = isd;
+
 #define OPCODE_LABEL(op, ...) LABEL(op),
 #define TRAILING_LABEL(v) LABEL(default),
 
@@ -5848,15 +5865,39 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
     entryPC = pc;
   }
 
+  /*
+   * Local state: PC, IC entry pointer, stack pointer, frame pointer,
+   * and tracking of entry state when multiple frames are handled in
+   * this one interpreter call.
+   *
+   * Note that we store a lot of state in `ctx`; this is for
+   * register-pressure reasons. We do not want the restart tails to
+   * keep locals alive; rather we are fine with loads from memory on
+   * those cold paths.
+   *
+   * Despite that in-memory state, we *also* keep cached copies in
+   * locals of various state. This is so that partial-evaluation
+   * specialization and other compiler optimizations can see through
+   * this dataflow. We are careful to use the cached-in-local copies
+   * only in ways that can be elided after
+   * specialization/optimization, and to rely on the in-memory copies
+   * when dynamic copies will be loaded.
+   *
+   * Finally, we split PC and SP into "base" and "offset" portions
+   * carefully so that the "offsets" are fixed for a given program
+   * point in the bytecode. This allows specialization to
+   * constant-propagate the offsets rather than generate a chain of
+   * adds/subtracts from the dynamic base.
+   */
+
   bool from_unwind = false;
   PBIResult ic_result = PBIResult::Ok;
   uint64_t ic_arg0 = 0, ic_arg1 = 0, ic_arg2 = 0, ic_ret = 0;
   ICCtx ctx(cx_, frame, state, stack);
   auto* icEntries = frame->icScript()->icEntries();
   auto* icEntry = icEntries;
-  auto* spbase = sp;
-  ctx.spbase = spbase;
-  ctx.spoffset = 0;
+  StackVal* spbase;
+  RESET_SP(sp);
   ctx.envChain = envChain;
   ctx.isd = isd;
   ctx.ret = ret;
@@ -5931,7 +5972,9 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
     }
 
     if (!frame->script()->hasScriptCounts()) {
-      if (ctx.frameMgr.cxForLocalUseOnly()->realm()->collectCoverageForDebug()) {
+      if (ctx.frameMgr.cxForLocalUseOnly()
+              ->realm()
+              ->collectCoverageForDebug()) {
         PUSH_EXIT_FRAME();
         if (!frame->script()->initScriptCounts(cx)) {
           GOTO_ERROR();
@@ -5958,7 +6001,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
   while (true) {
     DEBUG_CHECK();
 
-  dispatch :
+  dispatch:
 #ifdef TRACE_INTERP
   {
     MOZ_RELEASE_ASSERT(sp <= ctx.stack.fp);
@@ -7761,16 +7804,8 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
             icEntries = frame->icScript()->icEntries();
             icEntry = frame->interpreterICEntry();
             // 6. Set up PC and SP for callee.
-            sp = reinterpret_cast<StackVal*>(frame);
-            spbase = sp;
-            ctx.spbase = spbase;
-            pc = calleeScript->code();
-            pcbase = pc;
-            ctx.pcbase = pc;
-            entryPC = pc;
-            ctx.entryPC = entryPC;
-            isd = calleeScript->immutableScriptData();
-            ctx.isd = isd;
+            RESET_SP(reinterpret_cast<StackVal*>(frame));
+            RESET_PC(calleeScript->code(), calleeScript);
             // 7. Check callee stack space for max stack depth.
             if (!ctx.stack.check(sp,
                                  sizeof(StackVal) * calleeScript->nslots())) {
@@ -8267,9 +8302,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         }
         from_unwind = false;
 
-        sp = ctx.stack.popFrame();
-        spbase = sp;
-        ctx.spbase = spbase;
+        RESET_SP(ctx.stack.popFrame());
 
         // If FP is higher than the entry frame now, return; otherwise,
         // do an inline state update.
@@ -8284,9 +8317,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
           TRACE_PRINTF("ret = %" PRIx64 "\n", innerRet.asRawBits());
 
           // Pop exit frame as well.
-          sp = ctx.stack.popFrame();
-          spbase = sp;
-          ctx.spbase = spbase;
+          RESET_SP(ctx.stack.popFrame());
           // Pop fake return address and descriptor.
           POPNNATIVE(2);
 
@@ -8300,15 +8331,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
           ctx.frame = frame;
           icEntries = frame->icScript()->icEntries();
           icEntry = frame->interpreterICEntry();
-          pc = frame->interpreterPC();
-          pcbase = frame->script()->code();
-          ctx.pcbase = pcbase;
-          pcoffset = pc - pcbase;
-          argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
-          entryPC = frame->script()->code();
-          ctx.entryPC = entryPC;
-          isd = frame->script()->immutableScriptData();
-          ctx.isd = isd;
+          RESET_PC(frame->interpreterPC(), frame->script());
 
           // Adjust caller's stack to complete the call op that PC still points
           // to in that frame (pop args, push return value).
@@ -8466,7 +8489,8 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 
       CASE(InitAliasedLexical) {
         EnvironmentCoordinate ec = EnvironmentCoordinate(pc);
-        EnvironmentObject& obj = getEnvironmentFromCoordinate<Specialized>(frame, ec);
+        EnvironmentObject& obj =
+            getEnvironmentFromCoordinate<Specialized>(frame, ec);
         obj.setAliasedBinding(ec, VIRTSP(0).asValue());
         END_OP(InitAliasedLexical);
       }
@@ -8564,7 +8588,8 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         static_assert(JSOpLength_GetAliasedVar ==
                       JSOpLength_GetAliasedDebugVar);
         EnvironmentCoordinate ec = EnvironmentCoordinate(pc);
-        EnvironmentObject& obj = getEnvironmentFromCoordinate<Specialized>(frame, ec);
+        EnvironmentObject& obj =
+            getEnvironmentFromCoordinate<Specialized>(frame, ec);
         VIRTPUSH(StackVal(obj.aliasedBinding(ec)));
         END_OP(GetAliasedVar);
       }
@@ -8668,7 +8693,8 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 
       CASE(SetAliasedVar) {
         EnvironmentCoordinate ec = EnvironmentCoordinate(pc);
-        EnvironmentObject& obj = getEnvironmentFromCoordinate<Specialized>(frame, ec);
+        EnvironmentObject& obj =
+            getEnvironmentFromCoordinate<Specialized>(frame, ec);
         MOZ_ASSERT(!IsUninitializedLexical(obj.aliasedBinding(ec)));
         obj.setAliasedBinding(ec, VIRTSP(0).asValue());
         END_OP(SetAliasedVar);
@@ -8984,18 +9010,14 @@ error:
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         goto unwind_error;
       case ExceptionResumeKind::Catch:
-        pc = frame->interpreterPC();
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> catch to pc %p (fp %p sp %p)\n", pc, rfe.framePointer,
                      rfe.stackPointer);
         goto unwind;
       case ExceptionResumeKind::Finally:
-        pc = frame->interpreterPC();
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
-        sp = reinterpret_cast<StackVal*>(rfe.stackPointer);
-        spbase = sp;
-        ctx.spbase = spbase;
+        RESET_SP(reinterpret_cast<StackVal*>(rfe.stackPointer));
         TRACE_PRINTF(" -> finally to pc %p\n", pc);
         PUSH(StackVal(rfe.exception));
         PUSH(StackVal(rfe.exceptionStack));
@@ -9003,7 +9025,6 @@ error:
         ctx.stack.unwindingSP = sp;
         goto unwind;
       case ExceptionResumeKind::ForcedReturnBaseline:
-        pc = frame->interpreterPC();
         ctx.stack.unwindingFP = reinterpret_cast<StackVal*>(rfe.framePointer);
         ctx.stack.unwindingSP = reinterpret_cast<StackVal*>(rfe.stackPointer);
         TRACE_PRINTF(" -> forced return\n");
@@ -9048,10 +9069,7 @@ unwind:
     TRACE_PRINTF(" -> returning\n");
     return PBIResult::Unwind;
   }
-  sp = ctx.stack.unwindingSP;
-  spbase = sp;
-  ctx.spbase = spbase;
-  ctx.spoffset = 0;
+  RESET_SP(ctx.stack.unwindingSP);
   ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
@@ -9060,10 +9078,7 @@ unwind:
   ctx.frame = frame;
   icEntries = frame->icScript()->icEntries();
   icEntry = frame->interpreterICEntry();
-  pc = frame->interpreterPC();
-  pcbase = frame->script()->code();
-  ctx.pcbase = pcbase;
-  argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
+  RESET_PC(frame->interpreterPC(), frame->script());
   DISPATCH();
 unwind_error:
   TRACE_PRINTF("unwind_error: fp = %p entryFrame = %p\n", ctx.stack.fp,
@@ -9076,10 +9091,7 @@ unwind_error:
       reinterpret_cast<uintptr_t>(entryFrame) + BaselineFrame::Size()) {
     return PBIResult::Error;
   }
-  sp = ctx.stack.unwindingSP;
-  spbase = sp;
-  ctx.spbase = spbase;
-  ctx.spoffset = 0;
+  RESET_SP(ctx.stack.unwindingSP);
   ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
@@ -9088,10 +9100,7 @@ unwind_error:
   ctx.frame = frame;
   icEntries = frame->icScript()->icEntries();
   icEntry = frame->interpreterICEntry();
-  pc = frame->interpreterPC();
-  pcbase = pc;
-  ctx.pcbase = pc;
-  argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
+  RESET_PC(frame->interpreterPC(), frame->script());
   goto error;
 unwind_ret:
   TRACE_PRINTF("unwind_ret: fp = %p entryFrame = %p\n", ctx.stack.fp,
@@ -9105,10 +9114,7 @@ unwind_ret:
     *ctx.ret = frame->returnValue();
     return PBIResult::Ok;
   }
-  sp = ctx.stack.unwindingSP;
-  spbase = sp;
-  ctx.spbase = spbase;
-  ctx.spoffset = 0;
+  RESET_SP(ctx.stack.unwindingSP);
   ctx.stack.fp = ctx.stack.unwindingFP;
   frame = reinterpret_cast<BaselineFrame*>(
       reinterpret_cast<uintptr_t>(ctx.stack.fp) - BaselineFrame::Size());
@@ -9117,10 +9123,7 @@ unwind_ret:
   ctx.frame = frame;
   icEntries = frame->icScript()->icEntries();
   icEntry = frame->interpreterICEntry();
-  pc = frame->interpreterPC();
-  pcbase = pc;
-  ctx.pcbase = pc;
-  argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
+  RESET_PC(frame->interpreterPC(), frame->script());
   from_unwind = true;
   goto do_return;
 
@@ -9132,9 +9135,7 @@ debug:;
       TRACE_PRINTF("HandleDebugTrap returned error\n");
       goto error;
     }
-    pc = frame->interpreterPC();
-    pcbase = pc;
-    ctx.pcbase = pc;
+    RESET_PC(frame->interpreterPC(), frame->script());
     TRACE_PRINTF("HandleDebugTrap done\n");
   }
   goto dispatch;

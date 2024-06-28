@@ -1,6 +1,3 @@
-- Clean up redundant state updates in main interp (macros to update locals plus
-  stored values)
-
 - Do a final test of Octane scores in Weval and Wizer (interp-only PBL) builds
 
 - Split out easily separable pieces onto new stack:

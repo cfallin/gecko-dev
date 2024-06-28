@@ -24,8 +24,12 @@
     result = func(arg0, arg1, stubvalue, ctx);                              \
   } while (0)
 
-#define PBL_CALL_INTERP(result, script, interp, ...) \
-  result = interp(__VA_ARGS__);
+#define PBL_CALL_INTERP(result, script, interp, ...)                         \
+  if (script->hasWeval() && script->weval().func) {                          \
+    result = (reinterpret_cast<PBIFunc>(script->weval().func))(__VA_ARGS__); \
+  } else {                                                                   \
+    result = interp(__VA_ARGS__);                                            \
+  }
 
 #define PBL_ESTABLISH_STUBINFO_CODE(Specialized, stubInfo, code)            \
   if (!Specialized) {                                                       \

@@ -590,7 +590,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #  define DISPATCH_CACHEOP()          \
     cacheop = cacheIRReader.readOp(); \
-    PBL_UPDATE_IC_CTX();              \
+    PBL_UPDATE_CTX(cacheIRReader.currentPosition()); \
     goto dispatch;
 
 #endif  // !ENABLE_COMPUTED_GOTO_DISPATCH
@@ -636,7 +636,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
   uint64_t retValue = 0;
   CacheOp cacheop;
 
-  PBL_PUSH_IC_CTX();
+  PBL_PUSH_CTX(cacheIRReader.currentPosition());
 
   WRITE_VALUE_REG(0, Value::fromRawBits(arg0));
   WRITE_VALUE_REG(1, Value::fromRawBits(arg1));
@@ -5325,7 +5325,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
   }
 
 next_ic:
-  PBL_POP_IC_CTX();
+  PBL_POP_CTX();
   TRACE_PRINTF("IC failed; next IC\n");
   return CallNextIC(arg0, arg1, stub, ctx);
 }
@@ -5667,35 +5667,25 @@ uint8_t* GetICInterpreter() {
  * -----------------------------------------------
  */
 
-#ifdef ENABLE_JS_PBL_WEVAL
+template <bool Specialized>
 static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
     BaselineFrame* frame, EnvironmentCoordinate ec) {
   JSObject* env = frame->environmentChain();
-  weval_push_context(0);
+  PBL_PUSH_CTX(0U);
   for (unsigned i = ec.hops(); i; i--) {
-    env = &env->as<EnvironmentObject>().enclosingEnvironment();
-    weval_update_context(i);
-  }
-  weval_pop_context();
-  return env->as<EnvironmentObject>();
-}
-#else
-static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
-    BaselineFrame* frame, EnvironmentCoordinate ec) {
-  JSObject* env = frame->environmentChain();
-  for (unsigned i = ec.hops(); i; i--) {
-    if (env->is<EnvironmentObject>()) {
+    if (Specialized || env->is<EnvironmentObject>()) {
       env = &env->as<EnvironmentObject>().enclosingEnvironment();
     } else {
       MOZ_ASSERT(env->is<DebugEnvironmentProxy>());
       env = &env->as<DebugEnvironmentProxy>().enclosingEnvironment();
     }
+    PBL_UPDATE_CTX(i);
   }
-  return env->is<EnvironmentObject>()
+  PBL_POP_CTX();
+  return (Specialized || env->is<EnvironmentObject>())
              ? env->as<EnvironmentObject>()
              : env->as<DebugEnvironmentProxy>().environment();
 }
-#endif
 
 #define DEBUG_CHECK()                                                   \
   if (!Specialized && frame->isDebuggee()) {                            \
@@ -5706,15 +5696,6 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
     }                                                                   \
   }
 
-#ifdef ENABLE_JS_PBL_WEVAL
-#  define WEVAL_UPDATE_CONTEXT() \
-    weval::update_context(reinterpret_cast<uint32_t>(pc));
-#  define WEVAL_POP_CONTEXT() weval::pop_context();
-#else
-#  define WEVAL_UPDATE_CONTEXT() ;
-#  define WEVAL_POP_CONTEXT() ;
-#endif
-
 #define LABEL(op) (&&label_##op)
 #ifdef ENABLE_COMPUTED_GOTO_DISPATCH
 #  define CASE(op) label_##op:
@@ -5723,9 +5704,9 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
     goto* addresses[*pc]
 #else
 #  define CASE(op) label_##op : case JSOp::op:
-#  define DISPATCH()        \
-    DEBUG_CHECK();          \
-    WEVAL_UPDATE_CONTEXT(); \
+#  define DISPATCH()    \
+    DEBUG_CHECK();      \
+    PBL_UPDATE_CTX(pc); \
     goto dispatch
 #endif
 
@@ -5788,7 +5769,7 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
               ic_arg0, ic_arg1, ic_arg2, hasarg2);                      \
   if (ic_ret == IC_ERROR_SENTINEL()) {                                  \
     pcoffset = pc - pcbase;                                             \
-    WEVAL_POP_CONTEXT();                                                \
+    PBL_POP_CTX();                                                      \
     ic_result = ctx.error;                                              \
     goto ic_fail;                                                       \
   }                                                                     \
@@ -5797,58 +5778,6 @@ static MOZ_ALWAYS_INLINE EnvironmentObject& getEnvironmentFromCoordinate(
 #define INVOKE_IC_AND_PUSH(kind, hasarg2) \
   INVOKE_IC(kind, hasarg2);               \
   VIRTPUSH(StackVal(ic_ret));
-
-#ifdef ENABLE_JS_PBL_WEVAL
-#  define VIRTPUSH(value)                                                    \
-    if (Specialized) {                                                       \
-      --sp;                                                                  \
-      weval_push_stack(reinterpret_cast<uint64_t*>(sp), (value).asUInt64()); \
-    } else {                                                                 \
-      *--sp = (value);                                                       \
-    }
-#  define VIRTPOP()                                      \
-    (Specialized ? ({                                    \
-      uint64_t* ptr = reinterpret_cast<uint64_t*>(sp++); \
-      StackVal(weval_pop_stack(ptr));                    \
-    })                                                   \
-                 : *sp++)
-#  define VIRTSP(index)                                                     \
-    (Specialized ? StackVal(weval_read_stack(                               \
-                       reinterpret_cast<uint64_t*>(&sp[(index)]), (index))) \
-                 : sp[(index)])
-#  define VIRTSPWRITE(index, value)                                         \
-    if (Specialized) {                                                      \
-      weval_write_stack(reinterpret_cast<uint64_t*>(&sp[(index)]), (index), \
-                        (value).asUInt64());                                \
-    } else {                                                                \
-      sp[(index)] = (value);                                                \
-    }
-#  define SYNCSP()        \
-    if (Specialized) {    \
-      weval_sync_stack(); \
-    }
-#  define SETLOCAL(i, value)                                         \
-    if (Specialized) {                                               \
-      weval_write_local(                                             \
-          reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i, \
-          (value).asRawBits());                                      \
-    } else {                                                         \
-      frame->unaliasedLocal(i) = value;                              \
-    }
-#  define GETLOCAL(i)                                                      \
-    (Specialized                                                           \
-         ? Value::fromRawBits(weval_read_local(                            \
-               reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i)) \
-         : frame->unaliasedLocal(i))
-#else
-#  define VIRTPUSH(value) PUSH(value)
-#  define VIRTPOP() POP()
-#  define VIRTSP(index) sp[(index)]
-#  define VIRTSPWRITE(index, value) sp[(index)] = (value)
-#  define SYNCSP()
-#  define SETLOCAL(i, value) frame->unaliasedLocal(i) = value
-#  define GETLOCAL(i) frame->unaliasedLocal(i)
-#endif
 
 #define VIRTPOPN(n) \
   SYNCSP();         \
@@ -5935,16 +5864,9 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
   ctx.entryPC = entryPC;
   ctx.pcbase = pcbase;
 
-#ifndef ENABLE_JS_PBL_WEVAL
-  bool argsObjAliasesFormals = frame->script()->argsObjAliasesFormals();
-  uint32_t nfixed = frame->script()->nfixed();
-#else
-  bool argsObjAliasesFormals = Specialized
-                                   ? (weval_read_specialization_global(0) != 0)
-                                   : frame->script()->argsObjAliasesFormals();
-  uint32_t nfixed = Specialized ? weval_read_specialization_global(1)
-                                : frame->script()->nfixed();
-#endif
+  bool argsObjAliasesFormals;
+  uint32_t nfixed;
+  PBL_SETUP_INTERP_INPUTS(argsObjAliasesFormals, nfixed);
 
   if (IsRestart) {
     ic_result = restartCode;
@@ -6031,9 +5953,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
   TRACE_PRINTF("nslots = %d nfixed = %d\n", int(frame->script()->nslots()),
                int(frame->script()->nfixed()));
 
-#ifdef ENABLE_JS_PBL_WEVAL
-  weval::push_context(reinterpret_cast<uint32_t>(pc));
-#endif
+  PBL_PUSH_CTX(pc);
 
   while (true) {
     DEBUG_CHECK();
@@ -7757,12 +7677,10 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
               TRACE_PRINTF("missed fastpath: not enough arguments\n");
               break;
             }
-#ifdef ENABLE_JS_PBL_WEVAL
-            if (calleeScript->hasWeval() && calleeScript->weval().func) {
+            if (PBL_SCRIPT_HAS_SPECIALIZATION(calleeScript)) {
               TRACE_PRINTF("missed fastpath: specialized function exists\n");
               break;
             }
-#endif
 
             // Fast-path: function, interpreted, has JitScript, same realm, no
             // argument underflow.
@@ -8312,16 +8230,10 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
           DISPATCH();
         }
 
-        i = uint32_t(i) - uint32_t(low);
-#ifdef ENABLE_JS_PBL_WEVAL
-        i = int32_t(
-            weval_specialize_value(uint32_t(i), 0, uint32_t(high - low + 1)));
-#endif
+        i = PBL_SPECIALIZE_VALUE(i - low, low, high);
+
         if ((uint32_t(i) < uint32_t(high - low + 1))) {
           len = isd->tableSwitchCaseOffset(pc, uint32_t(i)) - (pc - entryPC);
-#ifdef ENABLE_JS_PBL_WEVAL
-          weval_assert_const32(len, __LINE__);
-#endif
           ADVANCE(len);
           DISPATCH();
         }
@@ -8554,7 +8466,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 
       CASE(InitAliasedLexical) {
         EnvironmentCoordinate ec = EnvironmentCoordinate(pc);
-        EnvironmentObject& obj = getEnvironmentFromCoordinate(frame, ec);
+        EnvironmentObject& obj = getEnvironmentFromCoordinate<Specialized>(frame, ec);
         obj.setAliasedBinding(ec, VIRTSP(0).asValue());
         END_OP(InitAliasedLexical);
       }
@@ -8652,7 +8564,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
         static_assert(JSOpLength_GetAliasedVar ==
                       JSOpLength_GetAliasedDebugVar);
         EnvironmentCoordinate ec = EnvironmentCoordinate(pc);
-        EnvironmentObject& obj = getEnvironmentFromCoordinate(frame, ec);
+        EnvironmentObject& obj = getEnvironmentFromCoordinate<Specialized>(frame, ec);
         VIRTPUSH(StackVal(obj.aliasedBinding(ec)));
         END_OP(GetAliasedVar);
       }
@@ -8756,7 +8668,7 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
 
       CASE(SetAliasedVar) {
         EnvironmentCoordinate ec = EnvironmentCoordinate(pc);
-        EnvironmentObject& obj = getEnvironmentFromCoordinate(frame, ec);
+        EnvironmentObject& obj = getEnvironmentFromCoordinate<Specialized>(frame, ec);
         MOZ_ASSERT(!IsUninitializedLexical(obj.aliasedBinding(ec)));
         obj.setAliasedBinding(ec, VIRTSP(0).asValue());
         END_OP(SetAliasedVar);
@@ -9048,8 +8960,8 @@ restart:
   //
   // Note carefully that every arg here is loaded from `ctx` except
   // for `pcoffset`, which can be computed as a constant when this
-  // code is specialized by weval. This is intentional: it reduces
-  // register pressure across the main function body.
+  // code is specialized. This is intentional: it reduces register
+  // pressure across the main function body.
   return PortableBaselineInterpret<false, true, HybridICs>(
       ctx.frameMgr.cxForLocalUseOnly(), ctx.state, ctx.stack, ctx.sp(),
       ctx.envChain, ctx.ret, ctx.pcbase, pcoffset, ctx.isd, ctx.entryPC,

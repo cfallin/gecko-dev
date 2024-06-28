@@ -26,15 +26,11 @@
     }                                                                       \
   } while (0)
 
-#define PBL_CALL_INTERP(result, script, interp, ...)                         \
-  if (script->hasWeval() && script->weval().func) {                          \
-    result = (reinterpret_cast<PBIFunc>(script->weval().func))(__VA_ARGS__); \
-  } else {                                                                   \
-    result = interp(__VA_ARGS__);                                            \
-  }
+#define PBL_CALL_INTERP(result, script, interp, ...) \
+  result = interp(__VA_ARGS__);
 
-#define PBL_ETABLISH_STUBINFO_CODE(Specialized, stubInfo, code) \
-  stubInfo = cstub->stubInfo();                                 \
+#define PBL_ESTABLISH_STUBINFO_CODE(Specialized, stubInfo, code) \
+  stubInfo = cstub->stubInfo();                                  \
   code = stubInfo->code();
 
 #define READ_REG(reg)                                       \
@@ -66,8 +62,24 @@
     ctx.icregs.icTags[(reg)] = 0;                                           \
   } while (0)
 
-#define PBL_PUSH_IC_CTX() ;
-#define PBL_UPDATE_IC_CTX() ;
-#define PBL_POP_IC_CTX() ;
+#define PBL_PUSH_CTX(ctx) ;
+#define PBL_UPDATE_CTX(ctx) ;
+#define PBL_POP_CTX() ;
+
+#define VIRTPUSH(value) PUSH(value)
+#define VIRTPOP() POP()
+#define VIRTSP(index) sp[(index)]
+#define VIRTSPWRITE(index, value) sp[(index)] = (value)
+#define SYNCSP()
+#define SETLOCAL(i, value) frame->unaliasedLocal(i) = value
+#define GETLOCAL(i) frame->unaliasedLocal(i)
+
+#define PBL_SETUP_INTERP_INPUTS(argsObjAliasesFormals, nfixed)      \
+  argsObjAliasesFormals = frame->script()->argsObjAliasesFormals(); \
+  nfixed = frame->script()->nfixed();
+
+#define PBL_SPECIALIZE_VALUE(i, low, high) i
+
+#define PBL_SCRIPT_HAS_SPECIALIZATION(script) false
 
 #endif  /* PortableBaselineInerpret_defs_h */

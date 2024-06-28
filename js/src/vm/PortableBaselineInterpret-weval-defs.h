@@ -64,15 +64,66 @@
     ctx.icregs.icTags[(reg)] = 0;                   \
   }
 
-#define PBL_PUSH_IC_CTX() \
-  weval::push_context(    \
-      reinterpret_cast<uint32_t>(cacheIRReader.currentPosition()));
+#define PBL_PUSH_CTX(ctx) weval::push_context(reinterpret_cast<uint32_t>(ctx));
 
-#define PBL_UPDATE_IC_CTX() \
-  weval::update_context(    \
-      reinterpret_cast<uint32_t>(cacheIRReader.currentPosition()));
+#define PBL_UPDATE_CTX(ctx) \
+  weval::update_context(reinterpret_cast<uint32_t>(ctx));
 
-#define PBL_POP_IC_CTX() \
+#define PBL_POP_CTX() \
     weval::pop_context();
+
+#define VIRTPUSH(value)                                                    \
+  if (Specialized) {                                                       \
+    --sp;                                                                  \
+    weval_push_stack(reinterpret_cast<uint64_t*>(sp), (value).asUInt64()); \
+  } else {                                                                 \
+    *--sp = (value);                                                       \
+  }
+#define VIRTPOP()                                      \
+  (Specialized ? ({                                    \
+    uint64_t* ptr = reinterpret_cast<uint64_t*>(sp++); \
+    StackVal(weval_pop_stack(ptr));                    \
+  })                                                   \
+               : *sp++)
+#define VIRTSP(index)                                                     \
+  (Specialized ? StackVal(weval_read_stack(                               \
+                     reinterpret_cast<uint64_t*>(&sp[(index)]), (index))) \
+               : sp[(index)])
+#define VIRTSPWRITE(index, value)                                         \
+  if (Specialized) {                                                      \
+    weval_write_stack(reinterpret_cast<uint64_t*>(&sp[(index)]), (index), \
+                      (value).asUInt64());                                \
+  } else {                                                                \
+    sp[(index)] = (value);                                                \
+  }
+#define SYNCSP()        \
+  if (Specialized) {    \
+    weval_sync_stack(); \
+  }
+#define SETLOCAL(i, value)                                                    \
+  if (Specialized) {                                                          \
+    weval_write_local(reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), \
+                      i, (value).asRawBits());                                \
+  } else {                                                                    \
+    frame->unaliasedLocal(i) = value;                                         \
+  }
+#define GETLOCAL(i)                                                      \
+  (Specialized                                                           \
+       ? Value::fromRawBits(weval_read_local(                            \
+             reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i)) \
+       : frame->unaliasedLocal(i))
+
+#define PBL_SETUP_INTERP_INPUTS(argsObjAliasesFormals, nfixed)             \
+  argsObjAliasesFormals = Specialized                                      \
+                              ? (weval_read_specialization_global(0) != 0) \
+                              : frame->script()->argsObjAliasesFormals();  \
+  nfixed = Specialized ? weval_read_specialization_global(1)               \
+                       : frame->script()->nfixed();
+
+#define PBL_SPECIALIZE_VALUE(i, low, high) \
+  int32_t(weval_specialize_value(uint32_t(i), 0, uint32_t(high - low + 1)));
+
+#define PBL_SCRIPT_HAS_SPECIALIZATION(script) \
+    (script->hasWeval() && script->weval().func)
 
 #endif /* PortableBaselineInerpret_defs_h */

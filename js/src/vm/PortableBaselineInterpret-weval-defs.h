@@ -7,6 +7,15 @@
 #ifndef PortableBaselineInerpret_weval_defs_h
 #define PortableBaselineInerpret_weval_defs_h
 
+#ifdef DEBUG
+// weval has to constant-propagate interpreter state well enough to unroll the
+// interpreter loops, and this is not possible in a debug build because the
+// interpreter state is spilled and reloaded to memory (which cannot be tracked
+// in a fine-grained way by cprop). We need C++ locals to live in Wasm locals
+// for weval to work.
+#error PBL weval support only works in optimized (non-debug) builds.
+#endif
+
 /* Basic definitions for PBL's internals that can be swapped out as
  * needed to handle interpreter details differently.
  *

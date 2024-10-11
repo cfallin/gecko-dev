@@ -2650,7 +2650,20 @@ static bool LookupOrCompileStub(JSContext* cx, CacheKind kind,
   }
   MOZ_ASSERT_IF(IsBaselineInterpreterEnabled(), code);
   MOZ_ASSERT(stubInfo);
-  MOZ_ASSERT(stubInfo->stubDataSize() == writer.stubDataSize());
+  // Assert that the StubInfo recomputing its stub-data size exactly
+  // matches the writer's stub-data size, but only if we're not
+  // loading an AOT IC -- otherwise, trust the recomputation from
+  // field types.
+  //
+  // Why ignore if AOT? Because the AOT corpus might have been dumped
+  // on a machine with a different word size than our machine (e.g.,
+  // 64 to 32 bits). The field types are serialized and deserialized,
+  // and they are authoritative; the CacheIRWriter's stubDataSize is
+  // computed during build and used only for this assert, so it is
+  // strictly a redundant check.
+  if (!isAOTFill) {
+    MOZ_ASSERT(stubInfo->stubDataSize() == writer.stubDataSize());
+  }
 
   return true;
 }

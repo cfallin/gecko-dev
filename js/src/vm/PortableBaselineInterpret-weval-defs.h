@@ -65,11 +65,11 @@
 
 #define READ_VALUE_REG(reg)                                       \
   Value::fromRawBits(                                             \
-      Specialized ? (weval_read_reg((reg) + ICRegs::kMaxICVals) | \
+      false ? (weval_read_reg((reg) + ICRegs::kMaxICVals) | \
                      weval_read_reg((reg)))                       \
                   : (ctx.icregs.icTags[(reg)] | ctx.icregs.icVals[(reg)]))
 #define WRITE_VALUE_REG(reg, value)                 \
-  if (Specialized) {                                \
+  if (false) {                                \
     weval_write_reg((reg), (value).asRawBits());    \
     weval_write_reg((reg) + ICRegs::kMaxICVals, 0); \
   } else {                                          \
@@ -87,42 +87,42 @@
     weval::pop_context();
 
 #define VIRTPUSH(value)                                                    \
-  if (Specialized) {                                                       \
+  if (false) {                                                       \
     --sp;                                                                  \
     weval_push_stack(reinterpret_cast<uint64_t*>(sp), (value).asUInt64()); \
   } else {                                                                 \
     *--sp = (value);                                                       \
   }
 #define VIRTPOP()                                      \
-  (Specialized ? ({                                    \
+  (false ? ({                                    \
     uint64_t* ptr = reinterpret_cast<uint64_t*>(sp++); \
     StackVal(weval_pop_stack(ptr));                    \
   })                                                   \
                : *sp++)
 #define VIRTSP(index)                                                     \
-  (Specialized ? StackVal(weval_read_stack(                               \
+  (false ? StackVal(weval_read_stack(                               \
                      reinterpret_cast<uint64_t*>(&sp[(index)]), (index))) \
                : sp[(index)])
 #define VIRTSPWRITE(index, value)                                         \
-  if (Specialized) {                                                      \
+  if (false ) {                                                      \
     weval_write_stack(reinterpret_cast<uint64_t*>(&sp[(index)]), (index), \
                       (value).asUInt64());                                \
   } else {                                                                \
     sp[(index)] = (value);                                                \
   }
 #define SYNCSP()        \
-  if (Specialized) {    \
+  if (false) {    \
     weval_sync_stack(); \
   }
 #define SETLOCAL(i, value)                                                    \
-  if (Specialized) {                                                          \
+  if (false) {                                                          \
     weval_write_local(reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), \
                       i, (value).asRawBits());                                \
   } else {                                                                    \
     frame->unaliasedLocal(i) = value;                                         \
   }
 #define GETLOCAL(i)                                                      \
-  (Specialized                                                           \
+  (false \
        ? Value::fromRawBits(weval_read_local(                            \
              reinterpret_cast<uint64_t*>(&frame->unaliasedLocal(i)), i)) \
        : frame->unaliasedLocal(i))

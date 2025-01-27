@@ -10,13 +10,40 @@
 
 #include "vm/WPTI.h"
 
+#include "vm/JSFunction.h"
+#include "vm/NativeObject.h"
+
 using namespace js;
 
 bool wpti::Run(JSContext* cx, Handle<GCVector<JSObject*>> roots) {
-    printf("wpti run: roots are:\n");
+    // Scan root objects to find JSFunctions.
+    Rooted<GCVector<JSFunction*>> funcs(cx, cx);
     for (auto& root : roots) {
-        printf("* %p\n", root);
+        if (root->is<NativeObject>()) {
+            Rooted<NativeObject*> nobj(cx, &root->as<NativeObject>());
+            for (ShapePropertyIter<NoGC> iter(nobj->shape()); !iter.done(); iter++) {
+                if (iter->isDataProperty() && iter->enumerable()) {
+                    Value value = nobj->getSlot(iter->slot());
+                    if (value.isObject() && value.toObject().is<JSFunction>()) {
+                        JSFunction* func = &value.toObject().as<JSFunction>();
+                        if (!funcs.append(func)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
     }
 
+    for (auto* func : funcs) {
+        Rooted<JSAtom*> explicitName(cx);
+        if (func->getExplicitName(cx, &explicitName) && explicitName) {
+            UniqueChars chars = StringToNewUTF8CharsZ(cx, *explicitName);
+            printf("function: %s\n", chars.get());
+        } else {
+            printf("function: %p\n", func);
+        }
+    }
+    
     return true;
 }

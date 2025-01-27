@@ -441,6 +441,7 @@ UNIFIED_SOURCES += [
     "vm/Watchtower.cpp",
     "vm/WellKnownAtom.cpp",
     "vm/WindowProxy.cpp",
+    "vm/WPTI.cpp",
     "vm/Xdr.cpp",
 ]
 

@@ -208,6 +208,7 @@
 #include "vm/Time.h"
 #include "vm/ToSource.h"  // js::ValueToSource
 #include "vm/TypedArrayObject.h"
+#include "vm/WPTI.h"
 #include "vm/WrapperObject.h"
 #include "wasm/WasmFeatures.h"
 #include "wasm/WasmJS.h"
@@ -11933,7 +11934,7 @@ ShellContext::~ShellContext() {
   MOZ_ASSERT(offThreadJobs.empty());
 }
 
-static int Shell(JSContext* cx, OptionParser* op) {
+static int Shell(JSContext* cx, OptionParser* op, MutableHandle<GCVector<JSObject*>> allGlobals) {
 #ifdef JS_STRUCTURED_SPEW
   cx->spewer().enableSpewing();
 #endif
@@ -11983,6 +11984,10 @@ static int Shell(JSContext* cx, OptionParser* op) {
         cx, NewGlobalObject(cx, options, nullptr, ShellGlobalKind::WindowProxy,
                             /* immutablePrototype = */ true));
     if (!glob) {
+      return 1;
+    }
+
+    if (!allGlobals.append(glob)) {
       return 1;
     }
 
@@ -12418,7 +12423,14 @@ int main(int argc, char** argv) {
     return EXIT_SUCCESS;
   }
 
-  result = Shell(cx, &op);
+  Rooted<GCVector<JSObject*>> allGlobals(cx, cx);
+  result = Shell(cx, &op, &allGlobals);
+
+  if (op.getBoolOption("whole-program-type-inf")) {
+    if (!wpti::Run(cx, allGlobals)) {
+      return EXIT_FAILURE;
+    }
+  }
 
 #ifdef DEBUG
   if (OOM_printAllocationCount) {
@@ -12694,6 +12706,9 @@ bool InitOptionParser(OptionParser& op) {
           '\0', "enforce-aot-ics",
           "Enable enforcing only use of ahead-of-time-known ICs") ||
 #endif
+      !op.addBoolOption(
+          '\0', "whole-program-type-inf",
+          "Enable whole-program type inference") ||
       !op.addIntOption(
           '\0', "baseline-warmup-threshold", "COUNT",
           "Wait for COUNT calls or iterations before baseline-compiling "
@@ -13689,6 +13704,11 @@ bool SetContextJITOptions(JSContext* cx, const OptionParser& op) {
     jit::JitOptions.enableAOTICEnforce = true;
   }
 #endif
+
+  if (op.getBoolOption("whole-program-type-inf")) {
+    defaultDelazificationMode =
+      JS::DelazificationOption::ParseEverythingEagerly;
+  }
 
   if (op.getBoolOption("blinterp")) {
     jit::JitOptions.baselineInterpreter = true;

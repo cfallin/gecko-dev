@@ -520,6 +520,8 @@ static const char* ArrayBufferViewKindName(ArrayBufferViewKind kind) {
       return "FixedLength";
     case ArrayBufferViewKind::Resizable:
       return "Resizable";
+    case ArrayBufferViewKind::Immutable:
+      return "Immutable";
   }
   MOZ_CRASH("Unknown ArrayBufferViewKind");
 }

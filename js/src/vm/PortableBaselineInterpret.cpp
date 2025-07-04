@@ -588,7 +588,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #  define DISPATCH_CACHEOP()                         \
     cacheop = cacheIRReader.readOp();                \
-    PBL_UPDATE_CTX(cacheIRReader.currentPosition()); \
+    PBL_PUSH_CTX(cacheIRReader.currentPosition());   \
     goto dispatch;
 
 #endif  // !ENABLE_COMPUTED_GOTO_DISPATCH
@@ -927,7 +927,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #ifndef ENABLE_COMPUTED_GOTO_DISPATCH
   dispatch:
-    PBL_REACHABLE_AT_DEPTH(1);
     switch (cacheop)
 #endif
     {

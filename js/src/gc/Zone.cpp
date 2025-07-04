@@ -560,7 +560,6 @@ js::jit::JitZone* Zone::createJitZone(JSContext* cx) {
   MOZ_ASSERT(cx->runtime()->hasJitRuntime());
 #endif
 
-  printf("createJitZone\n");
   auto jitZone = cx->make_unique<jit::JitZone>(cx, allocNurseryStrings());
   if (!jitZone) {
     return nullptr;

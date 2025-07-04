@@ -82,4 +82,6 @@
 
 #define PBL_SCRIPT_HAS_SPECIALIZATION(script) false
 
+#define PBL_REACHABLE_AT_DEPTH(depth)
+
 #endif  /* PortableBaselineInerpret_defs_h */

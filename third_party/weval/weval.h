@@ -190,6 +190,12 @@ uint64_t weval_read_local(uint64_t* ptr, uint32_t index)
 void weval_write_local(uint64_t* ptr, uint32_t index, uint64_t value)
     WEVAL_WASM_IMPORT("write.local");
 
+/* Force "unreachable" if a path at the wrong specialization depth
+ * reaches this point. Used to defeat some kinds of path-merging that
+ * source-to-Wasm toolchains might perform on the interpreter. */
+void weval_reachable_at_depth(uint32_t depth)
+    WEVAL_WASM_IMPORT("reachable.at.depth");
+
 /* Debugging and stats intrinsics */
     
 void weval_trace_line(uint32_t line_number) WEVAL_WASM_IMPORT("trace.line");

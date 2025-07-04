@@ -139,4 +139,7 @@
 #define PBL_SCRIPT_HAS_SPECIALIZATION(script) \
     (script->hasWeval() && script->weval().func)
 
+#define PBL_REACHABLE_AT_DEPTH(depth) \
+  weval_reachable_at_depth(depth)
+
 #endif /* PortableBaselineInerpret_defs_h */

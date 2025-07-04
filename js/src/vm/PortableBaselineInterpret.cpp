@@ -872,6 +872,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
     (void)addresses;
 
 #define CACHEOP_TRACE(name) \
+    weval_print("cacheop " #name ": ", __LINE__, uint32_t(cacheIRReader.currentPosition())); \
   TRACE_PRINTF("cacheop (frame %p stub %p): " #name "\n", ctx.frame, cstub);
 
 #define FAIL_IC()              \
@@ -926,6 +927,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #ifndef ENABLE_COMPUTED_GOTO_DISPATCH
   dispatch:
+    PBL_REACHABLE_AT_DEPTH(1);
     switch (cacheop)
 #endif
     {
@@ -3367,6 +3369,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE(ConcatStringsResult) {
         StringOperandId lhsId = cacheIRReader.stringOperandId();
         StringOperandId rhsId = cacheIRReader.stringOperandId();
+        uint32_t jitCodeOffset = cacheIRReader.stubOffset();
+        (void)jitCodeOffset;
         {
           PUSH_IC_FRAME();
           ReservedRooted<JSString*> lhs(

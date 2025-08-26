@@ -82,6 +82,7 @@
 
 #define PBL_SCRIPT_HAS_SPECIALIZATION(script) false
 
-#define PBL_REACHABLE_AT_DEPTH(depth)
+#define PBL_EXIT_PATH()
+#define PBL_STOP_EXIT_PATH()
 
 #endif  /* PortableBaselineInerpret_defs_h */

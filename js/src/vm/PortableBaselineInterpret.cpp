@@ -588,7 +588,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #  define DISPATCH_CACHEOP()                         \
     cacheop = cacheIRReader.readOp();                \
-    PBL_PUSH_CTX(cacheIRReader.currentPosition());   \
+    PBL_UPDATE_CTX(cacheIRReader.currentPosition()); \
     goto dispatch;
 
 #endif  // !ENABLE_COMPUTED_GOTO_DISPATCH
@@ -877,13 +877,15 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #define FAIL_IC()              \
   do {                         \
-    PBL_PUSH_CTX(uint32_t(1)); \
+    PBL_POP_CTX();             \
+    PBL_EXIT_PATH();           \
     goto next_ic;              \
   } while (0)
 
 #define RETURN_IC(value)       \
   do {                         \
-    PBL_PUSH_CTX(uint32_t(2)); \
+    PBL_POP_CTX();             \
+    PBL_EXIT_PATH();           \
     return (value);            \
   } while (0)
 
@@ -927,6 +929,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #ifndef ENABLE_COMPUTED_GOTO_DISPATCH
   dispatch:
+    PBL_STOP_EXIT_PATH();
     switch (cacheop)
 #endif
     {
@@ -5465,8 +5468,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 #undef CACHEOP_UNIMPL
 
 next_ic:
-  PBL_POP_CTX();
-  PBL_POP_CTX();
   TRACE_PRINTF("IC failed; next IC\n");
   return CallNextIC(arg0, arg1, stub, ctx);
 }
@@ -5972,6 +5973,8 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
                  ctx.stack.fp);                                       \
     SYNCSP();                                                         \
     restartCode = code;                                               \
+    PBL_POP_CTX();                                                    \
+    PBL_EXIT_PATH();                                                  \
     goto restart;                                                     \
   }
 
@@ -9559,6 +9562,7 @@ void EnqueueScriptSpecialization(JSScript* script) {
     ImmutableScriptData* isd = script->immutableScriptData();
     uint32_t isd_len = isd->immutableData().Length();
 
+#if 0
     weval.req = weval::weval(
         reinterpret_cast<PBIFunc*>(&weval.func),
         &PortableBaselineInterpret<true, false, false>, WEVAL_JSOP_ID,
@@ -9571,6 +9575,7 @@ void EnqueueScriptSpecialization(JSScript* script) {
         SpecializeMemory<ImmutableScriptData*>(isd, isd_len),
         Runtime<jsbytecode*>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),
         Runtime<PBIResult>());
+#endif
   }
 }
 

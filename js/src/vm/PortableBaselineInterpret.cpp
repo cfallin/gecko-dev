@@ -876,12 +876,14 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #define FAIL_IC()              \
   do {                         \
+    PBL_PUSH_CTX(uint32_t(1)); \
     PBL_EXIT_PATH();           \
     goto next_ic;              \
   } while (0)
 
 #define RETURN_IC(value)       \
   do {                         \
+    PBL_PUSH_CTX(uint32_t(2)); \
     PBL_EXIT_PATH();           \
     return (value);            \
   } while (0)
@@ -1094,6 +1096,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             DISPATCH_CACHEOP();
           }
         }
+        WRITE_REG(resultId.id(), 0, INT32);
         FAIL_IC();
       }
 
@@ -1125,6 +1128,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             DISPATCH_CACHEOP();
           }
         }
+        WRITE_REG(resultId.id(), 0, INT32);
         FAIL_IC();
       }
 
@@ -2257,6 +2261,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         if (str) {
           WRITE_REG(resultId.id(), reinterpret_cast<uintptr_t>(str), STRING);
         } else {
+          WRITE_REG(resultId.id(), 0, INT32);
           FAIL_IC();
         }
         DISPATCH_CACHEOP();

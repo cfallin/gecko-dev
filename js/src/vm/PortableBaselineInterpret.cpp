@@ -577,6 +577,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #  define CACHEOP_CASE(name)                                           \
     case CacheOp::name:                                                \
+      PBL_UPDATE_CTX(cacheIRReader.currentPosition());                 \
       weval_trace_line(__LINE__);                                      \
       weval_assert_const32(                                            \
           reinterpret_cast<uint32_t>(cacheIRReader.currentPosition()), \
@@ -587,7 +588,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
     CACHEOP_CASE(name)
 
 #  define DISPATCH_CACHEOP()                         \
-    PBL_UPDATE_CTX(cacheIRReader.currentPosition()); \
     goto dispatch;
 
 #endif  // !ENABLE_COMPUTED_GOTO_DISPATCH
@@ -876,14 +876,12 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #define FAIL_IC()              \
   do {                         \
-    PBL_PUSH_CTX(uint32_t(1)); \
     PBL_EXIT_PATH();           \
     goto next_ic;              \
   } while (0)
 
 #define RETURN_IC(value)       \
   do {                         \
-    PBL_PUSH_CTX(uint32_t(1)); \
     PBL_EXIT_PATH();           \
     return (value);            \
   } while (0)

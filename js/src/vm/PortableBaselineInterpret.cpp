@@ -5971,7 +5971,6 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
                  ctx.stack.fp);                                       \
     SYNCSP();                                                         \
     restartCode = code;                                               \
-    PBL_EXIT_PATH();                                                  \
     PBL_POP_CTX();                                                    \
     goto restart;                                                     \
   }
@@ -9560,7 +9559,6 @@ void EnqueueScriptSpecialization(JSScript* script) {
     ImmutableScriptData* isd = script->immutableScriptData();
     uint32_t isd_len = isd->immutableData().Length();
 
-#if 0
     weval.req = weval::weval(
         reinterpret_cast<PBIFunc*>(&weval.func),
         &PortableBaselineInterpret<true, false, false>, WEVAL_JSOP_ID,
@@ -9573,7 +9571,6 @@ void EnqueueScriptSpecialization(JSScript* script) {
         SpecializeMemory<ImmutableScriptData*>(isd, isd_len),
         Runtime<jsbytecode*>(), Runtime<BaselineFrame*>(), Runtime<StackVal*>(),
         Runtime<PBIResult>());
-#endif
   }
 }
 

@@ -577,7 +577,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #  define CACHEOP_CASE(name)                                           \
     case CacheOp::name:                                                \
-      weval_trace_line(__LINE__); \
+      weval_trace_line(__LINE__);                                      \
       weval_assert_const32(                                            \
           reinterpret_cast<uint32_t>(cacheIRReader.currentPosition()), \
           __LINE__);                                                   \
@@ -587,8 +587,6 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
     CACHEOP_CASE(name)
 
 #  define DISPATCH_CACHEOP()                         \
-    cacheop = cacheIRReader.readOp();                \
-    PBL_STOP_EXIT_PATH();                            \
     PBL_UPDATE_CTX(cacheIRReader.currentPosition()); \
     goto dispatch;
 
@@ -878,14 +876,14 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #define FAIL_IC()              \
   do {                         \
-    PBL_POP_CTX();             \
+    PBL_PUSH_CTX(uint32_t(1)); \
     PBL_EXIT_PATH();           \
     goto next_ic;              \
   } while (0)
 
 #define RETURN_IC(value)       \
   do {                         \
-    PBL_POP_CTX();             \
+    PBL_PUSH_CTX(uint32_t(1)); \
     PBL_EXIT_PATH();           \
     return (value);            \
   } while (0)
@@ -931,6 +929,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 #ifndef ENABLE_COMPUTED_GOTO_DISPATCH
   dispatch:
     PBL_STOP_EXIT_PATH();
+    cacheop = cacheIRReader.readOp();
     switch (cacheop)
 #endif
     {
@@ -5974,8 +5973,8 @@ PBIResult PortableBaselineInterpret(JSContext* cx_, State& state, Stack& stack,
                  ctx.stack.fp);                                       \
     SYNCSP();                                                         \
     restartCode = code;                                               \
-    PBL_POP_CTX();                                                    \
     PBL_EXIT_PATH();                                                  \
+    PBL_POP_CTX();                                                    \
     goto restart;                                                     \
   }
 

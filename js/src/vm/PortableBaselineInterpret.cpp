@@ -588,6 +588,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
 
 #  define DISPATCH_CACHEOP()                         \
     cacheop = cacheIRReader.readOp();                \
+    PBL_STOP_EXIT_PATH();                            \
     PBL_UPDATE_CTX(cacheIRReader.currentPosition()); \
     goto dispatch;
 
